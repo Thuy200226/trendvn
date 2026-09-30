@@ -1,0 +1,11 @@
+# secrets and per-machine state: never commit
+.env
+.env.local
+.env.before-restore
+data/
+.venv/
+dist/
+__pycache__/
+*.pyc
+.DS_Store
+n8n/exported/

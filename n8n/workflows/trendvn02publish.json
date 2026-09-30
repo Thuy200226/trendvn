@@ -1,0 +1,114 @@
+{
+  "id": "trendvn02publish",
+  "name": "TrendVN | 02 · Đăng theo giờ vàng (30 phút/lần)",
+  "nodes": [
+    {
+      "id": "46c9956331c2516e9bdab3fd8cf7725f",
+      "name": "Mỗi 30 phút",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "7aa93d42d8ab5560bba45df4a3ec9edf",
+      "name": "Chạy thử đăng",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "edd7d5b6b7335a26be9726b40b7c13ed",
+      "name": "Đăng video tốt nhất nếu đủ điều kiện",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "url": "http://trendvn-agent:5682/api/publish",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 1500000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN · Worker riêng"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "1266ff059bd35e86b06959e9ee7a76d2",
+      "name": "Đăng theo giờ vàng",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        100,
+        -300
+      ],
+      "parameters": {
+        "content": "## Đăng bài\nMỗi 30 phút hỏi worker có được đăng không. Worker chỉ cho phép khi: công tắc Tự đăng bật, đang trong giờ vàng, chưa quá số bài mỗi ngày, đủ giãn cách, không có bài chưa xác nhận.\nKhông đủ điều kiện thì trả lời ngay, không mở trình duyệt.",
+        "height": 240,
+        "width": 560
+      }
+    }
+  ],
+  "connections": {
+    "Mỗi 30 phút": {
+      "main": [
+        [
+          {
+            "node": "Đăng video tốt nhất nếu đủ điều kiện",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chạy thử đăng": {
+      "main": [
+        [
+          {
+            "node": "Đăng video tốt nhất nếu đủ điều kiện",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Ho_Chi_Minh",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  },
+  "pinData": {}
+}

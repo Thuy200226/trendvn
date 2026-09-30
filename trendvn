@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# TrendVN: một lệnh cho mọi việc.  ./trendvn help
+set -euo pipefail
+# shellcheck source=scripts/lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/scripts/lib.sh"
+
+usage() {
+cat <<'HELP'
+TrendVN — thu thập video xu hướng, làm Vietsub/lồng tiếng, tự đăng TikTok.   Dùng: ./trendvn <lệnh>
+
+Cài đặt và chạy
+  install [--no-activate] [--no-service]   Cài lần đầu: cấu hình, Docker, n8n, agent. Chạy lại an toàn.
+  up                  Dựng (nếu cần) và chạy n8n + worker, đợi tới khi khỏe
+  down                Dừng n8n + worker (giữ dữ liệu)
+  restart [worker|n8n|agent]   Khởi động lại (bỏ trống = cả ba)
+  update              Áp dụng bản mới sau khi thay mã: build lại, gói Python của agent, sinh + nạp lại workflow, khởi động lại
+  status              Trạng thái container, agent, workflow
+  doctor              Chẩn đoán đầy đủ, chỉ cách sửa từng lỗi
+  open                Mở bảng điều khiển trong trình duyệt
+  uninstall [--purge] Gỡ dịch vụ và dừng container (--purge: xóa cả dữ liệu)
+  migrate <thư-mục-1.2> [--yes] [--no-service]   Chuyển hệ thống đang chạy từ thư mục bản 1.2 sang thư mục này (sao lưu, dừng bản cũ, chép dữ liệu, cài)
+
+Xem log
+  logs [worker|n8n|agent|all] [-f] [-n SỐ]   Mặc định: worker + n8n, 100 dòng cuối. -f: theo dõi trực tiếp.
+
+Build
+  build [--no-cache]  Build image Docker của worker
+  n8n build           Sinh workflow n8n từ mã (n8n/build.py)
+  n8n import          Nạp workflow + credential vào n8n đang chạy (workflow đang bật vẫn bật)
+  n8n activate|deactivate [id...]   Bật/tắt lịch tự động (mặc định 01, 02, 03)
+  n8n status          Workflow nào đang bật
+  n8n export [thư mục]  Lưu workflow hiện có trong n8n ra file JSON
+
+Agent trình duyệt (Chrome trên máy này)
+  agent install|uninstall|start|stop|restart|status|logs|run|venv|update
+  tiktok login [phút]     Đăng nhập TikTok một lần (bạn tự nhập trong cửa sổ Chrome)
+  tiktok trust [phút]     Giải hình xác minh của TikTok một lần
+  tiktok dry-run          Chạy thử không đăng thật (ảnh chụp: data/worker/exports/)
+  tiktok status|verify|stats
+
+Dữ liệu và bàn giao
+  backup [--with-session] [--keep N]   Sao lưu vào data/backups/
+  restore FILE [--yes]  Khôi phục từ bản sao lưu
+  package             Đóng gói dist/trendvn-<phiên bản>.tar.gz để chép sang máy khác
+
+Kiểm thử
+  test [lint|unit|container|e2e|all]   Mặc định: lint + unit. container = chạy bộ test trong image Docker (có ffmpeg).
+  version
+
+Chi tiết: README.md và docs/COMMANDS.md
+HELP
+}
+
+cmd="${1:-help}"; [ $# -gt 0 ] && shift
+
+svc_restart() { # svc_restart worker|n8n|agent
+  case "$1" in
+    worker|n8n) compose restart "$1" ;;
+    agent) bash scripts/agent.sh restart ;;
+    *) fail "Không có dịch vụ '$1' (worker, n8n hoặc agent)" ;;
+  esac
+}
+
+case "$cmd" in
+  help|-h|--help) usage ;;
+  version|--version) cat VERSION ;;
+  install) exec bash scripts/install.sh "$@" ;;
+  up) compose_up; info "Bảng điều khiển: http://localhost:$(worker_port) · n8n: http://localhost:$(n8n_port)" ;;
+  down) need_project; compose down ;;
+  restart)
+    need_project
+    if [ $# -eq 0 ]; then compose restart; bash scripts/agent.sh restart || true; else svc_restart "$1"; fi ;;
+  build)
+    need_docker
+    case "${1:-}" in "") compose build worker ;; --no-cache) compose build --no-cache worker ;; *) fail "Tham số lạ: $1" ;; esac ;;
+  update)
+    need_project
+    say "Sinh lại workflow từ mã"; python3 n8n/build.py
+    say "Build và khởi động lại container"; compose_up
+    say "Nạp workflow vào n8n"; python3 n8n/manage.py import
+    say "Cập nhật gói Python của agent"; bash scripts/agent.sh venv
+    say "Khởi động lại agent"; bash scripts/agent.sh restart || warn "agent chưa khởi động được (xem ./trendvn agent logs)"
+    python3 scripts/doctor.py || true ;;
+  status)
+    need_env; need_docker
+    compose ps
+    echo
+    bash scripts/agent.sh status || true
+    echo
+    python3 n8n/manage.py status || true
+    echo
+    info "Bảng điều khiển: http://localhost:$(worker_port) · n8n: http://localhost:$(n8n_port)" ;;
+  doctor) exec python3 scripts/doctor.py "$@" ;;
+  open)
+    need_env
+    url="http://localhost:$(worker_port)"
+    if [ "$OS" = Darwin ]; then open "$url"; elif have xdg-open; then xdg-open "$url" >/dev/null 2>&1 || true; else info "$url"; fi ;;
+  logs)
+    need_env
+    svc=all; follow=""; lines=100
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -f|--follow) follow="-f" ;;
+        -n|--tail) shift; lines="${1:-}"; case "$lines" in ''|*[!0-9]*) fail "-n cần một số" ;; esac ;;
+        worker|n8n|agent|all) svc="$1" ;;
+        *) fail "Không hiểu '$1'. Dùng: ./trendvn logs [worker|n8n|agent|all] [-f] [-n SỐ]" ;;
+      esac; shift
+    done
+    case "$svc" in
+      agent) if [ -n "$follow" ]; then exec bash scripts/agent.sh logs -f -n "$lines"; else exec bash scripts/agent.sh logs -n "$lines"; fi ;;
+      all) need_docker; exec docker compose logs --tail "$lines" $follow ;;
+      *) need_docker; exec docker compose logs --tail "$lines" $follow "$svc" ;;
+    esac ;;
+  n8n)
+    sub="${1:-}"; [ $# -gt 0 ] && shift
+    case "$sub" in
+      build) exec python3 n8n/build.py "$@" ;;
+      import|activate|deactivate) need_project; exec python3 n8n/manage.py "$sub" "$@" ;;
+      status|export) need_env; need_docker; exec python3 n8n/manage.py "$sub" "$@" ;;
+      *) echo "Dùng: ./trendvn n8n build|import|activate|deactivate|status|export"; exit 2 ;;
+    esac ;;
+  agent) exec bash scripts/agent.sh "$@" ;;
+  tiktok)
+    sub="${1:-}"; [ $# -gt 0 ] && shift
+    case "$sub" in
+      login|trust|status|dry-run|verify|stats)
+        need_env; [ -x .venv/bin/python ] || fail "Chưa có môi trường Python cho agent. Chạy: ./trendvn install"
+        exec .venv/bin/python services/agent/publisher.py "$sub" "$@" ;;
+      *) echo "Dùng: ./trendvn tiktok login|trust|dry-run|status|verify|stats"; exit 2 ;;
+    esac ;;
+  backup) exec bash scripts/backup.sh "$@" ;;
+  restore) exec bash scripts/restore.sh "$@" ;;
+  package) exec python3 scripts/package.py ;;
+  uninstall) exec bash scripts/uninstall.sh "$@" ;;
+  migrate) exec bash scripts/migrate.sh "$@" ;;
+  test) exec bash scripts/test.sh "$@" ;;
+  *) echo "Không có lệnh '$cmd'."; echo; usage; exit 2 ;;
+esac

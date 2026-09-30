@@ -1,0 +1,95 @@
+{
+  "id": "trendvn10inbox",
+  "name": "TrendVN | 10 · Nhận quan sát và chống trùng ID",
+  "nodes": [
+    {
+      "id": "989b43a29a255e019bf5ac5476be0501",
+      "name": "Nhận quan sát nguồn",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "trendvn-observations",
+        "authentication": "headerAuth",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN · Worker riêng"
+        }
+      },
+      "webhookId": "trendvn-observations"
+    },
+    {
+      "id": "4bf843cecb09504d84e786a411f07ce3",
+      "name": "Lưu mốc và nhận diện video mới",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        280,
+        0
+      ],
+      "parameters": {
+        "url": "http://worker:8080/api/ingest",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 900000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN · Worker riêng"
+        }
+      }
+    },
+    {
+      "id": "879f8c7a91d7562ea40c35eaf1f8fff8",
+      "name": "Hợp đồng dữ liệu",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -300
+      ],
+      "parameters": {
+        "content": "## Đầu vào JSON có xác thực (nhập tay hoặc công cụ khác)\nplatform, stream, observed_at (Unix seconds), items[]\nMỗi item: source_id, url HTTPS chính chủ, country CN/US, title, rank hoặc views, evidence_url.\nLần đầu chỉ tạo baseline. Bộ thu thập tự động dùng workflow 01, không cần webhook này.",
+        "height": 230,
+        "width": 560
+      }
+    }
+  ],
+  "connections": {
+    "Nhận quan sát nguồn": {
+      "main": [
+        [
+          {
+            "node": "Lưu mốc và nhận diện video mới",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Ho_Chi_Minh",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  },
+  "pinData": {}
+}

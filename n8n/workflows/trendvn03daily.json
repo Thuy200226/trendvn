@@ -1,0 +1,154 @@
+{
+  "id": "trendvn03daily",
+  "name": "TrendVN | 03 · Chốt ngày: hiệu quả và tóm tắt",
+  "nodes": [
+    {
+      "id": "98a7cef4ee875f74bd801e325f3d84ec",
+      "name": "23:30 mỗi ngày",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 23 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "f78d7b9345e55b18938e88f1bf99761a",
+      "name": "Chạy thử chốt ngày",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "1bc21e77bafd53839327150e23fb72b6",
+      "name": "Đọc lượt xem các bài đã đăng",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "url": "http://trendvn-agent:5682/api/stats",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 300000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN · Worker riêng"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "eb1925232e305271b41021189fdbfbc2",
+      "name": "Gửi tóm tắt ngày",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        0
+      ],
+      "parameters": {
+        "url": "http://worker:8080/api/notify",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 900000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"kind\":\"summary\"}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN · Worker riêng"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "c270602464bc5557834d4f232fffb5a7",
+      "name": "Chốt ngày",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        100,
+        -280
+      ],
+      "parameters": {
+        "content": "## Chốt ngày\nĐọc lượt xem, tim của bài đã đăng để hệ thống tự điều chỉnh độ ưu tiên từng nguồn (cần tối thiểu 8 bài), rồi gửi tóm tắt qua kênh thông báo bạn đã cấu hình.",
+        "height": 220,
+        "width": 560
+      }
+    }
+  ],
+  "connections": {
+    "23:30 mỗi ngày": {
+      "main": [
+        [
+          {
+            "node": "Đọc lượt xem các bài đã đăng",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chạy thử chốt ngày": {
+      "main": [
+        [
+          {
+            "node": "Đọc lượt xem các bài đã đăng",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đọc lượt xem các bài đã đăng": {
+      "main": [
+        [
+          {
+            "node": "Gửi tóm tắt ngày",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Ho_Chi_Minh",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  },
+  "pinData": {}
+}

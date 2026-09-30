@@ -1,0 +1,274 @@
+{
+  "id": "trendvn01daily",
+  "name": "TrendVN | 01 · Thu thập và xử lý (3 giờ/lần)",
+  "nodes": [
+    {
+      "id": "b528f8aa834b50cc8cf81f541c3d86ab",
+      "name": "Mỗi 3 giờ",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "72c3e2f529c15eec8c8035f093504a4e",
+      "name": "Chạy thử toàn chu trình",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "0fd855c859645c73b0936bdb703db004",
+      "name": "Kiểm tra phiên TikTok",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "url": "http://trendvn-agent:5682/api/session",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 180000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN · Worker riêng"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "2399195843665a87865203eaebc44b0d",
+      "name": "Đối chiếu bài chưa xác nhận",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "url": "http://trendvn-agent:5682/api/verify",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 300000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN · Worker riêng"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "262a6b3298f55ef189f26acf85003287",
+      "name": "Thu thập xu hướng và tải video mới",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        0
+      ],
+      "parameters": {
+        "url": "http://trendvn-agent:5682/api/collect",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 900000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN · Worker riêng"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "d50fd1d84bdf51549af7e9d45f8ffebb",
+      "name": "Phát hiện tác vụ gián đoạn",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        0
+      ],
+      "parameters": {
+        "url": "http://worker:8080/api/housekeeping",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 900000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN · Worker riêng"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "3d206623c38c55e787a1990db73294c3",
+      "name": "Phân loại nhạc, tạo Vietsub hoặc lồng tiếng",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        0
+      ],
+      "parameters": {
+        "url": "http://worker:8080/api/process",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 900000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"max\":4}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN · Worker riêng"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "f42febc14f625894a1ad7047b9a4933c",
+      "name": "Thu thập và xử lý",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        260,
+        -360
+      ],
+      "parameters": {
+        "content": "## Chu trình 3 giờ/lần\n1. Kiểm tra phiên TikTok, đối chiếu bài chưa rõ kết quả\n2. Thu thập Douyin, Kuaishou, TikTok Mỹ, Instagram Mỹ; chỉ tải video MỚI, ưu tiên theo điểm thịnh hành\n3. Nhạc giữ nguyên; hội thoại thêm Vietsub; thuyết minh có thể lồng tiếng Việt\n4. Lệch chủ đề hoặc nhạy cảm bị giữ lại chờ bạn duyệt (có thông báo)\nViệc đăng nằm ở workflow 02 để canh đúng giờ vàng.",
+        "height": 300,
+        "width": 760
+      }
+    }
+  ],
+  "connections": {
+    "Mỗi 3 giờ": {
+      "main": [
+        [
+          {
+            "node": "Kiểm tra phiên TikTok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chạy thử toàn chu trình": {
+      "main": [
+        [
+          {
+            "node": "Kiểm tra phiên TikTok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kiểm tra phiên TikTok": {
+      "main": [
+        [
+          {
+            "node": "Đối chiếu bài chưa xác nhận",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đối chiếu bài chưa xác nhận": {
+      "main": [
+        [
+          {
+            "node": "Thu thập xu hướng và tải video mới",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Thu thập xu hướng và tải video mới": {
+      "main": [
+        [
+          {
+            "node": "Phát hiện tác vụ gián đoạn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Phát hiện tác vụ gián đoạn": {
+      "main": [
+        [
+          {
+            "node": "Phân loại nhạc, tạo Vietsub hoặc lồng tiếng",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Ho_Chi_Minh",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  },
+  "pinData": {}
+}

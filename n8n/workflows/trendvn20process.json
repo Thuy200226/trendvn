@@ -1,0 +1,121 @@
+{
+  "id": "trendvn20process",
+  "name": "TrendVN | 20 · Xử lý video và phụ đề Việt",
+  "nodes": [
+    {
+      "id": "be652cda6b06520fb8578272649cd0c2",
+      "name": "Chạy xử lý thử",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "d50fd1d84bdf51549af7e9d45f8ffebb",
+      "name": "Phát hiện tác vụ gián đoạn",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "url": "http://worker:8080/api/housekeeping",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 900000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN · Worker riêng"
+        }
+      }
+    },
+    {
+      "id": "8f9b0260b46e5ed394178da561566ffd",
+      "name": "Phân loại nhạc và tạo Vietsub",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "url": "http://worker:8080/api/process",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 900000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"max\":4}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN · Worker riêng"
+        }
+      }
+    },
+    {
+      "id": "200a079a33c1512da8b8192bf1e829f4",
+      "name": "Xử lý thủ công",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        150,
+        -300
+      ],
+      "parameters": {
+        "content": "## Chạy tay bước xử lý\nNhạc: giữ nguyên âm thanh. Hội thoại/thuyết minh: Vietsub.\nKiểm tra hash nguồn, dấu vân tay hình ảnh, thời lượng, chủ đề, nhạy cảm và giải mã đầu ra.\nLịch tự động nằm ở workflow 01 (thu thập, xử lý) và 02 (đăng).",
+        "height": 240,
+        "width": 560
+      }
+    }
+  ],
+  "connections": {
+    "Chạy xử lý thử": {
+      "main": [
+        [
+          {
+            "node": "Phát hiện tác vụ gián đoạn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Phát hiện tác vụ gián đoạn": {
+      "main": [
+        [
+          {
+            "node": "Phân loại nhạc và tạo Vietsub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Ho_Chi_Minh",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  },
+  "pinData": {}
+}

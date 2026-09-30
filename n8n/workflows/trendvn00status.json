@@ -1,0 +1,132 @@
+{
+  "id": "trendvn00status",
+  "name": "TrendVN | 00 · Kiểm tra kết nối và mức sẵn sàng",
+  "nodes": [
+    {
+      "id": "fb934867176c57d3b1e3db5a226bcebc",
+      "name": "Chạy kiểm tra",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "4e15542c9a545f9a8e31c29711587aed",
+      "name": "Đọc trạng thái worker",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "url": "http://worker:8080/api/status",
+        "method": "GET",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 900000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN · Worker riêng"
+        }
+      }
+    },
+    {
+      "id": "0c65ce5b4c7659e1b983c7f1720d7776",
+      "name": "Kiểm tra agent trình duyệt",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "url": "http://trendvn-agent:5682/health",
+        "method": "GET",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "bdc303f8f7e258529948ac5e3e54b135",
+      "name": "Tổng hợp phần còn thiếu",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const s=$('Đọc trạng thái worker').first().json;\nconst a=$input.first().json;\nconst missing=[];\nif(!a.ok) missing.push('Agent trình duyệt trên máy chưa chạy (systemd: trendvn-agent)');\nif(!s.gemini_configured) missing.push('Chưa có khóa Gemini API');\nif(!s.processing_enabled) missing.push('Xử lý video đang tắt');\nif(s.discovery!=='connected') missing.push('Bộ thu thập chưa có lần chạy thành công');\nif(s.publisher!=='connected') missing.push('Chưa đăng nhập TikTok trong hồ sơ riêng của trình đăng');\nif(!s.publisher_enabled) missing.push('Công tắc Tự đăng đang tắt (chỉ bạn bật trên bảng điều khiển)');\nif(s.unresolved_publishes>0) missing.push('Có bài chưa xác nhận đã đăng hay chưa');\nreturn [{json:{...s,agent_ok:!!a.ok,ready_for_unattended_publishing:missing.length===0,missing}}];"
+      }
+    },
+    {
+      "id": "b017fec127c45377bd5d3b7c54e4e2c1",
+      "name": "Ghi chú",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        100,
+        -300
+      ],
+      "parameters": {
+        "content": "## Kiểm tra mức sẵn sàng\nĐọc trạng thái thật từ worker và agent. Không đổi dữ liệu.\nBảng điều khiển: http://localhost:5681",
+        "height": 200,
+        "width": 520
+      }
+    }
+  ],
+  "connections": {
+    "Chạy kiểm tra": {
+      "main": [
+        [
+          {
+            "node": "Đọc trạng thái worker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đọc trạng thái worker": {
+      "main": [
+        [
+          {
+            "node": "Kiểm tra agent trình duyệt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kiểm tra agent trình duyệt": {
+      "main": [
+        [
+          {
+            "node": "Tổng hợp phần còn thiếu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Ho_Chi_Minh",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  },
+  "pinData": {}
+}

@@ -1,0 +1,15 @@
+[Unit]
+Description=TrendVN host agent (Chrome collector and publisher API)
+After=network-online.target docker.service
+
+[Service]
+WorkingDirectory=@ROOT@
+ExecStart=@ROOT@/.venv/bin/python @ROOT@/services/agent/server.py
+Restart=always
+RestartSec=15
+Environment=PYTHONUNBUFFERED=1
+@DISPLAYENV@
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
