@@ -89,6 +89,8 @@ class HardSubtitleTests(unittest.TestCase):
             dict(present=True, top=True, bottom=0.8),
             dict(present=True, top=-0.1, bottom=0.2),
             dict(present=True, top=0.7, bottom=float("nan")),
+            dict(present=True, top=0.7, bottom=float("inf")),
+            dict(present=True, top=0.7, bottom=10**400),  # an integer too big for a float
             dict(present="yes", top=0.7, bottom=0.8),
         ):
             self.assertIsNone(self.band(**found), found)

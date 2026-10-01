@@ -179,6 +179,39 @@ class HardSubtitleRenderTests(unittest.TestCase):
             info, problems = render_mod.qc(self.render(src, tag, band=band), True)
             self.assertEqual(problems, [], tag)
 
+    def test_a_band_at_the_very_edge_of_a_tiny_picture_still_renders(self):
+        for tag, size in (("tiny", "64x128"), ("small", "160x320")):
+            info, problems = render_mod.qc(self.render(self.source(tag + ".mp4", size), tag, band=(0.9999, 1.0)), True)
+            self.assertEqual(problems, [], tag)
+
+    def test_digital_silence_renders_instead_of_failing_in_loudnorm(self):
+        """loudnorm turns an all-zero audio track into NaN and the AAC encoder refuses it; common for clips with an empty track."""
+        out = self.dir / "zero.mp4"
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=360x640:d=2:r=25", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+             "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(out)],
+            check=True,
+        )  # fmt: skip
+        for kind in ("silent", "music"):  # Gemini says silent: no levelling at all; if it says anything else: one retry without it
+            folder = self.dir / ("zero_" + kind)
+            folder.mkdir()
+            final = render_mod.render(out, folder, {"kind": kind, "segments": []}, "original", 2.0)
+            info, problems = render_mod.qc(final, True)
+            self.assertEqual(problems, [], kind)
+            self.assertTrue(info["audio"], kind)
+
+    def test_faint_hiss_is_not_boosted_to_full_loudness_in_a_silent_video(self):
+        hiss = self.dir / "hiss.mp4"
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=360x640:d=2:r=25", "-f", "lavfi", "-i", "anoisesrc=a=1:d=2,volume=-80dB",
+             "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(hiss)],
+            check=True,
+        )  # fmt: skip
+        folder = self.dir / "hiss_out"
+        folder.mkdir()
+        info, _ = render_mod.qc(render_mod.render(hiss, folder, {"kind": "silent", "segments": []}, "original", 2.0), True)
+        self.assertLess(info["lufs"], -35)
+
     def test_the_quality_report_includes_loudness(self):
         out = self.render(self.source("p.mp4", "720x1280"), "loud")
         info, problems = render_mod.qc(out, True)

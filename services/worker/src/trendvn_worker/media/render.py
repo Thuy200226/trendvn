@@ -10,6 +10,9 @@ from .subtitles import ass_subtitles, subtitles
 VIDEO_ENCODER = "-c:v libx264 -preset veryfast -crf 24 -profile:v high -pix_fmt yuv420p -maxrate 4M -bufsize 8M".split()
 AUDIO_ENCODER = "-c:a aac -b:a 160k -ac 2".split()
 LOUDNESS = "loudnorm=I=-14:TP=-1.0:LRA=13,aresample=44100"  # TikTok's sweet spot; dynamic mode keeps music natural at this range
+UNLEVELLED = (
+    "aresample=44100"  # for videos without sound worth levelling: loudnorm would boost hiss to -14 LUFS, and turns digital silence into NaN
+)
 QUIET_LUFS = -35  # a render quieter than this is flagged on the dashboard
 BLUR_MAX_RADIUS = 20
 
@@ -27,12 +30,18 @@ def render(path, folder, a, route, duration, voice=None):
     inputs = ["-i", str(path)]
     if voice:
         inputs += ["-i", str(voice["wav"])]
-    audio, amap = _audio_chain(has_audio, voice)
-    ffmpeg(
-        *inputs, "-filter_complex", ";".join(chain + audio), "-map", "[%s]" % last, *amap, "-t", "%.3f" % duration,
-        *VIDEO_ENCODER, *AUDIO_ENCODER, "-map_metadata", "-1", "-movflags", "+faststart", str(out),
-        timeout=900,
-    )  # fmt: skip
+    for levelled in (True, False) if a.get("kind") != "silent" else (False,):
+        audio, amap = _audio_chain(has_audio, voice, levelled)
+        try:
+            ffmpeg(
+                *inputs, "-filter_complex", ";".join(chain + audio), "-map", "[%s]" % last, *amap, "-t", "%.3f" % duration,
+                *VIDEO_ENCODER, *AUDIO_ENCODER, "-map_metadata", "-1", "-movflags", "+faststart", str(out),
+                timeout=900,
+            )  # fmt: skip
+            break
+        except ValueError as error:
+            if not levelled or "NaN" not in str(error):
+                raise  # only "loudnorm met digital silence" is retried, once, without levelling
     final_duration, _ = probe(out)
     if abs(final_duration - duration) > 1:
         raise ValueError("Rendered duration mismatch")
@@ -80,8 +89,8 @@ def _blur_band(geo, band, source, label):
         picture_top, picture_height = (geo["h"] - geo["fg_h"]) // 2, geo["fg_h"]
     else:
         picture_top, picture_height = 0, geo["h"]
-    y = picture_top + int(top * picture_height) // 2 * 2
-    height = min(max(8, int((bottom - top) * picture_height) // 2 * 2), geo["h"] - y)
+    height = min(max(8, int((bottom - top) * picture_height) // 2 * 2), geo["h"])
+    y = min(picture_top + int(top * picture_height) // 2 * 2, geo["h"] - height)  # a band at the very edge still gets its full height
     radius = max(1, min(BLUR_MAX_RADIUS, height // 4 - 1))  # the chroma planes are half as tall and cap the radius
     return "[%s]split=2[hsa][hsb];[hsb]crop=%d:%d:0:%d,boxblur=%d:3,eq=brightness=-0.12[hsc];[hsa][hsc]overlay=0:%d[%s]" % (
         source,
@@ -94,8 +103,9 @@ def _blur_band(geo, band, source, label):
     )
 
 
-def _audio_chain(has_audio, voice):
+def _audio_chain(has_audio, voice, levelled=True):
     """The audio part of the filter graph. Returns (filters, -map arguments)."""
+    level = LOUDNESS if levelled else UNLEVELLED
     if voice:
         delay = int(voice["delay"] * 1000)
         chain = ["[1:a]atempo=%.3f,adelay=%d|%d[vo]" % (voice["tempo"], delay, delay)]
@@ -104,10 +114,10 @@ def _audio_chain(has_audio, voice):
             source = "mix"
         else:
             source = "vo"
-        chain.append("[%s]%s[a]" % (source, LOUDNESS))
+        chain.append("[%s]%s[a]" % (source, level))
         return chain, ["-map", "[a]"]
     if has_audio:
-        return ["[0:a]%s[a]" % LOUDNESS], ["-map", "[a]"]
+        return ["[0:a]%s[a]" % level], ["-map", "[a]"]
     return [], []
 
 
