@@ -1,0 +1,110 @@
+"""Processing side of the queue: claim a job, finish it, human decisions, crash recovery."""
+
+import time
+import uuid
+from pathlib import Path
+
+
+class QueueMixin:
+    """The processing queue and the human decisions on its results."""
+
+    def claim(self):
+        with self.transaction() as db:
+            row = db.execute("SELECT * FROM jobs WHERE state='queued' ORDER BY first_seen LIMIT 1").fetchone()
+            if not row:
+                return None
+            token = uuid.uuid4().hex
+            db.execute(
+                "UPDATE jobs SET state='processing',lease=?,attempts=attempts+1,updated=? WHERE id=?", (token, time.time(), row["id"])
+            )
+            self.event(db, row["id"], "processing")
+            return dict(row) | {"lease": token}
+
+    def finish(self, jid, lease, state, **fields):
+        if state not in ("ready", "awaiting_approval", "needs_review", "failed", "duplicate"):
+            raise ValueError("Invalid processing terminal state")
+        allowed = {"reason", "analysis", "route", "output_file", "output_hash", "fingerprint", "duration", "output_info"}
+        if set(fields) - allowed:
+            raise ValueError("Invalid fields")
+        with self.transaction() as db:
+            query = (
+                "UPDATE jobs SET state=?,lease=NULL,updated=?"
+                + "".join(", " + k + "=?" for k in fields)
+                + " WHERE id=? AND lease=? AND state='processing'"
+            )
+            changed = db.execute(query, [state, time.time(), *fields.values(), jid, lease]).rowcount
+            if changed != 1:
+                raise ValueError("Stale lease")
+            self.event(db, jid, state, str(fields.get("reason", "")))
+            title = (db.execute("SELECT title FROM jobs WHERE id=?", (jid,)).fetchone() or ["?"])[0][:60]
+        reason = str(fields.get("reason", ""))
+        if state == "needs_review":
+            self.emit("review", "⚠️ Cần bạn duyệt: %s\nLý do: %s" % (title, reason), jid)
+        elif state == "awaiting_approval":
+            self.emit("approval", "🎬 Video đã dựng, chờ bạn duyệt đăng: %s" % title, jid)
+        elif state == "failed":
+            self.emit("error", "❌ Xử lý thất bại: %s\n%s" % (title, reason), jid)
+
+    def release(self, jid, lease, reason):
+        """Put a claimed job back in the queue untouched (e.g. rate limit); does not count as an attempt."""
+        with self.transaction() as db:
+            changed = db.execute(
+                "UPDATE jobs SET state='queued',lease=NULL,attempts=MAX(attempts-1,0),reason=?,updated=? WHERE id=? AND lease=? AND state='processing'",
+                (reason[:700], time.time(), jid, lease),
+            ).rowcount
+            if changed != 1:
+                raise ValueError("Stale lease")
+            self.event(db, jid, "released", reason)
+
+    def decide(self, jid, action):
+        """Human decision from the dashboard. approve on needs_review re-runs processing with the checks waived."""
+        if action not in ("approve", "reject", "retry"):
+            raise ValueError("Invalid action")
+        with self.transaction() as db:
+            row = db.execute("SELECT state,source_file,output_file FROM jobs WHERE id=?", (jid,)).fetchone()
+            if not row:
+                raise ValueError("Job not found")
+            now = time.time()
+            if action == "retry":
+                # a video parked after repeated posting failures: the rendered file is fine, so put it back in the list of postable videos
+                if row["state"] != "needs_review" or not row["output_file"] or not Path(row["output_file"]).is_file():
+                    raise ValueError("Video này chưa có bản dựng để đăng lại")
+                db.execute(
+                    "UPDATE jobs SET state='ready',publish_fails=0,last_publish_fail=NULL,reason='Bạn đưa về sẵn sàng đăng',updated=? WHERE id=?",
+                    (now, jid),
+                )
+            elif action == "reject":
+                if row["state"] not in ("awaiting_approval", "needs_review", "ready", "candidate", "queued"):
+                    raise ValueError("Job cannot be rejected in this state")
+                db.execute("UPDATE jobs SET state='rejected',reason='Rejected by operator',updated=? WHERE id=?", (now, jid))
+            elif row["state"] == "awaiting_approval":
+                db.execute("UPDATE jobs SET state='ready',reason='Approved by operator',updated=? WHERE id=?", (now, jid))
+            elif row["state"] == "needs_review":
+                if not row["source_file"] or not Path(row["source_file"]).is_file():
+                    raise ValueError("Source file is gone; cannot reprocess")
+                db.execute(
+                    "UPDATE jobs SET state='queued',approved=1,publish_fails=0,last_publish_fail=NULL,reason='Approved by operator; reprocessing',updated=? WHERE id=?",
+                    (now, jid),
+                )
+            else:
+                raise ValueError("Nothing to approve in this state")
+            self.event(db, jid, "operator_" + action)
+
+    def housekeeping(self):
+        now = time.time()
+        with self.transaction() as db:
+            processing = db.execute(
+                "UPDATE jobs SET state='needs_review',reason='Processing interrupted; inspect before retry',lease=NULL WHERE state='processing' AND updated<?",
+                (now - 1800,),
+            ).rowcount
+            unknown = db.execute(
+                "UPDATE jobs SET state='publish_unknown',reason='Publishing confirmation missing; never retry automatically' WHERE state='publishing' AND updated<?",
+                (now - 2700,),
+            ).rowcount
+        if unknown:
+            self.emit(
+                "urgent",
+                "🚨 Có %d bài đăng chưa xác nhận. Hệ thống đã dừng đăng để tránh trùng; mở bảng điều khiển để xác nhận." % unknown,
+                "unknown",
+            )
+        return {"interrupted_processing": processing, "uncertain_publishing": unknown}

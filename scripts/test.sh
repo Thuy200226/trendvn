@@ -28,6 +28,17 @@ for d in ('services', 'n8n', 'scripts', 'tests'):
             bad += 1; print('%s:%s %s' % (f, e.lineno, e.msg))
 sys.exit(1 if bad else 0)
 PY
+  say "lint: định dạng và lỗi Python (ruff, black)"
+  if have ruff || python3 -m ruff --version >/dev/null 2>&1; then
+    (have ruff && ruff check --no-cache . || python3 -m ruff check --no-cache .) || fail "ruff báo lỗi (sửa tự động phần an toàn: ./trendvn fmt)"
+  else info "(bỏ qua ruff: python3 -m pip install -r requirements-dev.txt)"; fi
+  # black's style changes between releases, so only the version pinned in requirements-dev.txt is trusted to judge the format
+  local black_pin black_have=""
+  black_pin="$(sed -n 's/^black==\([0-9.]*\).*/\1/p' requirements-dev.txt)"
+  if have black; then black_have="$(black --version | sed -n 's/^black, \([0-9.]*\).*/\1/p')"; fi
+  if [ -n "$black_have" ] && [ "$black_have" = "$black_pin" ]; then
+    black --check -q services scripts n8n tests || fail "code chưa đúng định dạng black (chạy: ./trendvn fmt)"
+  else info "(bỏ qua black: cần đúng bản ${black_pin}, đang có ${black_have:-không có} — python3 -m pip install -r requirements-dev.txt)"; fi
   say "lint: cú pháp shell và tương thích bash 3.2 (macOS)"
   local f bad=0
   for f in trendvn scripts/*.sh macos/*.command; do
@@ -64,7 +75,7 @@ PY
   info "lint OK"
 }
 
-unit() { say "unit: test trên máy này"; python3 -m unittest discover -s tests; }
+unit() { say "unit: test trên máy này"; python3 -m unittest discover -s tests -t .; }
 
 container() {
   need_docker
@@ -73,15 +84,15 @@ container() {
   N8N_ENCRYPTION_KEY="${N8N_ENCRYPTION_KEY:-test}" TRENDVN_TOKEN="${TRENDVN_TOKEN:-test}" compose build worker
   local img="trendvn/worker:$TRENDVN_VERSION"
   say "container: bộ test đầy đủ trong image (có ffmpeg)"
-  docker run --rm --user "$(id -u):$(id -g)" -v "$ROOT:/p:ro" -w /p -e PYTHONDONTWRITEBYTECODE=1 "$img" python -m unittest discover -s tests
+  docker run --rm --user "$(id -u):$(id -g)" -v "$ROOT:/p:ro" -w /p -e PYTHONDONTWRITEBYTECODE=1 "$img" python -m unittest discover -s tests -t .
   say "container: dựng video thật bằng ffmpeg"
-  docker run --rm --user "$(id -u):$(id -g)" -v "$ROOT/tests:/t:ro" -e PYTHONDONTWRITEBYTECODE=1 "$img" python /t/render_check.py
+  docker run --rm --user "$(id -u):$(id -g)" -v "$ROOT/tests/e2e:/t:ro" -e PYTHONDONTWRITEBYTECODE=1 "$img" python /t/render_check.py
 }
 
 e2e() {
   [ -x .venv/bin/python ] || fail "Chưa có .venv. Chạy: ./trendvn agent venv"
   say "e2e: Chrome thật"
-  .venv/bin/python tests/ui_e2e.py "$@"
+  .venv/bin/python tests/e2e/ui_e2e.py "$@"
 }
 
 what="${1:-default}"; [ $# -gt 0 ] && shift

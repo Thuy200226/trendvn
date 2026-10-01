@@ -4,7 +4,8 @@ After=network-online.target docker.service
 
 [Service]
 WorkingDirectory=@ROOT@
-ExecStart=@ROOT@/.venv/bin/python @ROOT@/services/agent/server.py
+Environment=PYTHONPATH=@ROOT@/services/agent/src
+ExecStart=@ROOT@/.venv/bin/python -m trendvn_agent
 Restart=always
 RestartSec=15
 Environment=PYTHONUNBUFFERED=1

@@ -50,7 +50,7 @@ Bất biến quan trọng (đều có test):
 
 ### Các điểm bổ sung ở 1.2
 
-- **Tác vụ nền** (`services/worker/app/tasks.py`): mỗi nút trên bảng điều khiển tạo một dòng trong bảng `tasks` và một luồng chạy nền. Khóa: một việc dùng trình duyệt tại một thời điểm (cùng khóa với agent, nên cả lịch n8n), một lần xử lý tại một thời điểm (cùng `process_lock` với `/api/process`). Khởi động lại worker đánh dấu việc dang dở là lỗi.
+- **Tác vụ nền** (`services/worker/src/trendvn_worker/tasks.py`): mỗi nút trên bảng điều khiển tạo một dòng trong bảng `tasks` và một luồng chạy nền. Khóa: một việc dùng trình duyệt tại một thời điểm (cùng khóa với agent, nên cả lịch n8n), một lần xử lý tại một thời điểm (cùng `process_lock` với `/api/process`). Khởi động lại worker đánh dấu việc dang dở là lỗi.
 - **Trạng thái đăng:** `publishing` ghi nhớ `prev_state` (để đăng tay thất bại không vô tình duyệt video), `publish_fails` và `last_publish_fail` (nghỉ 1 giờ sau lỗi, 3 lần thì `needs_review`). Kết quả `deferred` không tính lỗi. Ngưỡng `publishing` → `publish_unknown` là 45 phút.
 - **Dựng video:** một lượt ffmpeg: đưa về khung dọc 1080×1920 (nền mờ cho video ngang, vuông, 4:5, 3:4), nhận đúng video xoay, phụ đề đặt tránh vùng chữ của TikTok, chuẩn hóa âm lượng −14 LUFS, bỏ siêu dữ liệu, tối đa 30 fps, đo chất lượng đầu ra (`qc`) và tạo ảnh xem trước.
 - **Mô tả và hashtag:** Gemini đề xuất; mã luôn lọc lại (`build_caption`: bỏ hashtag tên nền tảng, chuẩn hóa Unicode, cắt ở ranh giới từ), `lint_caption` hiển thị chất lượng, bạn sửa được trước khi đăng.
@@ -59,20 +59,20 @@ Bất biến quan trọng (đều có test):
 
 | Câu hỏi | Nơi quyết định | Hàm / cấu hình |
 |---|---|---|
-| Video nào đáng xem xét? | `services/agent/collector.py` | `parse_*` (chuẩn hóa từng nguồn), `qualifies` (thời lượng, tuổi, lượt xem/tim), `score` |
-| Video nào tải trước? | `services/agent/collector.py` | `score` = mức tương tác ÷ (tuổi tính theo giờ, tối thiểu 6)^0.6 × trọng số nguồn |
-| Có tải thêm không? | `services/agent/collector.py` | `fetch_pending`: dừng khi hàng chờ ≥ `max_backlog` |
-| Video mới hay cũ? | `services/worker/app/core.py` | `Store.ingest` (baseline/candidate, trùng theo `(platform, source_id)` và URL) |
-| Trùng file? | `services/worker/app/core.py` | `Store.attach` (SHA-256 nội dung) |
-| Trùng hình dù mã hóa khác? | `services/worker/app/media.py` | `fingerprint` (5 khung hình, hash 64-bit) + `similar` |
-| Nhạc hay lời? Chủ đề? Nhạy cảm? | Gemini theo `services/worker/app/prompts.py` | kiểm tra lại cứng ở `core.validate_analysis` |
-| Xử lý theo đường nào? | `services/worker/app/core.py` | `validate_analysis` trả `original`/`vietsub`/`voiceover` |
-| Dựng video | `services/worker/app/media.py` | `render`, `ass_subtitles`, `make_voice` |
-| Được đăng lúc này không? | `services/worker/app/core.py` | `publish_claim`: công tắc → không có bài chưa xác nhận → giờ vàng → giới hạn ngày → giãn cách → chọn bài điểm cao nhất |
-| Đăng và xác nhận | `services/agent/publisher.py` | `publish_one`, `verify_unresolved` |
-| Học từ kết quả | `services/worker/app/core.py` | `record_stats`, `platform_weights` (cần ≥ 8 bài đã đăng > 24 giờ) |
-| Gửi thông báo | `services/worker/app/notify.py` | `Notifier` (chống spam theo loại + khóa) |
-| Cài đặt đổi được | `services/worker/app/core.py` | `validate_settings` (mỗi khóa có khoảng giá trị chặt) |
+| Video nào đáng xem xét? | `services/agent/src/trendvn_agent/collector/rules.py` + `collector/sources/*.py` | `parse_*` (chuẩn hóa từng nguồn), `qualifies` (thời lượng, tuổi, lượt xem/tim), `score` |
+| Video nào tải trước? | `services/agent/src/trendvn_agent/collector/rules.py` | `score` = mức tương tác ÷ (tuổi tính theo giờ, tối thiểu 6)^0.6 × trọng số nguồn |
+| Có tải thêm không? | `services/agent/src/trendvn_agent/collector/run.py` | `fetch_pending`: dừng khi hàng chờ ≥ `max_backlog` |
+| Video mới hay cũ? | `services/worker/src/trendvn_worker/store/ingest.py` | `Store.ingest` (baseline/candidate, trùng theo `(platform, source_id)` và URL) |
+| Trùng file? | `services/worker/src/trendvn_worker/store/ingest.py` | `Store.attach` (SHA-256 nội dung) |
+| Trùng hình dù mã hóa khác? | `services/worker/src/trendvn_worker/media/fingerprint.py` | `fingerprint` (5 khung hình, hash 64-bit) + `similar` |
+| Nhạc hay lời? Chủ đề? Nhạy cảm? | Gemini theo `services/worker/src/trendvn_worker/ai/prompts.py` | kiểm tra lại cứng ở `domain/analysis.py::validate_analysis` |
+| Xử lý theo đường nào? | `services/worker/src/trendvn_worker/domain/analysis.py` | `validate_analysis` trả `original`/`vietsub`/`voiceover` |
+| Dựng video | `services/worker/src/trendvn_worker/media/` và `ai/tts.py` | `render`, `ass_subtitles`, `make_voice` |
+| Được đăng lúc này không? | `services/worker/src/trendvn_worker/store/publishing.py` | `publish_claim`: công tắc → không có bài chưa xác nhận → giờ vàng → giới hạn ngày → giãn cách → chọn bài điểm cao nhất |
+| Đăng và xác nhận | `services/agent/src/trendvn_agent/publisher/post.py`, `publisher/jobs.py` | `publish_one`, `verify_unresolved` |
+| Học từ kết quả | `services/worker/src/trendvn_worker/store/feedback.py` | `record_stats`, `platform_weights` (cần ≥ 8 bài đã đăng > 24 giờ) |
+| Gửi thông báo | `services/worker/src/trendvn_worker/notify.py` | `Notifier` (chống spam theo loại + khóa) |
+| Cài đặt đổi được | `services/worker/src/trendvn_worker/domain/settings.py` | `validate_settings` (mỗi khóa có khoảng giá trị chặt) |
 
 ## 4. Nguồn thu thập
 
@@ -94,19 +94,32 @@ Douyin và Kuaishou chỉ phục vụ nội dung trong nước nên IP nào cũn
 
 ## 6. Mở rộng
 
-- **Thêm nguồn mới:** viết `parse_<nguồn>` (trả danh sách mục có `source_id`, `url`, `title`, `likes`, `views`, `duration`, `created`, `media`), thêm hàm `scan_<nguồn>`, đăng ký trong `SOURCES` (đặt `geo_locked`), thêm tên miền vào `PLATFORMS` và `COUNTRIES` ở `services/worker/app/core.py`, thêm CDN vào `CDN_SUFFIXES`.
-- **Đổi cách chấm điểm:** sửa `score` (một hàm thuần, đã có test ở `tests/test_features.py::ScoringTests`).
+- **Thêm nguồn mới:** tạo một file trong `collector/sources/` với `parse_<nguồn>` (trả danh sách mục có `source_id`, `url`, `title`, `likes`, `views`, `duration`, `created`, `media`) và `scan_<nguồn>`, đăng ký một dòng trong `collector/sources/__init__.py` (đặt `geo_locked`), thêm tên miền vào `PLATFORMS` và `COUNTRIES` ở `services/worker/src/trendvn_worker/domain/platforms.py`, thêm CDN vào `CDN_SUFFIXES` ở `collector/download.py`.
+- **Đổi cách chấm điểm:** sửa `score` (một hàm thuần, đã có test ở `tests/agent/test_collector.py::ScoringTests`).
 - **Đổi luật an toàn khi đăng:** chỉ sửa `publish_claim`; agent và n8n không cần đổi.
 
 ## 7. Bố cục mã và dữ liệu
 
 ```
-services/worker/app/   core.py (luật, SQLite)  media.py (ffmpeg, Gemini)  prompts.py  tasks.py (nút chạy nền)  notify.py  ui.py  server.py  → đóng gói thành image Docker
-services/agent/        collector.py (4 nguồn)  publisher.py (TikTok)  common.py  server.py                    → chạy trên máy, cần Chrome thật
-n8n/                   build.py (sinh workflow)  manage.py (nạp/bật/xuất)  workflows/*.json (kết quả)
-scripts/               install · backup · restore · uninstall · test · doctor · package · setup_env · agent · lib · service/
-data/                  worker/ (gắn vào container)  agent/ (hồ sơ Chrome, log, ảnh chụp)  backups/     ← sinh ra khi chạy, không đóng gói
+services/worker/
+  Dockerfile
+  src/trendvn_worker/                  → đóng gói thành image Docker (chỉ thư viện chuẩn của Python)
+    domain/        luật thuần, không đọc/ghi gì: platforms, settings, analysis, captions, schedule, states
+    store/         SQLite: base, schema (di trú có số phiên bản), ingest, queue, publishing, captions, health, task_log, feedback, reporting
+    ai/            Gemini: gemini (gọi, ngân sách, dự phòng model), prompts, analyzer, tts, errors
+    media/         ffmpeg: ffmpeg, fingerprint, geometry, subtitles, render
+    pipeline.py    một video đi từ hàng đợi tới bản dựng đã kiểm tra
+    web/           HTTP: handler, security, forms, api, media_files, pages, responses, app, server
+    ui/            giao diện: view, components, cards, tabs/ (mỗi tab một file), static/app.css, static/app.js
+    notify.py  tasks.py  version.py
+services/agent/
+  src/trendvn_agent/                   → chạy trên máy (Chrome thật), cùng .venv của dự án
+    collector/     sources/ (douyin, kuaishou, tiktok, instagram), rules, capture, download, run, cli
+    publisher/     session, profile, studio, challenge, post, jobs, screenshots, cli
+    browser.py  config.py  log.py  worker_client.py  server.py
+n8n/               build.py (sinh workflow) · manage.py (nạp/bật/xuất) · workflows/*.json (kết quả)
+scripts/           install · backup · restore · migrate · uninstall · test · doctor · package · setup_env · agent · lib · service/
+data/              worker/ (gắn vào container) · agent/ (hồ sơ Chrome, log, ảnh chụp) · backups/     ← sinh ra khi chạy, không đóng gói
 ```
 
-Quy tắc đặt file: nghiệp vụ và luật nằm ở `services/worker/app/core.py`; mọi việc cần Chrome nằm ở `services/agent`; n8n chỉ hẹn giờ và nối bước (xem [N8N.md](N8N.md)); mọi lệnh vận hành đi qua `./trendvn` (xem [COMMANDS.md](COMMANDS.md)).
-
+Quy tắc đặt file (mỗi file một việc, ghi ở dòng docstring đầu file): luật nghiệp vụ không phụ thuộc I/O nằm ở `domain/` để kiểm thử nhanh; mọi truy cập SQLite nằm ở `store/` (mỗi mối quan tâm một mixin, ghép lại thành `Store`); mọi việc cần Chrome nằm ở `services/agent`; một nguồn mới = một file trong `collector/sources/`; mỗi tab của giao diện là một file trong `ui/tabs/`; n8n chỉ hẹn giờ và nối bước (xem [N8N.md](N8N.md)); mọi lệnh vận hành đi qua `./trendvn` (xem [COMMANDS.md](COMMANDS.md)).

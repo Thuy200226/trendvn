@@ -1,0 +1,90 @@
+"""Vietnamese wording shown in the dashboard: states, sources, components, events, and the plain-language version of internal reasons."""
+
+STATE_LABELS = {
+    "baseline": "Mốc ban đầu",
+    "candidate": "Ứng viên",
+    "queued": "Chờ xử lý",
+    "processing": "Đang xử lý",
+    "awaiting_approval": "Chờ bạn duyệt",
+    "ready": "Sẵn sàng đăng",
+    "publishing": "Đang đăng",
+    "published": "Đã đăng",
+    "needs_review": "Cần duyệt",
+    "publish_unknown": "Chưa xác nhận",
+    "duplicate": "Trùng",
+    "failed": "Lỗi",
+    "rejected": "Đã bỏ",
+}
+STATE_TONE = {
+    "published": "good",
+    "ready": "good",
+    "awaiting_approval": "warn",
+    "needs_review": "warn",
+    "publish_unknown": "bad",
+    "failed": "bad",
+    "processing": "info",
+    "publishing": "info",
+    "queued": "info",
+    "candidate": "mute",
+    "baseline": "mute",
+    "duplicate": "mute",
+    "rejected": "mute",
+}
+PLATFORM = {"douyin": ("Douyin", "CN"), "kuaishou": ("Kuaishou", "CN"), "tiktok": ("TikTok", "US"), "instagram": ("Instagram", "US")}
+COMPONENT = {
+    "connected": ("Hoạt động", "good"),
+    "not_connected": ("Chưa kết nối", "mute"),
+    "stale": ("Lâu chưa báo cáo", "warn"),
+    "error": ("Cần chú ý", "bad"),
+}
+ROUTE_LABEL = {"vietsub": "Vietsub", "voiceover": "Lồng tiếng + Vietsub", "original": "Giữ nguyên"}
+VISIBILITY_LABEL = {"public": "Công khai", "friends": "Bạn bè", "self": "Chỉ mình tôi"}
+
+EVENT_LABELS = {
+    "processing": "Bắt đầu xử lý",
+    "queued": "Đã tải, chờ xử lý",
+    "ready": "Đã dựng, sẵn sàng đăng",
+    "awaiting_approval": "Chờ bạn duyệt",
+    "needs_review": "Cần bạn duyệt",
+    "publishing": "Đang đăng",
+    "publish_published": "Đã đăng thành công",
+    "publish_unknown": "Đăng chưa xác nhận",
+    "publish_failed": "Đăng chưa thành công",
+    "publish_duplicate": "Bỏ vì trùng bài đã có",
+    "candidate": "Phát hiện video mới",
+    "failed": "Lỗi",
+    "duplicate": "Trùng video đã có",
+    "released": "Xếp lại hàng đợi",
+    "media_failed": "Tải video lỗi",
+    "operator_approve": "Bạn đã duyệt",
+    "operator_reject": "Bạn đã bỏ",
+    "resolved_published": "Xác nhận đã đăng",
+    "resolved_failed": "Xác nhận chưa đăng",
+    "settings": "Đổi cài đặt",
+}
+
+# (fragment of the internal English reason, what to tell the owner)
+REASONS = (
+    ("Audio needs review", "Gemini chưa đủ chắc chắn về loại âm thanh"),
+    ("Sensitive content", "Nội dung nhạy cảm (chính trị, bạo lực, bi kịch, y tế...)"),
+    ("Off-topic", "Lệch chủ đề giải trí và âm nhạc"),
+    ("Possible visual duplicate", "Có thể trùng với một video đã xử lý"),
+    ("Video duration outside", "Thời lượng ngoài giới hạn cho phép"),
+    ("Speech detected without transcript", "Có lời nói nhưng không chép được lời"),
+    ("Subtitle timestamps", "Mốc thời gian phụ đề không hợp lệ"),
+    ("Topic/sensitivity missing", "Gemini không trả đủ thông tin chủ đề"),
+    ("Gemini did not return valid", "Gemini trả dữ liệu không đọc được"),
+    ("Processing interrupted", "Xử lý bị gián đoạn"),
+    ("Local rolling 24-hour limit", "Hết hạn mức Gemini trong 24 giờ; sẽ tự xử lý lại"),
+    ("Initial observation only", "Chỉ ghi mốc ban đầu"),
+    ("Rejected by operator", "Bạn đã bỏ video này"),
+    ("Approved by operator", "Bạn đã duyệt"),
+)
+
+
+def vi_reason(text):
+    """Plain-language version of an internal reason (unknown reasons are shown as they are)."""
+    for fragment, vietnamese in REASONS:
+        if text and fragment in text:
+            return vietnamese
+    return text or ""

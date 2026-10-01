@@ -1,0 +1,4 @@
+# Development tools only (the runtime needs none of them):  python3 -m pip install -r requirements-dev.txt
+black==26.5.1
+ruff==0.16.9
+shellcheck-py>=0.10

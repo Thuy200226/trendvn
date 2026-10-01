@@ -1,0 +1,61 @@
+"""Đăng bài: every processed video with its caption editor and the Post button; and, when empty, why and what to do."""
+
+from ..cards import ready_card
+from ..components import task_panel
+from ..format import escape as E
+from ..labels import VISIBILITY_LABEL
+
+
+def blocked_reason(view):
+    """Why posting cannot start right now (shown on every card), or ''."""
+    if view.challenge_on:
+        return "TikTok đang đòi xác minh: giải một lần bằng ./trendvn tiktok trust (xem mục Cần xem)."
+    if view.d["unresolved_publishes"]:
+        return "Có bài đăng chưa xác nhận: xử lý ở mục Cần xem trước."
+    return ""
+
+
+def _strip(view):
+    d, cfg = view.d, view.cfg
+    window = "đang mở" if d["in_window"] else E("mở lúc " + (d["next_window"] or "—"))
+    return (
+        '<div class="card strip"><div><small>Hôm nay</small><b>%d / %d</b></div><div><small>Hiển thị</small><b>%s</b></div>'
+        "<div><small>Giờ vàng</small><b>%s</b></div></div>"
+    ) % (d["published_today"], d["daily_limit"], E(VISIBILITY_LABEL.get(cfg["visibility"], cfg["visibility"])), window)
+
+
+def _empty_guide(view):
+    """Nothing is ready: say which of the three situations this is, with the one button that moves it forward."""
+    waiting, candidates = view.waiting, view.counts.get("candidate", 0)
+    if waiting and not view.d["processing_enabled"]:
+        why = (
+            '<p><b>%d video đang chờ xử lý</b> nhưng công tắc "Xử lý video" đang <b>TẮT</b>, nên chưa video nào được dựng.</p>'
+            '<p class="hint">Bật lên để Gemini làm Vietsub hoặc lồng tiếng. Video xong sẽ hiện ở đây để bạn đăng.</p>%s'
+        ) % (waiting, view.enable_processing("publish"))
+    elif waiting:
+        why = ("<p><b>%d video đang chờ xử lý</b> (mỗi video khoảng 1–3 phút). Xử lý xong sẽ hiện ở đây.</p>%s") % (
+            waiting,
+            view.action("process", "⚙️ Xử lý ngay (%d)" % waiting, "go big", view.busy_process, "publish"),
+        )
+    else:
+        extra = (" (có %d ứng viên chưa tải về)" % candidates) if candidates else ""
+        why = (
+            '<p>Chưa có video nào để xử lý%s.</p><p class="hint">Bấm cập nhật để thu thập video mới và xử lý; video xong sẽ hiện ở đây.</p>%s'
+        ) % (extra, view.action("update", "▶ Cập nhật &amp; chuẩn bị đăng", "go big", view.busy_browser or view.busy_process, "publish"))
+    hints = []
+    if view.attention:
+        hints.append('%d video đang ở tab <a href="#attention">Cần xem</a> (hệ thống giữ lại để bạn duyệt).' % view.attention)
+    hints.append('<a href="#queue">Xem hàng đợi →</a>')
+    return '<div class="card stack empty-guide"><h3>Chưa có video nào xử lý xong</h3>%s<p class="small muted">%s</p></div>' % (
+        why,
+        " ".join(hints),
+    )
+
+
+def render(view):
+    blocked = blocked_reason(view)
+    body = "".join(ready_card(job, view, blocked) for job in view.ready) if view.ready else _empty_guide(view)
+    return (
+        '<h2>Đăng bài</h2><p class="hint">Đây là các video đã xử lý xong. Xem thử, sửa mô tả và hashtag nếu muốn, rồi bấm <b>Đăng ngay</b> để đăng đúng video đó. '
+        'Lịch tự động vẫn tự chọn bài điểm cao nhất để đăng trong giờ vàng.</p>%s%s<div class="stack">%s</div>'
+    ) % (task_panel(view.tasks, view.now, ("publish", "dryrun", "update")), _strip(view), body)

@@ -1,0 +1,11 @@
+# Tooling configuration (formatting and lint). The runtime has no third-party dependencies; these tools are for development only.
+[tool.black]
+line-length = 140
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["F", "E9", "W6", "B006", "B008"]

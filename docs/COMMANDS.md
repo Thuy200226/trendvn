@@ -74,7 +74,13 @@ Chi tiết cách hệ thống n8n được sinh ra: [N8N.md](N8N.md).
 
 Sao lưu định kỳ (cron; cron dùng PATH rất ngắn nên phải khai báo để tìm thấy `docker`): `0 3 * * 0 PATH=/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin; cd /đường/dẫn/trendvn && ./trendvn backup --keep 8`.
 
-## Kiểm thử
+## Kiểm thử và định dạng mã
+
+| Lệnh | Việc |
+|---|---|
+| `./trendvn fmt` | Định dạng mã Python (black) và sửa lỗi lint an toàn (ruff). Cần `python3 -m pip install -r requirements-dev.txt` |
+
+### Kiểm thử
 
 | Lệnh | Việc |
 |---|---|

@@ -45,6 +45,7 @@ Dữ liệu và bàn giao
 
 Kiểm thử
   test [lint|unit|container|e2e|all]   Mặc định: lint + unit. container = chạy bộ test trong image Docker (có ffmpeg).
+  fmt                 Định dạng mã Python (black) và sửa lỗi lint an toàn (ruff); cần: pip install -r requirements-dev.txt
   version
 
 Chi tiết: README.md và docs/COMMANDS.md
@@ -79,7 +80,7 @@ case "$cmd" in
     say "Build và khởi động lại container"; compose_up
     say "Nạp workflow vào n8n"; python3 n8n/manage.py import
     say "Cập nhật gói Python của agent"; bash scripts/agent.sh venv
-    say "Khởi động lại agent"; bash scripts/agent.sh restart || warn "agent chưa khởi động được (xem ./trendvn agent logs)"
+    say "Cài lại và khởi động lại agent"; bash scripts/agent.sh refresh || warn "agent chưa khởi động được (xem ./trendvn agent logs)"
     python3 scripts/doctor.py || true ;;
   status)
     need_env; need_docker
@@ -125,7 +126,7 @@ case "$cmd" in
     case "$sub" in
       login|trust|status|dry-run|verify|stats)
         need_env; [ -x .venv/bin/python ] || fail "Chưa có môi trường Python cho agent. Chạy: ./trendvn install"
-        exec .venv/bin/python services/agent/publisher.py "$sub" "$@" ;;
+        PYTHONPATH="$ROOT/services/agent/src" exec .venv/bin/python -m trendvn_agent.publisher "$sub" "$@" ;;
       *) echo "Dùng: ./trendvn tiktok login|trust|dry-run|status|verify|stats"; exit 2 ;;
     esac ;;
   backup) exec bash scripts/backup.sh "$@" ;;
@@ -134,5 +135,6 @@ case "$cmd" in
   uninstall) exec bash scripts/uninstall.sh "$@" ;;
   migrate) exec bash scripts/migrate.sh "$@" ;;
   test) exec bash scripts/test.sh "$@" ;;
+  fmt) exec bash scripts/fmt.sh ;;
   *) echo "Không có lệnh '$cmd'."; echo; usage; exit 2 ;;
 esac

@@ -9,6 +9,7 @@ LABEL org.opencontainers.image.title="trendvn-worker" \
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
     TRENDVN_DATA=/data
 
 RUN apt-get update \
@@ -16,11 +17,11 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY app/ /app/
+COPY src/ /app/
 
 # Runs as the host user's uid/gid (compose sets `user:`) so files in ./data/worker stay yours; 1000 is the fallback.
 USER 1000:1000
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=3)"
-CMD ["python", "server.py"]
+CMD ["python", "-m", "trendvn_worker"]

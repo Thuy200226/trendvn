@@ -23,14 +23,14 @@ has_systemd() { have systemctl && systemctl --user show-environment >/dev/null 2
 # Which supervisor runs THIS checkout's agent. A unit/plist installed by another copy of the project (different folder) is not ours:
 # never start, stop or restart somebody else's agent.
 mode() {
-  if [ "$OS" = Darwin ] && [ -f "$PLIST" ] && grep -qF "$ROOT/services/agent/server.py" "$PLIST"; then echo launchd
-  elif [ "$OS" != Darwin ] && [ -f "$UNIT" ] && grep -qF "$ROOT/services/agent/server.py" "$UNIT" && has_systemd; then echo systemd
+  if [ "$OS" = Darwin ] && [ -f "$PLIST" ] && grep -qF "$ROOT/services/agent" "$PLIST"; then echo launchd
+  elif [ "$OS" != Darwin ] && [ -f "$UNIT" ] && grep -qF "$ROOT/services/agent" "$UNIT" && has_systemd; then echo systemd
   else echo none; fi
 }
 foreign_service() { # warn before install replaces a service that points at a different folder
   local f="$UNIT"; [ "$OS" = Darwin ] && f="$PLIST"
-  if [ -f "$f" ] && ! grep -qF "$ROOT/services/agent/server.py" "$f"; then
-    warn "Đã có dịch vụ agent của một bản TrendVN khác ($(grep -oE '/[^ <]*/services/agent/server.py|/[^ <]*/agent/server.py' "$f" | head -1)). Bản cài này sẽ thay thế nó."
+  if [ -f "$f" ] && ! grep -qF "$ROOT/services/agent" "$f"; then
+    warn "Đã có dịch vụ agent của một bản TrendVN khác ($(grep -oE '/[^ <=]*/services/agent/src|/[^ <=]*/agent/server.py' "$f" | head -1)). Bản cài này sẽ thay thế nó."
   fi
 }
 
@@ -83,7 +83,7 @@ cmd_uninstall() {
 
 # The pid file survives reboots, and the number may since belong to an unrelated process: only trust it if that process is our agent.
 pid_is_agent() { # pid_is_agent PID
-  [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null && ps -p "$1" -o command= 2>/dev/null | grep -qF "services/agent/server.py"
+  [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null && ps -p "$1" -o command= 2>/dev/null | grep -qF "trendvn_agent"
 }
 pid_running() { [ -f "$PIDFILE" ] && pid_is_agent "$(cat "$PIDFILE" 2>/dev/null || true)"; }
 cmd_stop_pid() {
@@ -103,7 +103,7 @@ cmd_start() {
       [ -x "$PY" ] || cmd_venv
       if pid_running; then info "Agent đã chạy (pid $(cat "$PIDFILE"))."; return 0; fi
       mkdir -p "$ROOT/data/agent"
-      nohup "$PY" "$ROOT/services/agent/server.py" >>"$ROOT/data/agent/agent.out" 2>&1 &
+      PYTHONPATH="$ROOT/services/agent/src" nohup "$PY" -m trendvn_agent >>"$ROOT/data/agent/agent.out" 2>&1 &
       echo $! > "$PIDFILE"
       sleep 1
       if ! pid_running; then rm -f "$PIDFILE"; tail -n 8 "$ROOT/data/agent/agent.out" 2>/dev/null || true; fail "Agent tắt ngay sau khi chạy (xem các dòng trên). Chạy ./trendvn agent run để thấy lỗi đầy đủ."; fi
@@ -157,19 +157,25 @@ cmd_logs() {
   tail -n "$lines" $follow $files
 }
 
-cmd_run() { need_env; [ -x "$PY" ] || cmd_venv; exec "$PY" "$ROOT/services/agent/server.py"; }
+# After an upgrade the installed unit/plist may be written for an older layout: rewrite it (and restart) when this folder has one,
+# otherwise just restart the background process.
+cmd_refresh() {
+  if [ "$(mode)" != none ]; then cmd_install; else cmd_restart; fi
+}
+
+cmd_run() { need_env; [ -x "$PY" ] || cmd_venv; exec env PYTHONPATH="$ROOT/services/agent/src" "$PY" -m trendvn_agent; }
 
 cmd_update() {
   [ -x "$PY" ] || cmd_venv
   "$PY" -m pip install -q --upgrade pip
   "$PY" -m pip install -q --upgrade -r "$ROOT/services/agent/requirements.txt" yt-dlp
   info "Đã cập nhật yt-dlp/playwright."
-  if [ "$(mode)" != none ]; then cmd_restart; fi
+  if [ "$(mode)" != none ]; then cmd_refresh; fi
 }
 
 sub="${1:-status}"; [ $# -gt 0 ] && shift
 case "$sub" in
   install) cmd_install ;; uninstall) cmd_uninstall ;; start) cmd_start ;; stop) cmd_stop ;; restart) cmd_restart ;;
-  status) cmd_status ;; logs) cmd_logs "$@" ;; run) cmd_run ;; venv) cmd_venv ;; update) cmd_update ;;
+  status) cmd_status ;; logs) cmd_logs "$@" ;; run) cmd_run ;; venv) cmd_venv ;; update) cmd_update ;; refresh) cmd_refresh ;;
   *) sed -n '2,11p' "$0"; exit 2 ;;
 esac

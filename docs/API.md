@@ -63,7 +63,7 @@ Chỉ một việc trình duyệt tại một thời điểm; đang bận trả 
 
 | Lệnh | Tác dụng |
 |---|---|
-| `.venv/bin/python services/agent/collector.py [douyin kuaishou tiktok instagram]` | Quét thật và nhập vào worker |
+| `PYTHONPATH=services/agent/src .venv/bin/python -m trendvn_agent.collector [douyin kuaishou tiktok instagram]` | Quét thật và nhập vào worker |
 | `./trendvn tiktok login\|trust\|status\|dry-run\|verify\|stats` | Đăng nhập, giải xác minh một lần, kiểm tra phiên, chạy thử, đối chiếu, đọc lượt xem |
 | `./trendvn doctor` | Chẩn đoán |
 | `./trendvn n8n build && ./trendvn n8n import` | Sinh lại và nạp lại workflow |

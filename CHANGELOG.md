@@ -1,5 +1,16 @@
 # Lịch sử thay đổi
 
+## 1.4 — đang làm (xem docs/ROADMAP.md)
+
+**Phase A — bố cục và chia module (không đổi hành vi).** Hai ứng dụng được tách thành gói Python có thư mục theo việc, mỗi file một trách nhiệm (không file nào quá khoảng 300 dòng):
+
+- `services/worker/src/trendvn_worker/`: `domain/` (luật thuần: chấm điểm, lịch, quan sát, caption), `store/` (SQLite: schema có phiên bản, ingest, queue, publishing, reporting…), `ai/` (Gemini: phân tích, TTS, client), `media/` (ffmpeg, dấu vân tay, phụ đề, dựng), `web/` (HTTP: handler, bảo mật, form, API), `ui/` (giao diện: thẻ, từng tab, CSS/JS tĩnh), `tasks.py`, `pipeline.py`.
+- `services/agent/src/trendvn_agent/`: `collector/` (+ `sources/` mỗi nền tảng một file, thêm nền tảng = thêm một file và một dòng đăng ký), `publisher/`, `browser.py`, `server.py`.
+- Chạy theo module (`python -m trendvn_worker`, `python -m trendvn_agent`); mẫu systemd/launchd và `agent.sh` cập nhật theo; `./trendvn update` cài lại dịch vụ nền của agent nên bản đang chạy theo bố cục cũ vẫn chuyển được.
+- Cơ sở dữ liệu có phiên bản (`PRAGMA user_version` + danh sách migration); CSDL 1.0–1.3 được nhận nguyên trạng.
+- `tests/` chia `worker/ agent/ tools/ e2e/`; thêm `./trendvn fmt` (black + ruff, bản ghim trong `requirements-dev.txt`), doclint kiểm tra mọi lệnh đều có tài liệu.
+- Sửa lỗi tìm thấy khi tách: `sys` chưa import trong đường tải Instagram của collector; bước kiểm tra e2e bố cục từng chập chờn vì đo khi trang chưa về đầu.
+
 ## 1.3 — 2026-09-30
 
 Bản đóng gói lại để bàn giao và triển khai trên nhiều máy Mac/Linux. **Không đổi hành vi của hệ thống** (luồng tự động, quy tắc, giao diện giữ nguyên bản 1.2); đổi cách bố trí thư mục và bổ sung công cụ vận hành.
@@ -20,7 +31,7 @@ Bản đóng gói lại để bàn giao và triển khai trên nhiều máy Mac/
 - **Log:** worker ghi log có ích (khởi động, từng lệnh gọi API, lỗi kèm traceback; không ghi token, cookie hay chuỗi truy vấn); `./trendvn logs agent` gom agent.log, launchd.log, agent.out hoặc journal của systemd, nên thấy cả lỗi khi khởi động.
 - **Kiểm tra tự động:** `./trendvn test lint` kiểm tra workflow khớp mã sinh, cú pháp Python/shell, bash 3.2 của macOS, shellcheck (nếu có), mẫu dịch vụ nền, và `scripts/doclint.py` bảo đảm tài liệu khớp mã (lệnh, liên kết, đường dẫn).
 
-Đường dẫn cũ → mới: `worker/` → `services/worker/app/`, `agent/` → `services/agent/`, `runtime/` → `data/worker/`, `agent_data/` → `data/agent/`, `backups/` → `data/backups/`, `workflows/` → `n8n/workflows/`, `install.sh`/`backup.sh`/... → `./trendvn install`/`backup`/...
+Đường dẫn cũ → mới: `worker/` → `services/worker/src/trendvn_worker/`, `agent/` → `services/agent/src/trendvn_agent/`, `runtime/` → `data/worker/`, `agent_data/` → `data/agent/`, `backups/` → `data/backups/`, `workflows/` → `n8n/workflows/`, `install.sh`/`backup.sh`/... → `./trendvn install`/`backup`/...
 
 ## 1.2 — 2026-09-30
 
@@ -57,7 +68,7 @@ Bản này thêm các nút thao tác tay cho bảng điều khiển (luồng t�
 
 **Sau rà soát vòng 4:** nút "Đưa về sẵn sàng đăng" cho video bị chuyển Cần xem sau 3 lần lỗi; ghi nhật ký không bao giờ làm hỏng tác vụ; tóm tắt thu thập không cắt giữa từ.
 
-**Kiểm thử:** từ 82 lên 150+ test, thêm bộ kiểm thử trình duyệt thật (`tests/ui_e2e.py`: bố cục ở 7 kích thước × 6 tab và toàn bộ luồng bấm nút) và bộ kiểm thử máy chủ HTTP.
+**Kiểm thử:** từ 82 lên 150+ test, thêm bộ kiểm thử trình duyệt thật (`tests/e2e/ui_e2e.py`: bố cục ở 7 kích thước × 6 tab và toàn bộ luồng bấm nút) và bộ kiểm thử máy chủ HTTP.
 
 ## 1.1 — 2026-09-30
 

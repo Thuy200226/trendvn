@@ -6,10 +6,11 @@
   - the last assignment of a key wins; an empty value counts as "not set" for callers (they test truthiness)
 Only the `$` interpolation of Compose is not emulated: write `$$` for a literal dollar in .env values used by containers.
 """
+
 import re
 from pathlib import Path
 
-_LINE = re.compile(r'^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$')
+_LINE = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$")
 
 
 def parse_value(raw):
@@ -18,7 +19,7 @@ def parse_value(raw):
         end = stripped.find(stripped[0], 1)
         return stripped[1:end] if end > 0 else stripped[1:]
     # a comment starts at a '#' that begins the value or follows whitespace ("KEY=   # note" is an empty value, "KEY=a#b" is "a#b")
-    return re.split(r'(?:^|\s)#', raw, maxsplit=1)[0].strip()
+    return re.split(r"(?:^|\s)#", raw, maxsplit=1)[0].strip()
 
 
 def parse(path):
@@ -27,8 +28,8 @@ def parse(path):
     path = Path(path)
     if not path.exists():
         return out
-    for line in path.read_text(encoding='utf-8', errors='replace').splitlines():
-        if line.lstrip().startswith('#'):
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.lstrip().startswith("#"):
             continue
         m = _LINE.match(line)
         if m:
@@ -38,6 +39,6 @@ def parse(path):
 
 def format_line(key, value):
     """KEY=value that parse() reads back unchanged (quotes only when the value needs them)."""
-    if re.search(r'[\s#]', value) and "'" not in value:
+    if re.search(r"[\s#]", value) and "'" not in value:
         return "%s='%s'" % (key, value)
-    return '%s=%s' % (key, value)
+    return "%s=%s" % (key, value)

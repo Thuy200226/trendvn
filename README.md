@@ -49,12 +49,14 @@ Toàn bộ lệnh, kèm lệnh `docker compose` tương đương: [docs/COMMANDS
 ```
 trendvn                 lệnh duy nhất cho mọi việc (Makefile là lối tắt)
 compose.yaml  .env.example  VERSION  CHANGELOG.md
-services/worker/        image Docker: hàng đợi, luật, Gemini, ffmpeg, bảng điều khiển   (app/*.py)
-services/agent/         Chrome trên máy: thu thập (collector.py) và đăng TikTok (publisher.py)
+services/worker/        image Docker: hàng đợi, luật, Gemini, ffmpeg, bảng điều khiển
+  src/trendvn_worker/     domain/ store/ ai/ media/ web/ ui/ + tasks.py pipeline.py (mỗi thư mục một việc)
+services/agent/         Chrome trên máy: thu thập và đăng TikTok
+  src/trendvn_agent/      collector/ (sources/ mỗi nền tảng một file) publisher/ browser.py server.py
 n8n/                    build.py sinh 6 workflow từ mã · manage.py nạp/bật/xuất · workflows/*.json
-scripts/                install · backup · restore · doctor · package · service (systemd, launchd)
+scripts/                install · backup · restore · doctor · package · fmt · service (systemd, launchd)
 macos/                  file nhấp đúp cho Mac
-tests/                  hơn 150 test + kiểm thử giao diện bằng Chrome thật
+tests/                  worker/ agent/ tools/ (hơn 160 test) + e2e/ (giao diện bằng Chrome thật)
 docs/                   tài liệu chi tiết
 data/                   (tự tạo, không đóng gói) dữ liệu: worker/ agent/ backups/
 ```
@@ -63,7 +65,7 @@ data/                   (tự tạo, không đóng gói) dữ liệu: worker/ ag
 
 [Mac](docs/MAC.md) · [Lệnh](docs/COMMANDS.md) · [Triển khai](docs/DEPLOY.md) · [Vận hành](docs/OPERATIONS.md) ·
 [Kiến trúc](docs/ARCHITECTURE.md) · [n8n](docs/N8N.md) · [Prompt Gemini](docs/PROMPTS.md) · [Bảo mật](docs/SECURITY.md) ·
-[API](docs/API.md) · [Rà soát 1.3](docs/REVIEW-1.3.md) · [Thay đổi](CHANGELOG.md)
+[API](docs/API.md) · [Lộ trình 1.4](docs/ROADMAP.md) · [Rà soát 1.3](docs/REVIEW-1.3.md) · [Thay đổi](CHANGELOG.md)
 
 ## Giới hạn cần biết
 

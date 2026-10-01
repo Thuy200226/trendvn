@@ -1,6 +1,6 @@
 # Prompt Gemini và cách tinh chỉnh
 
-Mọi prompt và schema gửi Gemini nằm trong **một file duy nhất**: [`services/worker/app/prompts.py`](../services/worker/app/prompts.py). Đổi nội dung, tăng `PROMPT_VERSION`; phiên bản được ghi vào `manifest.json` của từng video để truy vết kết quả theo prompt.
+Mọi prompt và schema gửi Gemini nằm trong **một file duy nhất**: [`services/worker/src/trendvn_worker/ai/prompts.py`](../services/worker/src/trendvn_worker/ai/prompts.py). Đổi nội dung, tăng `PROMPT_VERSION`; phiên bản được ghi vào `manifest.json` của từng video để truy vết kết quả theo prompt.
 
 ## 1. Có những lần gọi nào
 
@@ -12,7 +12,7 @@ Mọi prompt và schema gửi Gemini nằm trong **một file duy nhất**: [`se
 
 Hạn mức cục bộ mặc định 12 lần/24 giờ (đổi ở Cài đặt). Vượt hạn mức, video được xếp lại hàng đợi, không bị đánh dấu hỏng.
 
-**Model do Google đổi liên tục.** Đã gặp thật: `gemini-2.5-flash` bị ngừng cấp cho người dùng mới (HTTP 404). Hệ thống xử lý bằng: (1) tự nâng model cũ trong cài đặt; (2) gặp 404 thì thử lần lượt `MODEL_FALLBACKS` / `TTS_FALLBACKS` (đầu `services/worker/app/core.py`) và nhớ model chạy được; (3) gặp 429/5xx hoặc hết thời gian thì đổi model, chờ 10, 30, 60 giây rồi mới xếp video lại hàng đợi. Lỗi bị Google từ chối không tính vào hạn mức ngày.
+**Model do Google đổi liên tục.** Đã gặp thật: `gemini-2.5-flash` bị ngừng cấp cho người dùng mới (HTTP 404). Hệ thống xử lý bằng: (1) tự nâng model cũ trong cài đặt; (2) gặp 404 thì thử lần lượt `MODEL_FALLBACKS` / `TTS_FALLBACKS` (đầu `services/worker/src/trendvn_worker/domain/settings.py`) và nhớ model chạy được; (3) gặp 429/5xx hoặc hết thời gian thì đổi model, chờ 10, 30, 60 giây rồi mới xếp video lại hàng đợi. Lỗi bị Google từ chối không tính vào hạn mức ngày.
 
 ## 2. Các nguyên tắc thiết kế của prompt phân tích
 

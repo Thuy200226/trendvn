@@ -9,10 +9,11 @@
     <string>/usr/bin/caffeinate</string>
     <string>-i</string>
     <string>@ROOT@/.venv/bin/python</string>
-    <string>@ROOT@/services/agent/server.py</string>
+    <string>-m</string>
+    <string>trendvn_agent</string>
   </array>
   <key>EnvironmentVariables</key>
-  <dict><key>PYTHONUNBUFFERED</key><string>1</string></dict>
+  <dict><key>PYTHONUNBUFFERED</key><string>1</string><key>PYTHONPATH</key><string>@ROOT@/services/agent/src</string></dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ThrottleInterval</key><integer>15</integer>
