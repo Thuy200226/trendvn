@@ -1,5 +1,7 @@
 """Read models for the dashboard, the API and the daily summary."""
 
+from ..domain.accounts import effective
+
 # columns of a job shown in lists on the dashboard
 JOB_COLUMNS = "id,platform,title,state,reason,route,meta,url,updated,first_seen,duration"
 # settings the dashboard page needs (a subset of all settings)
@@ -117,6 +119,7 @@ class ReportingMixin:
         cfg = self.settings()
         discovery_beat = cfg.get("hb_discovery") or {}
         publisher_beat = cfg.get("hb_publisher") or {}
+        accounts = self._account_overview(cfg, publisher_beat)
         return {
             "project": "TrendVN",
             "target": cfg["target"],
@@ -125,8 +128,10 @@ class ReportingMixin:
             "streams": streams,
             "processing_enabled": cfg["processing_enabled"],
             "publisher_enabled": cfg["publisher_enabled"],
-            "daily_limit": cfg["daily_limit"],
+            "daily_limit": sum(a["daily_limit"] for a in accounts if a["enabled"]) or cfg["daily_limit"],
             "published_today": self.published_today(),
+            "accounts": accounts,
+            "wanted_topics": self.wanted_topics(),
             "discovery": self.component_state("discovery", cfg),
             "publisher": self.component_state("publisher", cfg),
             "discovery_at": discovery_beat.get("at"),
@@ -142,3 +147,27 @@ class ReportingMixin:
             "publisher_challenge": bool(cfg.get("publisher_challenge")),
             "note": "Publishing stays off until the switch is turned on from the local dashboard.",
         }
+
+    def _account_overview(self, cfg, publisher_beat):
+        """Each account with what it posted today, its effective daily limit and whether the browser is signed in to it."""
+        logins = (publisher_beat.get("detail") or {}).get("login") if isinstance(publisher_beat.get("detail"), dict) else None
+        overview = []
+        for account in self.accounts():
+            eff = effective(account, cfg)
+            overview.append(
+                {
+                    "id": account["id"],
+                    "username": account["username"],
+                    "label": account["label"],
+                    "topics": account["topics"],
+                    "enabled": account["enabled"],
+                    "daily_limit": eff["daily_limit"],
+                    "min_gap": eff["min_gap"],
+                    "windows": eff["windows"],
+                    "visibility": eff["visibility"],
+                    "own": {k: account[k] for k in ("daily_limit", "min_gap", "windows", "visibility")},
+                    "published_today": self.published_today(account=account),
+                    "logged_in": logins.get(account["id"]) if isinstance(logins, dict) else None,
+                }
+            )
+        return overview

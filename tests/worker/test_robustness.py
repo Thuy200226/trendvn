@@ -65,7 +65,7 @@ class MigrationTests(unittest.TestCase):
         with mock.patch.object(schema, "MIGRATIONS", schema.MIGRATIONS + [second]):
             with self.assertRaises(RuntimeError):
                 schema.migrate(db)
-        self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 1)
+        self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], len(schema.MIGRATIONS))
         self.assertIsNone(db.execute("SELECT 1 FROM sqlite_master WHERE name='half_done'").fetchone())
 
     def test_each_migration_runs_once_and_a_database_without_version_is_adopted(self):

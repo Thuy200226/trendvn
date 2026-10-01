@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from tests.support import TZ, StoreCase, at  # noqa: F401  (also puts the source folders on sys.path)
+from trendvn_worker.domain import topics
 from trendvn_worker.ai import prompts
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -55,7 +56,7 @@ class PromptTests(unittest.TestCase):
     def test_schema_matches_validator(self):
         props = prompts.ANALYSIS_SCHEMA["properties"]
         self.assertEqual(set(props["kind"]["enum"]), {"music", "dialogue", "narration", "mixed", "silent", "uncertain"})
-        self.assertEqual(set(props["topic"]["enum"]), {"entertainment", "music", "other"})
+        self.assertEqual(set(props["topic"]["enum"]), {*topics.TOPIC_IDS, "other"})
         for key in prompts.ANALYSIS_SCHEMA["required"]:
             self.assertIn(key, props)
         for word in ("UNTRUSTED", "segments", "hashtags", "sensitive", "narration_vi", "caption_vi"):

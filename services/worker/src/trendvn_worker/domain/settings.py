@@ -5,9 +5,9 @@ import re
 
 from .platforms import PLATFORMS
 
+DEFAULT_TARGET = "user5706026522362"  # the account of a fresh install; real accounts live in the `accounts` table
+
 DEFAULTS = {
-    "target": "user5706026522362",
-    "topics": ["entertainment", "music"],
     "daily_limit": 2,
     "timezone": "Asia/Ho_Chi_Minh",
     "max_duration": 180,

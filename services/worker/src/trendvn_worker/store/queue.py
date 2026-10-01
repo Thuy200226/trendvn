@@ -23,7 +23,7 @@ class QueueMixin:
     def finish(self, jid, lease, state, **fields):
         if state not in ("ready", "awaiting_approval", "needs_review", "failed", "duplicate"):
             raise ValueError("Invalid processing terminal state")
-        allowed = {"reason", "analysis", "route", "output_file", "output_hash", "fingerprint", "duration", "output_info"}
+        allowed = {"reason", "analysis", "route", "output_file", "output_hash", "fingerprint", "duration", "output_info", "topic"}
         if set(fields) - allowed:
             raise ValueError("Invalid fields")
         with self.transaction() as db:

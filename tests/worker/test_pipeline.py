@@ -178,3 +178,8 @@ class PipelineTests(StoreCase):
         info = self.info()
         self.assertGreater(info["max_cps"], 24)
         self.assertIn("nhanh", info["warning"])
+
+    def test_the_topic_is_recorded_for_routing_to_an_account(self):
+        with mock.patch.object(pipeline, "analyze", lambda *a, **k: (dict(ANALYSIS, topic="pets"), "vietsub")):
+            pipeline.process_one(self.s)
+        self.assertEqual(self.row()["topic"], "pets")

@@ -5,25 +5,36 @@ import re
 import time
 import uuid
 
+from ..domain.accounts import accepts, effective
 from ..domain.captions import build_caption
 
 
 class PublishingMixin:
     """Everything between "a video is ready" and "it is on TikTok"."""
 
-    def published_today(self, db=None, now=None):
+    def published_today(self, db=None, now=None, account=None):
+        """Posts made today (confirmed, in flight or unconfirmed): on one account, or on all of them."""
         start = self.day_start(now)
         q = "SELECT count(*) FROM jobs WHERE state IN ('published','publishing','publish_unknown') AND COALESCE(published_at,updated)>=?"
+        args = [start]
+        if account is not None:
+            q += " AND COALESCE(account,?)=?"
+            args += [self._default_id(), account["id"]]
         if db is not None:
-            return db.execute(q, (start,)).fetchone()[0]
+            return db.execute(q, args).fetchone()[0]
         with self.connect() as c:
-            return c.execute(q, (start,)).fetchone()[0]
+            return c.execute(q, args).fetchone()[0]
+
+    def _default_id(self):
+        default = self.default_account()
+        return default["id"] if default else "main"
 
     def publish_claim(self, now=None, job_id=None):
-        """Reserve a rendered video for publishing.
-        Scheduled use (job_id=None): honours the switch, posting window, daily limit and spacing, and picks the best-scored video.
+        """Reserve a rendered video for publishing on one of the accounts.
+        Scheduled use (job_id=None): honours the switch and, for each account, its posting window, daily limit and spacing; the account
+        that posted longest ago goes first and gets the best-scored video among the topics it takes.
         Manual use (job_id given, from the dashboard button): the owner's click is the consent for that one video, so the switch,
-        window, limit and spacing are waived; the safety rails that protect the account (one post in flight, unconfirmed posts,
+        window, limit, spacing and topic are waived; the safety rails that protect the account (one post in flight, unconfirmed posts,
         TikTok verification pause) still apply."""
         now = now or time.time()
         cfg = self.settings()
@@ -32,46 +43,79 @@ class PublishingMixin:
             return {"status": "disabled", "reason": "Publishing switch is off"}
         if cfg.get("publisher_challenge"):
             return {"status": "blocked", "reason": "TikTok is asking for human verification; solve it once with `./trendvn tiktok trust`"}
+        accounts = self.accounts(enabled_only=True)
+        if not accounts:
+            return {"status": "blocked", "reason": "Chưa có tài khoản TikTok nào đang bật"}
         with self.transaction() as db:
-            if db.execute("SELECT count(*) FROM jobs WHERE state IN ('publishing','publish_unknown')").fetchone()[0]:
+            if db.execute("SELECT count(*) FROM jobs WHERE state='publishing'").fetchone()[0]:
                 return {"status": "blocked", "reason": "A previous publish is unconfirmed; resolve it before publishing again"}
             if manual:
                 row = self._chosen_video(db, job_id)
                 if not row:
                     return {"status": "idle", "reason": "Video này không còn ở trạng thái sẵn sàng đăng"}
-            else:
-                refusal = self._schedule_refusal(db, cfg, now)
-                if refusal:
-                    return refusal
-                row = self._best_ready_video(db, now)
-                if not row:
-                    return {"status": "idle", "reason": "No rendered video is waiting"}
-            return self._reserve(db, row, cfg, now, manual)
+                account = self._account_for_manual(db, row, accounts, now)
+                if self._unconfirmed(db, account):
+                    return {"status": "blocked", "reason": "A previous publish is unconfirmed; resolve it before publishing again"}
+                return self._reserve(db, row, account, cfg, now, manual)
+            return self._claim_scheduled(db, accounts, cfg, now)
 
-    def _schedule_refusal(self, db, cfg, now):
-        """Why the schedule may not post right now (outside the golden hours, daily limit, spacing), or None."""
-        inside, opening = self.window_state(cfg, now)
+    def _claim_scheduled(self, db, accounts, cfg, now):
+        """Try the accounts in turn (the one that posted longest ago first). The first with room and a fitting video gets it. When none
+        does, the answer is the most useful reason: the soonest opening of an account that has a video waiting; else "no video is
+        waiting" if some account had room; else (everyone is held back and nothing waits) the soonest opening."""
+        held_with_video, held_without, has_room = [], [], False
+        for account in sorted(accounts, key=lambda a: self._last_post(db, a) or 0):
+            row = self._best_ready_video(db, account, now)
+            if self._unconfirmed(db, account):
+                refusal = {"status": "blocked", "reason": "A previous publish is unconfirmed; resolve it before publishing again"}
+            else:
+                refusal = self._schedule_refusal(db, account, cfg, now)
+            if refusal:
+                (held_with_video if row else held_without).append(refusal)
+            elif row:
+                return self._reserve(db, row, account, cfg, now, False)
+            else:
+                has_room = True
+        soonest = lambda refusals: min(refusals, key=lambda r: (r["status"] == "blocked", r.get("retry_after", 0)))  # noqa: E731
+        if held_with_video:
+            return soonest(held_with_video)
+        if has_room:
+            return {"status": "idle", "reason": "No rendered video is waiting"}
+        return soonest(held_without)
+
+    def _last_post(self, db, account):
+        return db.execute(
+            "SELECT max(published_at) FROM jobs WHERE state='published' AND COALESCE(account,?)=?", (self._default_id(), account["id"])
+        ).fetchone()[0]
+
+    def _unconfirmed(self, db, account):
+        """Is a post of this account waiting to be confirmed (it may or may not be on TikTok)?"""
+        return db.execute(
+            "SELECT count(*) FROM jobs WHERE state='publish_unknown' AND COALESCE(account,?)=?", (self._default_id(), account["id"])
+        ).fetchone()[0]
+
+    def _schedule_refusal(self, db, account, cfg, now):
+        """Why the schedule may not post on this account right now (outside its golden hours, daily limit, spacing), or None."""
+        eff = effective(account, cfg)
+        inside, opening = self.window_state({**cfg, "post_windows": eff["windows"]}, now)
         if not inside:
             return {"status": "wait", "reason": "Ngoài giờ vàng; lần tới lúc " + opening, "next_window": opening}
-        if self.published_today(db, now) >= cfg["daily_limit"]:
+        if self.published_today(db, now, account) >= eff["daily_limit"]:
             return {"status": "limit", "reason": "Daily limit reached"}
-        last = db.execute("SELECT max(published_at) FROM jobs WHERE state='published'").fetchone()[0]
-        if last and now - last < cfg["min_publish_gap"]:
-            return {
-                "status": "wait",
-                "reason": "Minimum gap between posts not reached",
-                "retry_after": int(last + cfg["min_publish_gap"] - now),
-            }
+        last = self._last_post(db, account)
+        if last and now - last < eff["min_gap"]:
+            return {"status": "wait", "reason": "Minimum gap between posts not reached", "retry_after": int(last + eff["min_gap"] - now)}
         return None
 
     @staticmethod
-    def _best_ready_video(db, now):
-        """The highest-scored rendered video, skipping any that failed to post within the last hour."""
-        return db.execute(
+    def _best_ready_video(db, account, now):
+        """The highest-scored rendered video this account takes, skipping any that failed to post within the last hour."""
+        rows = db.execute(
             "SELECT * FROM jobs WHERE state='ready' AND output_file IS NOT NULL AND COALESCE(last_publish_fail,0)<? "
-            "ORDER BY COALESCE(json_extract(meta,'$.score'),0) DESC, first_seen LIMIT 1",
+            "ORDER BY COALESCE(json_extract(meta,'$.score'),0) DESC, first_seen LIMIT 100",
             (now - 3600,),
-        ).fetchone()
+        )
+        return next((row for row in rows if accepts(account, row["topic"])), None)
 
     @staticmethod
     def _chosen_video(db, job_id):
@@ -79,13 +123,26 @@ class PublishingMixin:
             "SELECT * FROM jobs WHERE id=? AND state IN ('ready','awaiting_approval') AND output_file IS NOT NULL", (job_id,)
         ).fetchone()
 
-    def _reserve(self, db, row, cfg, now, manual):
+    def _account_for_manual(self, db, row, accounts, now):
+        """The account a hand-picked video goes to: one that takes its topic (the one with the fewest posts today), else the default."""
+        fitting = [a for a in accounts if accepts(a, row["topic"])]
+        if not fitting:
+            return accounts[0]
+        return min(fitting, key=lambda a: self.published_today(db, now, a))
+
+    def route_preview(self, topic):
+        """The account a video of this topic would go to when posted by hand, for the dashboard (None when no account takes it)."""
+        fitting = [a for a in self.accounts(enabled_only=True) if accepts(a, topic)]
+        return fitting[0] if fitting else None
+
+    def _reserve(self, db, row, account, cfg, now, manual):
         """Mark the video as being published (with a lease the agent must present when it reports back) and return the claim."""
         token = uuid.uuid4().hex
         db.execute(
-            "UPDATE jobs SET state='publishing',publish_lease=?,prev_state=?,updated=? WHERE id=?", (token, row["state"], now, row["id"])
+            "UPDATE jobs SET state='publishing',publish_lease=?,prev_state=?,account=?,target=?,updated=? WHERE id=?",
+            (token, row["state"], account["id"], account["username"], now, row["id"]),
         )
-        self.event(db, row["id"], "publishing", "thủ công" if manual else "")
+        self.event(db, row["id"], "publishing", ("thủ công " if manual else "") + "@" + account["username"])
         analysis = json.loads(row["analysis"]) if row["analysis"] else {}
         caption = row["caption_user"] or build_caption(analysis, row["title"])
         db.execute("UPDATE jobs SET caption=? WHERE id=?", (caption, row["id"]))
@@ -98,24 +155,25 @@ class PublishingMixin:
             "manual": manual,
             "output_file": row["output_file"],
             "output_hash": row["output_hash"],
-            "target": cfg["target"],
-            "visibility": cfg["visibility"],
+            "account": account["id"],
+            "target": account["username"],
+            "visibility": effective(account, cfg)["visibility"],
         }
 
     def publish_peek(self, job_id=None):
         """A rendered video for rehearsals (the next one, or a chosen one); changes nothing and ignores the publishing switch."""
         cfg = self.settings()
+        accounts = self.accounts(enabled_only=True)
         with self.connect() as db:
             if job_id:
-                row = db.execute(
-                    "SELECT * FROM jobs WHERE id=? AND state IN ('ready','awaiting_approval') AND output_file IS NOT NULL", (job_id,)
-                ).fetchone()
+                row = self._chosen_video(db, job_id)
             else:
                 row = db.execute(
                     "SELECT * FROM jobs WHERE state='ready' AND output_file IS NOT NULL ORDER BY COALESCE(json_extract(meta,'$.score'),0) DESC, first_seen LIMIT 1"
                 ).fetchone()
-        if not row:
-            return {"status": "idle", "reason": "No rendered video is waiting"}
+            if not row or not accounts:
+                return {"status": "idle", "reason": "No rendered video is waiting"}
+            account = self._account_for_manual(db, row, accounts, time.time())
         a = json.loads(row["analysis"]) if row["analysis"] else {}
         return {
             "status": "ready",
@@ -124,8 +182,9 @@ class PublishingMixin:
             "route": row["route"],
             "output_file": row["output_file"],
             "output_hash": row["output_hash"],
-            "target": cfg["target"],
-            "visibility": cfg["visibility"],
+            "account": account["id"],
+            "target": account["username"],
+            "visibility": effective(account, cfg)["visibility"],
         }
 
     def publish_finish(self, jid, lease, outcome, url="", reason=""):
@@ -203,4 +262,4 @@ class PublishingMixin:
 
     def unresolved(self):
         with self.connect() as db:
-            return [dict(r) for r in db.execute("SELECT id,title,caption,updated FROM jobs WHERE state='publish_unknown'")]
+            return [dict(r) for r in db.execute("SELECT id,title,caption,updated,account,target FROM jobs WHERE state='publish_unknown'")]

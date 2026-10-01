@@ -31,5 +31,5 @@ def analyze(store, path, duration, cfg, folder, lenient=False):
         raise ValueError("Gemini did not return valid analysis JSON") from None
     if isinstance(a, list) and a:
         a = a[0]
-    route = validate_analysis(a, duration, cfg["audio_confidence"], strict=True, lenient=lenient)
+    route = validate_analysis(a, duration, cfg["audio_confidence"], strict=True, lenient=lenient, accepted_topics=store.wanted_topics())
     return a, route

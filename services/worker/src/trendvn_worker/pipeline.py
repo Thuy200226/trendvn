@@ -74,6 +74,7 @@ def _process(store, cfg, job):
         lease,
         state,
         analysis=json.dumps(a, ensure_ascii=False),
+        topic=a.get("topic"),
         route=route,
         output_file=str(out),
         output_hash=digest,

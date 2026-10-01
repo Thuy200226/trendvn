@@ -7,8 +7,10 @@ without touching their data.
 """
 
 import json
+import time
 
-from ..domain.settings import DEFAULTS, RETIRED_MODELS, RETIRED_TTS
+from ..domain import topics
+from ..domain.settings import DEFAULT_TARGET, DEFAULTS, RETIRED_MODELS, RETIRED_TTS
 
 BASELINE_TABLES = """
 CREATE TABLE IF NOT EXISTS streams (name TEXT PRIMARY KEY, last_scan REAL);
@@ -63,7 +65,32 @@ def _baseline(db):
             db.execute("ALTER TABLE jobs ADD COLUMN " + column)
 
 
-MIGRATIONS = [_baseline]
+ACCOUNTS_TABLE = """
+CREATE TABLE IF NOT EXISTS accounts (
+    id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, label TEXT, topics TEXT NOT NULL, enabled INTEGER DEFAULT 1,
+    daily_limit INTEGER, min_gap INTEGER, windows TEXT, visibility TEXT, created REAL)
+"""
+
+
+def _accounts(db):
+    """Version 2: several TikTok accounts, each with its topics, and a topic on every video. The account of 1.0 - 1.3 becomes `main`."""
+    db.execute(ACCOUNTS_TABLE)
+    row = db.execute("SELECT value FROM settings WHERE key='target'").fetchone()
+    target = json.loads(row[0]) if row else DEFAULT_TARGET
+    db.execute(
+        "INSERT OR IGNORE INTO accounts(id,username,label,topics,enabled,created) VALUES ('main',?,?,?,1,?)",
+        (target, target, json.dumps(list(topics.LEGACY_TOPICS)), time.time()),
+    )
+    present = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
+    for column in ("topic TEXT", "topic_hint TEXT", "account TEXT"):
+        if column.split()[0] not in present:
+            db.execute("ALTER TABLE jobs ADD COLUMN " + column)
+    db.execute(
+        "UPDATE jobs SET topic=json_extract(analysis,'$.topic') WHERE topic IS NULL AND analysis IS NOT NULL AND json_valid(analysis)"
+    )
+
+
+MIGRATIONS = [_baseline, _accounts]
 
 
 def migrate(db):

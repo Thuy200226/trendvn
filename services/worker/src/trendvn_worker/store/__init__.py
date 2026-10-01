@@ -1,5 +1,6 @@
 """SQLite persistence. `Store` is the one object the rest of the worker talks to; each concern lives in its own module."""
 
+from .accounts import AccountsMixin
 from .base import StoreBase
 from .captions import CaptionMixin
 from .feedback import FeedbackMixin
@@ -13,6 +14,7 @@ from .task_log import TaskLogMixin
 
 class Store(
     StoreBase,
+    AccountsMixin,
     IngestMixin,
     QueueMixin,
     HealthMixin,

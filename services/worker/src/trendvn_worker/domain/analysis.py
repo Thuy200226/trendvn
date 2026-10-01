@@ -3,6 +3,7 @@
 import math
 
 from .route import choose_route
+from .topics import OTHER, TOPIC_IDS, label
 
 
 def normalize_segments(segments, duration):
@@ -40,8 +41,9 @@ def normalize_segments(segments, duration):
     return out
 
 
-def validate_analysis(a, duration, confidence=0.90, strict=False, lenient=False):
-    """lenient=True is a human approval: it waives confidence/topic/sensitivity, never the structural checks."""
+def validate_analysis(a, duration, confidence=0.90, strict=False, lenient=False, accepted_topics=None):
+    """lenient=True is a human approval: it waives confidence/topic/sensitivity, never the structural checks.
+    accepted_topics: the topics some account takes; a video about anything else needs the owner (None skips that check)."""
     allowed = ("music", "dialogue", "narration", "mixed", "silent", "uncertain")
     if not isinstance(a, dict) or a.get("kind") not in allowed:
         raise ValueError("Invalid audio classification")
@@ -50,12 +52,14 @@ def validate_analysis(a, duration, confidence=0.90, strict=False, lenient=False)
         raise ValueError("Invalid confidence")
     if not lenient and (c < confidence or a["kind"] == "uncertain"):
         raise ValueError("Audio needs review")
-    if strict and not lenient and (a.get("topic") not in ("entertainment", "music", "other") or not isinstance(a.get("sensitive"), bool)):
+    if strict and not lenient and (a.get("topic") not in (*TOPIC_IDS, OTHER) or not isinstance(a.get("sensitive"), bool)):
         raise ValueError("Topic/sensitivity missing from analysis")
     if not lenient and a.get("sensitive") is True:
         raise ValueError("Sensitive content (politics, violence, tragedy, adult or medical claims) needs review")
-    if not lenient and a.get("topic") == "other":
+    if not lenient and a.get("topic") == OTHER:
         raise ValueError("Off-topic for an entertainment and music channel")
+    if not lenient and accepted_topics is not None and a.get("topic") in TOPIC_IDS and a["topic"] not in accepted_topics:
+        raise ValueError("Chủ đề «%s» chưa có tài khoản nào nhận" % label(a["topic"]))
     segments = a.get("segments", [])
     if not isinstance(segments, list) or len(segments) > 500:
         raise ValueError("Invalid segments")

@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from tests.support import TZ, StoreCase, at  # noqa: F401  (also puts the source folders on sys.path)
+from trendvn_worker.domain import topics
 from trendvn_worker.domain.analysis import normalize_segments, validate_analysis
 from trendvn_worker.domain.captions import build_caption
 from trendvn_worker.media.fingerprint import similar
@@ -127,6 +128,19 @@ class TopicTests(unittest.TestCase):
             validate_analysis(self.a(topic="other"), 10, strict=True)
         with self.assertRaises(ValueError):
             validate_analysis(self.a(sensitive=True), 10, strict=True)
+
+    def test_a_topic_no_account_takes_needs_the_owner(self):
+        with self.assertRaisesRegex(ValueError, "chưa có tài khoản nào nhận"):
+            validate_analysis(self.a(topic="food"), 10, strict=True, accepted_topics=["music", "pets"])
+        self.assertEqual(validate_analysis(self.a(topic="pets"), 10, strict=True, accepted_topics=["music", "pets"]), "original")
+        self.assertEqual(validate_analysis(self.a(topic="food"), 10, strict=True), "original")  # no account list given: not checked
+        self.assertEqual(validate_analysis(self.a(topic="food"), 10, strict=True, lenient=True, accepted_topics=["pets"]), "original")
+
+    def test_the_topic_must_come_from_the_menu(self):
+        with self.assertRaisesRegex(ValueError, "Topic/sensitivity"):
+            validate_analysis(self.a(topic="cooking"), 10, strict=True)
+        for topic in topics.TOPIC_IDS:
+            self.assertEqual(validate_analysis(self.a(topic=topic), 10, strict=True), "original")
 
     def test_caption_never_empty_and_bounded(self):
         cap = build_caption({"kind": "dialogue", "caption_vi": "x" * 400}, "t")

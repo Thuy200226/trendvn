@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from ..domain import schedule
-from ..domain.settings import validate_settings
+from ..domain.settings import DEFAULT_TARGET, validate_settings
 from .schema import initialise
 
 DATA_FOLDERS = ("inbox", "jobs", "exports")
@@ -49,13 +49,18 @@ class StoreBase:
 
     # ------------------------------------------------------------------ settings
     def settings(self):
+        """All settings. `target` (the TikTok account of 1.0 - 1.3) is not stored: it is the default account's username."""
         with self.connect() as db:
-            return {row["key"]: json.loads(row["value"]) for row in db.execute("SELECT * FROM settings")}
+            cfg = {row["key"]: json.loads(row["value"]) for row in db.execute("SELECT * FROM settings")}
+            default = db.execute("SELECT username FROM accounts ORDER BY enabled DESC, created, id LIMIT 1").fetchone()
+        cfg["target"] = default[0] if default else DEFAULT_TARGET
+        return cfg
 
     def update_settings(self, patch):
         clean = validate_settings(patch)
         if clean.get("processing_enabled") and not (self.root / "gemini.key").exists():
             raise ValueError("Gemini key is required to enable processing")
+        target = clean.pop("target", None)  # renames the default account instead of being stored
         with self.transaction() as db:
             for key, value in clean.items():
                 if key in PARTIAL_DICT_SETTINGS:  # a partial form must never erase the other sources' thresholds
@@ -64,6 +69,9 @@ class StoreBase:
                     clean[key] = value
                 db.execute("INSERT OR REPLACE INTO settings VALUES (?, ?)", (key, json.dumps(value)))
             self.event(db, "", "settings", ", ".join(sorted(clean)))
+        if target is not None:
+            self.set_default_username(target)
+            clean["target"] = target
         return clean
 
     # ------------------------------------------------------------------ event log and notifications
