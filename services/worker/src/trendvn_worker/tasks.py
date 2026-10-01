@@ -13,6 +13,8 @@ import time
 import urllib.error
 import urllib.request
 
+from .pipeline import process_many
+
 PROCESS_BATCH = 4  # videos processed per press of the button
 BROWSER_KINDS = {"collect", "publish", "dryrun", "stats"}
 LABELS = {
@@ -225,12 +227,7 @@ class Tasks:
             raise TaskBusy("Worker đang xử lý video cho lịch tự động. Đợi nó xong rồi bấm lại.")
         try:
             self.store.housekeeping()  # frees jobs a crash left 'processing' (the schedule does this too)
-            results = []
-            for _ in range(PROCESS_BATCH):
-                result = self.process_fn(self.store)
-                results.append(result)
-                if result.get("status") in ("disabled", "blocked", "idle", "rate_limited"):
-                    break
+            results = process_many(self.store, PROCESS_BATCH, one=self.process_fn)
             return summarize_process(results)
         finally:
             self.process_lock.release()

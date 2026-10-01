@@ -95,25 +95,58 @@ def capture_once(ctx, url, match, parse, scrolls=4, wait_ms=12000, before_scroll
         page.close()
 
 
-def capture_streams(ctx, url, match, parse, streams, wait_ms=12000, scrolls=3, settle_ms=6000):
-    """One page load, several streams: the page as it loads is the first stream; each further stream is entered with a click on a
-    category (`enter(page)`), after which the videos the page loads belong to it. Returns {name: [items]}; a category that cannot be
-    entered gives an empty list (and is logged), it never fails the others. `streams` is [(name, enter or None), ...]."""
+def capture_streams(ctx, url, match, parse, streams, attempts=3, **kw):
+    """One page load, several streams (see `capture_once_streams`), retried with a fresh page when nothing at all came back, like
+    `capture` does for a single stream."""
+    last = None
+    for n in range(1, attempts + 1):
+        try:
+            result = capture_once_streams(ctx, url, match, parse, streams, **kw)
+            if any(result.values()):
+                return result
+            last = Blocked("no videos returned") if n == attempts else None
+        except (Blocked, NotThere):
+            raise
+        except Exception as e:
+            last = e
+        log("capture retry %d/%d for %s" % (n, attempts, url))
+        time.sleep(6 * n)
+    if last:
+        raise last
+    return {name: [] for name, _ in streams}
+
+
+def capture_once_streams(ctx, url, match, parse, streams, route=None, wait_ms=12000, scrolls=3, settle_ms=6000, quiet_ms=1000):
+    """The page as it loads is the first stream; each further stream is entered with a click on a category (`enter(page)`), after which
+    the videos the page loads belong to it. `route(url)` may name the stream a response belongs to (a category id in the request), which
+    is exact; without it a response goes to the stream being read, and a short quiet spell before each click keeps the previous
+    category's late answers out of the next one. Returns {name: [items]}. A category that cannot be entered, or a failure while reading
+    one, gives what was read so far for it and never costs the others. `streams` is [(name, enter or None), ...]."""
     page = ctx.new_page()
     found = {name: {} for name, _ in streams}
     order = {name: [] for name, _ in streams}
     current = [streams[0][0]]
+    last_response = [time.time()]
 
     def on_response(r):
         try:
             if r.status == 200 and match(r.url) and "json" in r.headers.get("content-type", ""):
-                bucket, ids = found[current[0]], order[current[0]]
+                last_response[0] = time.time()
+                named = route(r.url) if route else None
+                name = named if named in found else current[0]
+                bucket, ids = found[name], order[name]
                 for item in parse(json.loads(r.body())):
                     if item["source_id"] not in bucket:
                         bucket[item["source_id"]] = item
                         ids.append(item["source_id"])
         except Exception:
             pass
+
+    def drain():
+        waited = 0
+        while time.time() - last_response[0] < quiet_ms / 1000 and waited < 6000:
+            page.wait_for_timeout(250)
+            waited += 250
 
     page.on("response", on_response)
     try:
@@ -123,19 +156,21 @@ def capture_streams(ctx, url, match, parse, streams, wait_ms=12000, scrolls=3, s
             log("goto warning %s: %s" % (url, str(e)[:100]))
         page.wait_for_timeout(wait_ms)
         for index, (name, enter) in enumerate(streams):
-            current[0] = name
-            if enter is not None:
-                try:
+            try:
+                if enter is not None:
+                    drain()
+                    current[0] = name
                     enter(page)
-                except Exception as e:
-                    log("category %s skipped: %s" % (name, str(e)[:100]))
-                    continue
-                page.wait_for_timeout(settle_ms)
-            for _ in range(scrolls):
-                page.mouse.wheel(0, 1400)
-                page.wait_for_timeout(2000)
-            if index == 0 and not found[name] and looks_blocked(page):
-                raise Blocked("verification or login wall shown")
+                    page.wait_for_timeout(settle_ms)
+                for _ in range(scrolls):
+                    page.mouse.wheel(0, 1400)
+                    page.wait_for_timeout(2000)
+                if index == 0 and not found[name] and looks_blocked(page):
+                    raise Blocked("verification or login wall shown")
+            except Blocked:
+                raise
+            except Exception as e:
+                log("category %s skipped: %s" % (name, str(e)[:100]))
         for name, _ in streams:
             for n, sid in enumerate(order[name], 1):
                 found[name][sid]["rank"] = n

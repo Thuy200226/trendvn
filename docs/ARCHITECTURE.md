@@ -96,6 +96,7 @@ Douyin và Kuaishou chỉ phục vụ nội dung trong nước nên IP nào cũn
 ## 5. Dữ liệu
 
 - `data/worker/trendvn.sqlite3` (WAL): `jobs` (mỗi video một dòng), `observations` (lịch sử thứ hạng/lượt xem mỗi lần quét), `events` (nhật ký), `settings`, `accounts` (các tài khoản TikTok: chủ đề nhận, giới hạn riêng), `api_calls` (đếm lượt gọi Gemini), `post_stats` (lượt xem sau đăng), `notif_log` (chống spam thông báo).
+- `data/agent/profiles/`: một hồ sơ Chrome cho mỗi tài khoản TikTok (`publisher` cho `main`, `publisher-<mã>` cho các tài khoản thêm), `collector-cn`, `collector-us`.
 - `data/worker/inbox/` video gốc tải về; `data/worker/jobs/<id>/` sản phẩm dựng (`final.mp4`, `vi.ass`, `manifest.json` ghi cả phiên bản prompt).
 - `data/worker/gemini.key`, `data/worker/notify.json`: bí mật, quyền 0600, không bao giờ trả về qua API.
 - `data/agent/profiles/collector-*`, `data/agent/profiles/publisher` (phiên TikTok), `data/agent/agent.log`, `data/agent/shots/` (ảnh chụp khi đăng lỗi; ảnh của lần chạy thử nằm ở `data/worker/exports/` để bảng điều khiển hiển thị).

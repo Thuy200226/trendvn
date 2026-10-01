@@ -43,10 +43,10 @@ class PublishingMixin:
             return {"status": "disabled", "reason": "Publishing switch is off"}
         if cfg.get("publisher_challenge"):
             return {"status": "blocked", "reason": "TikTok is asking for human verification; solve it once with `./trendvn tiktok trust`"}
-        accounts = self.accounts(enabled_only=True)
-        if not accounts:
-            return {"status": "blocked", "reason": "Chưa có tài khoản TikTok nào đang bật"}
         with self.transaction() as db:
+            accounts = self._accounts_in(db, enabled_only=True)  # read under the lock: an account deleted a moment ago must not get a post
+            if not accounts:
+                return {"status": "blocked", "reason": "Chưa có tài khoản TikTok nào đang bật"}
             if db.execute("SELECT count(*) FROM jobs WHERE state='publishing'").fetchone()[0]:
                 return {"status": "blocked", "reason": "A previous publish is unconfirmed; resolve it before publishing again"}
             if manual:
@@ -60,13 +60,21 @@ class PublishingMixin:
             return self._claim_scheduled(db, accounts, cfg, now)
 
     def _claim_scheduled(self, db, accounts, cfg, now):
-        """Try the accounts in turn (the one that posted longest ago first). The first with room and a fitting video gets it. When none
-        does, the answer is the most useful reason: the soonest opening of an account that has a video waiting; else "no video is
-        waiting" if some account had room; else (everyone is held back and nothing waits) the soonest opening."""
+        """Try the accounts in turn: first those that did not just fail, then the one that posted longest ago. The first with room and a
+        fitting video gets it. Accounts the browser is known not to be signed in to are skipped. When none gets a video the answer is the
+        most useful reason: the soonest opening of an account that has a video waiting; else "no video is waiting" if some account had
+        room; else (everyone is held back and nothing waits) the soonest opening."""
+        logins = self.login_map(cfg)
         held_with_video, held_without, has_room = [], [], False
-        for account in sorted(accounts, key=lambda a: self._last_post(db, a) or 0):
+        ordered = sorted(accounts, key=lambda a: (self._failed_lately(db, a, now), self._last_post(db, a) or 0))
+        for account in ordered:
             row = self._best_ready_video(db, account, now)
-            if self._unconfirmed(db, account):
+            if logins.get(account["id"]) is False:
+                refusal = {
+                    "status": "blocked",
+                    "reason": "Chưa đăng nhập TikTok cho @%s: ./trendvn tiktok login --account %s" % (account["username"], account["id"]),
+                }
+            elif self._unconfirmed(db, account):
                 refusal = {"status": "blocked", "reason": "A previous publish is unconfirmed; resolve it before publishing again"}
             else:
                 refusal = self._schedule_refusal(db, account, cfg, now)
@@ -82,6 +90,14 @@ class PublishingMixin:
         if has_room:
             return {"status": "idle", "reason": "No rendered video is waiting"}
         return soonest(held_without)
+
+    def _failed_lately(self, db, account, now):
+        """1 if a post on this account failed in the last half hour, so the other accounts get their turn first (a broken account must not
+        use up every tick), else 0."""
+        last = db.execute(
+            "SELECT max(last_publish_fail) FROM jobs WHERE COALESCE(account,?)=?", (self._default_id(), account["id"])
+        ).fetchone()[0]
+        return 1 if last and now - last < 1800 else 0
 
     def _last_post(self, db, account):
         return db.execute(
@@ -112,7 +128,7 @@ class PublishingMixin:
         """The highest-scored rendered video this account takes, skipping any that failed to post within the last hour."""
         rows = db.execute(
             "SELECT * FROM jobs WHERE state='ready' AND output_file IS NOT NULL AND COALESCE(last_publish_fail,0)<? "
-            "ORDER BY COALESCE(json_extract(meta,'$.score'),0) DESC, first_seen LIMIT 100",
+            "ORDER BY COALESCE(json_extract(meta,'$.score'),0) DESC, first_seen",
             (now - 3600,),
         )
         return next((row for row in rows if accepts(account, row["topic"])), None)
@@ -129,11 +145,6 @@ class PublishingMixin:
         if not fitting:
             return accounts[0]
         return min(fitting, key=lambda a: self.published_today(db, now, a))
-
-    def route_preview(self, topic):
-        """The account a video of this topic would go to when posted by hand, for the dashboard (None when no account takes it)."""
-        fitting = [a for a in self.accounts(enabled_only=True) if accepts(a, topic)]
-        return fitting[0] if fitting else None
 
     def _reserve(self, db, row, account, cfg, now, manual):
         """Mark the video as being published (with a lease the agent must present when it reports back) and return the claim."""

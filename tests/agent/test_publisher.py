@@ -125,6 +125,7 @@ class ScriptedStudioTests(unittest.TestCase):
             RUNTIME=Path(self.tmp.name),
             chrome=Chrome,
             logged_in=lambda ctx: True,
+            wrong_account=lambda ctx, expected: None,
             own_descriptions=lambda ctx, target: list(self.descriptions),
             wait_for_upload_ui=lambda page: (self.target, mock.MagicMock()),
             wait_uploaded=lambda page: True,
@@ -219,6 +220,20 @@ class ScriptedStudioTests(unittest.TestCase):
         post.studio_shows = lambda ctx, caption: True
         outcome, url, _ = self.run_job(visibility="private")
         self.assertEqual((outcome, url), ("published", ""))
+
+    def test_a_profile_that_is_not_signed_in_never_posts(self):
+        post.logged_in = lambda ctx: False
+        outcome, _, reason = self.run_job()
+        self.assertEqual(outcome, "signed_out")
+        self.assertIn("@u", reason)
+        self.ctx.new_page.assert_not_called()
+
+    def test_a_profile_signed_in_as_somebody_else_never_posts(self):
+        post.wrong_account = lambda ctx, expected: "Hồ sơ Chrome đang đăng nhập @khac, không phải @%s." % expected
+        outcome, _, reason = self.run_job()
+        self.assertEqual((outcome, "@khac" in reason), ("signed_out", True))
+        self.ctx.new_page.assert_not_called()
+        self.assertEqual(self.run_job(dry_run=True)[0], "signed_out")  # a rehearsal does not upload into the wrong account either
 
     def test_same_caption_already_on_the_account_is_refused_before_uploading(self):
         self.descriptions = [{"id": "1", "desc": "Mô tả #a1 #b2 #c3"}]
@@ -379,3 +394,50 @@ class PostUsesTheAccountProfileTests(unittest.TestCase):
         with mock.patch.multiple(post, RUNTIME=folder, chrome=boom):
             self.assertEqual(post.publish_one(job, dry_run=False)[0], "failed")
         self.assertEqual(opened.opened, ["publisher-pets"])
+
+
+class SignedOutReportingTests(unittest.TestCase):
+    def test_a_signed_out_account_is_reported_and_the_video_is_given_back_without_a_strike(self):
+        sent = []
+        claim = {"status": "claimed", "id": "j1", "lease": "L", "account": "pets", "target": "meo", "output_hash": "h", "caption": "c"}
+
+        def worker(path, payload=None, timeout=900):
+            sent.append((path, payload))
+            return claim if path.endswith("/claim") else {"ok": True}
+
+        with mock.patch.multiple(jobs, worker=worker, publish_one=lambda c, dry_run: ("signed_out", "", "Chưa đăng nhập")):
+            result = jobs.run_publish("j1")
+        self.assertEqual(result["status"], "signed_out")
+        finish = [p for path, p in sent if path.endswith("/finish")][0]
+        self.assertEqual(finish["outcome"], "deferred")  # not counted against the video
+        self.assertIn(("/api/accounts/login", {"id": "pets", "ok": False}), sent)
+
+    def test_reporting_never_raises(self):
+        def broken(*a, **k):
+            raise RuntimeError("worker down")
+
+        with mock.patch.object(jobs, "worker", broken):
+            jobs.report_login("pets", True)  # must not raise
+
+
+class ProfileCheckTests(unittest.TestCase):
+    def test_wrong_account_message_and_unreadable_pages(self):
+        from trendvn_agent.publisher import profile
+
+        with mock.patch.object(profile, "signed_in_as", lambda ctx: "Someone_Else"):
+            self.assertIn("@Someone_Else", profile.wrong_account(None, "meo"))
+            self.assertIsNone(profile.wrong_account(None, "someone_else"))  # handles compare without regard to case
+        with mock.patch.object(profile, "signed_in_as", lambda ctx: None):
+            self.assertIsNone(profile.wrong_account(None, "meo"))  # unreadable: carry on rather than block every post
+
+    def test_signed_in_as_reads_the_page_and_survives_errors(self):
+        from trendvn_agent.publisher import profile
+
+        page = mock.MagicMock()
+        page.evaluate.return_value = "meo"
+        ctx = mock.MagicMock()
+        ctx.new_page.return_value = page
+        self.assertEqual(profile.signed_in_as(ctx), "meo")
+        page.close.assert_called_once()
+        page.goto.side_effect = RuntimeError("offline")
+        self.assertIsNone(profile.signed_in_as(ctx))

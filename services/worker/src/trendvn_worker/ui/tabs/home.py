@@ -4,6 +4,12 @@ from ..components import chip, component_chip, quick_switch, task_panel
 from ..format import ago, escape as E, num, windows_text
 
 
+def _accounts_text(d):
+    """'@a' for one account, '3 tài khoản (@a, @b, @c)' for several."""
+    names = ["@" + a["username"] for a in d["accounts"] if a["enabled"]]
+    return names[0] if len(names) == 1 else "%d tài khoản (%s)" % (len(names), ", ".join(names))
+
+
 def banner(view):
     if view.d["processing_enabled"] and view.d["publisher_enabled"] and not view.attention:
         return '<div class="banner good"><b>Đang tự động hoàn toàn.</b> Thu thập, xử lý và đăng chạy theo lịch.</div>'
@@ -52,8 +58,8 @@ def switches(view):
             "ĐANG BẬT · chạm để dừng",
             "ĐANG TẮT",
             danger=True,
-            confirm="Bật tự đăng? Hệ thống sẽ tự đăng lên @%s theo lịch (tối đa %d bài/ngày, chế độ %s)."
-            % (cfg["target"], cfg["daily_limit"], visibility),
+            confirm="Bật tự đăng? Hệ thống sẽ tự đăng lên %s theo lịch (tối đa %d bài/ngày, chế độ %s)."
+            % (_accounts_text(d), d["daily_limit"], visibility),
         ),
     )
 
@@ -91,13 +97,14 @@ def schedule(view):
     last_scan = view.d.get("discovery_at")
     return (
         '<div class="card stack"><h2>Lịch tự động</h2><ul class="plain"><li><b>Thu thập và xử lý:</b> mỗi 3 giờ (n8n)%s</li>'
-        "<li><b>Đăng:</b> kiểm tra mỗi 30 phút, chỉ đăng trong giờ vàng %s, tối đa %d bài/ngày, cách nhau ≥ %s giờ</li>"
+        "<li><b>Đăng:</b> kiểm tra mỗi 30 phút, chỉ đăng trong giờ vàng %s, tối đa %d bài/ngày%s, cách nhau ≥ %s giờ</li>"
         "<li><b>Chốt ngày:</b> 23:30, đọc lượt xem và gửi tóm tắt</li></ul>"
         '<p class="muted small">Các nút ở trên chỉ là bổ sung; không thay thế và không làm gián đoạn lịch.</p></div>'
     ) % (
         (" · lần gần nhất %s" % ago(last_scan, view.now)) if last_scan else "",
         E(windows_text(cfg["post_windows"]) or "mọi lúc"),
-        cfg["daily_limit"],
+        view.d["daily_limit"],
+        " (tổng các tài khoản; mỗi tài khoản có giới hạn riêng)" if len(view.takers(None)) > 1 else "",
         E("%g" % round(cfg["min_publish_gap"] / 3600, 2)),
     )
 

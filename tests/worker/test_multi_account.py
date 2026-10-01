@@ -176,7 +176,164 @@ class MultiAccountPublishingTests(StoreCase):
         self.assertEqual(self.s.published_today(account=self.s.account("pets")), 0)
         self.assertEqual(self.s.published_today(), 1)
 
-    def test_route_preview_for_the_dashboard(self):
-        self.assertEqual(self.s.route_preview("pets")["id"], "pets")
-        self.assertIsNone(self.s.route_preview("gaming"))
-        self.assertEqual(self.s.route_preview(None)["id"], "main")  # no topic recorded: the first account
+
+class BrokenAccountTests(StoreCase):
+    """An account that cannot post (not signed in, failing) must not starve the others or burn the videos."""
+
+    def setUp(self):
+        super().setUp()
+        self.s.update_settings({"publisher_enabled": True, "post_windows": [], "min_publish_gap": 0, "daily_limit": 5})
+        self.s.update_account("main", {"topics": ["pets"]})
+        self.s.add_account({"username": "newch", "id": "newch", "topics": ["pets"]})
+
+    def video(self, job_id, score=1, topic="pets"):
+        self.ready(job_id, topic=topic, meta=json.dumps({"score": score}))
+
+    def test_an_account_known_to_be_signed_out_is_skipped_until_it_is_signed_in(self):
+        for i in range(4):
+            self.video("v%d" % i, score=10 - i)
+        self.s.set_account_login("newch", False)
+        for _ in range(3):
+            claim = self.s.publish_claim()
+            self.assertEqual(claim["account"], "main")
+            self.s.publish_finish(claim["id"], claim["lease"], "published", "https://www.tiktok.com/@u/video/1")
+        self.s.set_account_login("newch", True)
+        self.video("late")
+        self.assertEqual(self.s.publish_claim()["account"], "newch")  # signed in now, and it has not posted yet: its turn
+
+    def test_when_every_account_is_signed_out_the_answer_says_which(self):
+        self.video("v")
+        self.s.set_account_login("main", False)
+        self.s.set_account_login("newch", False)
+        claim = self.s.publish_claim()
+        self.assertEqual(claim["status"], "blocked")
+        self.assertIn("tiktok login", claim["reason"])
+
+    def test_unknown_login_state_does_not_block(self):
+        self.video("v")
+        self.assertEqual(self.s.publish_claim()["status"], "claimed")  # the agent has never reported: try, it will find out
+
+    def test_an_account_that_just_failed_waits_behind_the_others(self):
+        for i in range(3):
+            self.video("v%d" % i, score=10 - i)
+        first = self.s.publish_claim()
+        self.s.publish_finish(first["id"], first["lease"], "failed", reason="Studio changed")
+        second = self.s.publish_claim()
+        self.assertNotEqual(second["account"], first["account"])  # the other account is tried before the one that failed
+        self.s.publish_finish(second["id"], second["lease"], "published", "https://www.tiktok.com/@u/video/1")
+        third = self.s.publish_claim()  # the other account still has room, so it still goes first
+        self.assertEqual(third["account"], second["account"])
+        self.s.publish_finish(third["id"], third["lease"], "published", "https://www.tiktok.com/@u/video/2")
+        self.s.update_account(second["account"], {"daily_limit": 2})
+        self.video("again")
+        self.assertEqual(self.s.publish_claim()["account"], first["account"])  # now it is full: back to the one that failed
+
+    def test_login_reports_merge_instead_of_replacing(self):
+        self.s.set_account_login("main", True)
+        self.s.set_account_login("newch", False)
+        self.s.heartbeat("publisher", False, {"login": {"main": False}, "text": "x"})
+        login = self.s.status()["accounts"]
+        self.assertEqual({a["id"]: a["logged_in"] for a in login}, {"main": False, "newch": False})
+        self.s.heartbeat("publisher", True, {"login": {"newch": True}})
+        self.assertEqual({a["id"]: a["logged_in"] for a in self.s.status()["accounts"]}, {"main": False, "newch": True})
+        with self.assertRaises(ValueError):
+            self.s.set_account_login("ghost", True)
+
+    def test_an_account_deleted_a_moment_ago_never_gets_a_post(self):
+        self.video("v", topic="pets")
+        stale = self.s.accounts(enabled_only=True)
+        self.s.delete_account("newch")
+        self.s.accounts = lambda enabled_only=False: stale  # a copy read before the deletion
+        claim = self.s.publish_claim()
+        self.assertEqual(claim["account"], "main")
+
+    def test_videos_deep_in_the_queue_are_still_found_for_an_account(self):
+        for i in range(120):
+            self.ready("other%d" % i, topic="gaming", meta=json.dumps({"score": 100 + i}))
+        self.video("mine", score=1)
+        self.assertEqual(self.s.publish_claim()["id"], "mine")
+
+
+class BacklogAndLegacyTests(StoreCase):
+    def test_rendered_videos_nobody_takes_do_not_count_against_the_collector(self):
+        self.s.update_account("main", {"topics": ["pets"]})
+        self.ready("ok", topic="pets")
+        self.ready("old", topic=None)
+        for i in range(3):
+            self.ready("stuck%d" % i, topic="gaming")
+        self.job("q", "queued")
+        status = self.s.status()
+        self.assertEqual(status["counts"]["ready"], 5)
+        self.assertEqual(status["backlog"], 3)  # q + ok + old; the three gaming videos have nowhere to go
+
+    def test_posts_from_before_accounts_belong_to_main_even_after_the_default_changes(self):
+        import sqlite3
+
+        self.job("old", "published", published_at=time.time(), updated=time.time())
+        with self.s.connect() as db:
+            db.execute("UPDATE jobs SET account=NULL,target=NULL")
+            db.execute("PRAGMA user_version = 2")
+            db.commit()
+        from trendvn_worker.store import schema
+
+        db = sqlite3.connect(self.s.db)
+        schema.migrate(db)
+        db.commit()
+        db.close()
+        with self.s.connect() as db:
+            self.assertEqual(
+                tuple(db.execute("SELECT account,target FROM jobs WHERE id='old'").fetchone()), ("main", self.s.account("main")["username"])
+            )
+        self.s.add_account({"username": "second", "topics": ["food"]})
+        self.s.update_account("main", {"enabled": False})
+        self.assertEqual(self.s.published_today(account=self.s.account("second")), 0)
+        self.assertEqual(self.s.published_today(account=self.s.account("main")), 1)
+
+    def test_a_clashing_default_name_leaves_the_other_settings_untouched(self):
+        self.s.add_account({"username": "taken", "topics": ["food"]})
+        before = self.s.settings()["daily_limit"]
+        with self.assertRaisesRegex(ValueError, "đã có"):
+            self.s.update_settings({"daily_limit": before + 1, "target": "taken"})
+        self.assertEqual(self.s.settings()["daily_limit"], before)
+
+
+class DashboardAgreesWithTheWorkerTests(StoreCase):
+    """The account the card names must be the account the button really uses."""
+
+    def test_destination_matches_the_manual_claim_for_every_case(self):
+        from trendvn_worker.ui.view import View
+
+        self.s.update_settings({"publisher_enabled": True, "post_windows": [], "min_publish_gap": 0, "daily_limit": 9})
+        self.s.update_account("main", {"topics": ["music"]})
+        self.s.add_account({"username": "meo", "id": "pets", "topics": ["pets"]})
+        self.s.add_account({"username": "both", "id": "both", "topics": ["pets", "music"]})
+        for topic in ("music", "pets", "gaming", "other", None):
+            for already in (0, 1):
+                self.ready("job-%s-%d" % (topic, already), topic=topic, meta="{}")
+        # make one account busier today so "the fewest posts" matters
+        busy = self.s.publish_claim(job_id="job-pets-1")
+        self.s.publish_finish(busy["id"], busy["lease"], "published", "https://www.tiktok.com/@u/video/1")
+        for topic in ("music", "pets", "gaming", "other", None):
+            view = View(dict(self.s.dashboard_data(), ready=[]), "csrf")
+            shown = view.destination(topic)
+            claim = self.s.publish_claim(job_id="job-%s-0" % topic)
+            self.assertEqual(shown["id"], claim["account"], topic)
+            self.s.publish_finish(claim["id"], claim["lease"], "failed", reason="x")  # leave the posts-today counts as they were
+
+    def test_a_topic_nobody_takes_is_called_out_on_the_card_and_goes_to_the_default_account(self):
+        from trendvn_worker.ui.cards import _destination_line
+        from trendvn_worker.ui.view import View
+
+        self.s.update_account("main", {"topics": ["music"]})
+        self.s.add_account({"username": "meo", "id": "pets", "topics": ["pets"]})
+        view = View(dict(self.s.dashboard_data(), ready=[]), "csrf")
+        line = _destination_line(view, {"topic": "gaming"})
+        self.assertIn("chưa có tài khoản nào nhận", line)
+        self.assertIn("@" + self.s.default_account()["username"], line)
+        self.assertIn("lịch tự động đăng lên", _destination_line(view, {"topic": "pets"}))
+        both = View(dict(self.s.dashboard_data(), ready=[]), "csrf")
+        self.s.update_account("main", {"topics": ["pets"]})
+        shared = _destination_line(View(dict(self.s.dashboard_data(), ready=[]), "csrf"), {"topic": "pets"})
+        self.assertIn("chọn một trong", shared)
+        self.assertIn("@meo", shared)
+        del both

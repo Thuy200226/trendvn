@@ -58,7 +58,7 @@ if [ -f "$TMP/n8n_data.tgz" ]; then
 fi
 if [ -f "$TMP/tiktok_session.tgz" ]; then
   bash scripts/agent.sh stop >/dev/null 2>&1 || true
-  mkdir -p data/agent/profiles; rm -rf data/agent/profiles/publisher       # replace, do not mix with the current Chrome profile
+  mkdir -p data/agent/profiles; rm -rf data/agent/profiles/publisher data/agent/profiles/publisher-*   # replace, do not mix with the current Chrome profiles
   tar xzf "$TMP/tiktok_session.tgz" -C data/agent/profiles
 fi
 # The restored n8n data remembers which schedules were ON. If the machine that made the backup still runs, two machines would post to

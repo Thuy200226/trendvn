@@ -120,6 +120,7 @@ class ReportingMixin:
         discovery_beat = cfg.get("hb_discovery") or {}
         publisher_beat = cfg.get("hb_publisher") or {}
         accounts = self._account_overview(cfg, publisher_beat)
+        wanted = self.wanted_topics()
         return {
             "project": "TrendVN",
             "target": cfg["target"],
@@ -131,7 +132,8 @@ class ReportingMixin:
             "daily_limit": sum(a["daily_limit"] for a in accounts if a["enabled"]) or cfg["daily_limit"],
             "published_today": self.published_today(),
             "accounts": accounts,
-            "wanted_topics": self.wanted_topics(),
+            "wanted_topics": wanted,
+            "backlog": self._backlog(counts, wanted),
             "discovery": self.component_state("discovery", cfg),
             "publisher": self.component_state("publisher", cfg),
             "discovery_at": discovery_beat.get("at"),
@@ -171,3 +173,13 @@ class ReportingMixin:
                 }
             )
         return overview
+
+    def _backlog(self, counts, wanted):
+        """Videos that still have somewhere to go: waiting to be processed, or rendered and takeable by some account. A rendered video
+        whose topic no account takes does not count, or it would keep the collector from fetching anything new."""
+        marks = ",".join("?" * len(wanted)) or "NULL"
+        with self.connect() as db:
+            stuck = db.execute(
+                "SELECT count(*) FROM jobs WHERE state='ready' AND topic IS NOT NULL AND topic NOT IN (%s)" % marks, tuple(wanted)
+            ).fetchone()[0]
+        return sum(counts.get(k, 0) for k in ("queued", "processing", "ready")) - stuck

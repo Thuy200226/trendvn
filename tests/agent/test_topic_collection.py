@@ -1,6 +1,7 @@
 """Collecting by topic: which categories are read, how a scan is reported, and which candidates are downloaded."""
 
 import inspect
+import json
 import unittest
 from unittest import mock
 
@@ -57,6 +58,18 @@ class DouyinTabsTests(unittest.TestCase):
         seen = {t for hour in range(len(every)) for t in douyin.tabs_this_scan(every, now=hour * 10800)}
         self.assertEqual(seen, set(every))  # every topic gets its turn
 
+    def test_tab_ids_belong_to_known_tabs_and_name_the_stream(self):
+        self.assertEqual(set(douyin.TAG_IDS), set(douyin.TABS))
+        self.assertEqual(len(set(douyin.TAG_IDS.values())), len(douyin.TAG_IDS))
+        names = {"jingxuan", "jingxuan_pets", "jingxuan_food"}
+        url = (
+            "https://www.douyin.com/aweme/v2/web/module/feed/?module_id=3003101&count=20&refresh_index=1&tag_id=%s" % douyin.TAG_IDS["pets"]
+        )
+        self.assertEqual(douyin.stream_of(url, names), "jingxuan_pets")
+        self.assertIsNone(douyin.stream_of(url.replace(douyin.TAG_IDS["pets"], "999"), names))  # an id we do not know
+        self.assertIsNone(douyin.stream_of(url, {"jingxuan"}))  # a tab that is not being read in this scan
+        self.assertIsNone(douyin.stream_of("https://www.douyin.com/aweme/v2/web/module/feed/?count=20", names))
+
     def test_the_scan_has_the_general_feed_plus_one_stream_per_wanted_tab(self):
         def fake(ctx, url, match, parse, streams, **kw):
             self.assertEqual([name for name, _ in streams], ["jingxuan", "jingxuan_pets", "jingxuan_food"])
@@ -94,6 +107,22 @@ class TikTokChipsTests(unittest.TestCase):
         self.assertEqual(found["explore_food"], [])
         self.assertEqual(found["explore_pets"][0]["topic"], "pets")
         self.assertEqual(len(calls), 3)
+
+    def test_with_more_chips_wanted_than_the_limit_they_take_turns(self):
+        scanned = []
+
+        def fake(ctx, url, match, parse, before_scroll=None, **kw):
+            return []
+
+        every = list(tiktok.CHIPS)
+        with mock.patch.object(tiktok, "capture", fake):
+            first = sorted(tiktok.scan_tiktok(None, every))
+        self.assertEqual(len(first), tiktok.MAX_CHIPS)
+        with mock.patch("trendvn_agent.collector.rules.time.time", lambda: 10800):
+            with mock.patch.object(tiktok, "capture", fake):
+                later = sorted(tiktok.scan_tiktok(None, every))
+        self.assertNotEqual(first, later)
+        del scanned
 
     def test_without_wishes_a_few_default_chips_are_read(self):
         with mock.patch.object(tiktok, "capture", lambda *a, **k: []):
@@ -148,7 +177,7 @@ class FakePage:
 
 
 class CaptureStreamsTests(unittest.TestCase):
-    def run_streams(self, script, enters):
+    def run_streams(self, script, enters, **kw):
         import json
 
         page = FakePage([[json.dumps(p).encode() for p in phase] for phase in script])
@@ -156,7 +185,7 @@ class CaptureStreamsTests(unittest.TestCase):
         ctx.new_page.return_value = page
         streams = [("general", None)] + [(name, enter) for name, enter in enters]
         parse = lambda payload: [{"source_id": i} for i in payload["ids"]]  # noqa: E731
-        result = capture.capture_streams(ctx, "https://x", lambda u: "feed" in u, parse, streams, scrolls=1)
+        result = capture.capture_streams(ctx, "https://x", lambda u: "feed" in u, parse, streams, scrolls=1, quiet_ms=0, **kw)
         return result, page
 
     def test_each_category_gets_only_the_videos_loaded_after_its_click(self):
@@ -176,6 +205,74 @@ class CaptureStreamsTests(unittest.TestCase):
 
         result, _ = self.run_streams([[{"ids": ["g1"]}], [{"ids": ["b1"]}]], [("a", broken), ("b", lambda page: page.advance())])
         self.assertEqual((result["a"], [i["source_id"] for i in result["b"]]), ([], ["b1"]))
+
+    def test_a_response_is_filed_by_the_category_in_its_request_however_late_it_arrives(self):
+        import json
+
+        # the pets answer comes in after the click on "food": by the tag in its URL it still belongs to pets
+        page = FakePage([])
+        ctx = mock.MagicMock()
+        ctx.new_page.return_value = page
+
+        def payload(ids):
+            return json.dumps({"ids": ids}).encode()
+
+        def respond(url, ids):
+            response = mock.MagicMock(status=200, url=url, headers={"content-type": "application/json"})
+            response.body.return_value = payload(ids)
+            page.handler(response)
+
+        def enter_pets(p):
+            respond("https://x/feed?tag_id=2", ["p1"])
+
+        def enter_food(p):
+            respond("https://x/feed?tag_id=2", ["p2-late"])  # arrives while "food" is the stream being read
+            respond("https://x/feed?tag_id=3", ["f1"])
+
+        streams = [("general", None), ("pets", enter_pets), ("food", enter_food)]
+        route = lambda url: {"2": "pets", "3": "food"}.get(url.rsplit("=", 1)[1])  # noqa: E731
+        result = capture.capture_streams(
+            ctx,
+            "https://x",
+            lambda u: "feed" in u,
+            lambda d: [{"source_id": i} for i in d["ids"]],
+            streams,
+            route=route,
+            quiet_ms=0,
+            scrolls=1,
+        )
+        self.assertEqual([i["source_id"] for i in result["pets"]], ["p1", "p2-late"])
+        self.assertEqual([i["source_id"] for i in result["food"]], ["f1"])
+
+    def test_a_failure_while_reading_one_category_keeps_everything_read_before_it(self):
+        def breaks_the_page(page):
+            page.advance()
+            raise RuntimeError("page crashed")
+
+        result, _ = self.run_streams([[{"ids": ["g1"]}], [{"ids": ["a1"]}]], [("a", breaks_the_page), ("b", lambda page: page.advance())])
+        self.assertEqual([i["source_id"] for i in result["general"]], ["g1"])
+        self.assertEqual([i["source_id"] for i in result["a"]], ["a1"])  # what arrived before the crash is kept
+
+    def test_an_empty_load_is_retried_with_a_fresh_page_then_reported(self):
+        pages = [FakePage([[]]), FakePage([[json.dumps({"ids": ["g1"]}).encode()]])]
+        ctx = mock.MagicMock()
+        ctx.new_page.side_effect = pages
+        with mock.patch.object(capture.time, "sleep", lambda s: None):
+            result = capture.capture_streams(
+                ctx,
+                "https://x",
+                lambda u: "feed" in u,
+                lambda d: [{"source_id": i} for i in d["ids"]],
+                [("g", None)],
+                quiet_ms=0,
+                scrolls=1,
+            )
+        self.assertEqual([i["source_id"] for i in result["g"]], ["g1"])
+        empty = mock.MagicMock()
+        empty.new_page.side_effect = lambda: FakePage([[]])
+        with mock.patch.object(capture.time, "sleep", lambda s: None), self.assertRaises(capture.Blocked):
+            capture.capture_streams(empty, "https://x", lambda u: "feed" in u, lambda d: [], [("g", None)], quiet_ms=0, scrolls=1)
+        self.assertEqual(empty.new_page.call_count, 3)
 
 
 class RunPlatformTopicTests(StoreCase):

@@ -42,6 +42,21 @@ class TopicMenuTests(unittest.TestCase):
         self.assertEqual(topics.guess_topics("哈哈哈"), [])
         self.assertEqual(topics.guess_topics(None), [])
 
+    def test_short_latin_keywords_match_whole_words_only(self):
+        for text in (
+            "Best location ever",
+            "the competition",
+            "Chăn nuôi gà",
+            "Tăng cân nhanh",
+            "deliver the parcel",
+            "Discover my strong voice",
+        ):
+            self.assertEqual(topics.guess_topics(text), [], text)
+        self.assertEqual(topics.guess_topics("My cat sleeps")[:1], ["pets"])
+        self.assertEqual(topics.guess_topics("Nấu ăn ngon")[:1], ["food"])
+        self.assertIn("lifestyle", topics.guess_topics("#vlog日常 下班后"))  # a hashtag glued to Chinese text still counts
+        self.assertEqual(topics.guess_topics("LIVE concert")[:1], ["music"])
+
     def test_the_sources_own_category_wins_unless_the_title_clearly_disagrees(self):
         self.assertEqual(topics.topic_hint("music", "今天的生活"), "music")
         self.assertEqual(topics.topic_hint("music", "猫猫狗狗宠物日常"), "pets")  # two hits for pets

@@ -3,10 +3,9 @@
 import re
 
 from .. import notify
-from ..pipeline import process_one
+from ..pipeline import process_many
 
 JOB_ID = re.compile(r"[0-9a-f]{32}")
-TERMINAL_STATUSES = ("disabled", "blocked", "idle", "rate_limited")
 PROCESSED_STATUSES = ("ready", "awaiting_approval", "needs_review")
 MAX_PROCESS_BATCH = 8
 OK = {"ok": True}
@@ -35,6 +34,8 @@ def handle(app, path, payload):
     function = ROUTES.get(path)
     if function is None:
         raise NotFound(path)
+    if not isinstance(payload, dict):
+        raise ValueError("Cần một đối tượng JSON")
     return function(app, payload)
 
 
@@ -84,12 +85,7 @@ def process(app, payload):
         raise Busy("Worker busy; do not run concurrently")
     try:
         count = max(1, min(int(payload.get("max", 1)), MAX_PROCESS_BATCH))
-        results = []
-        for _ in range(count):
-            result = process_one(app.store)
-            results.append(result)
-            if result.get("status") in TERMINAL_STATUSES:
-                break
+        results = process_many(app.store, count)
     finally:
         app.process_lock.release()
     app.log("process: " + ", ".join("%s" % r.get("status") for r in results))
@@ -151,6 +147,12 @@ def add_account(app, payload):
 @route("/api/accounts/update")
 def update_account(app, payload):
     return app.store.update_account(str(payload.get("id", "")), {k: v for k, v in payload.items() if k != "id"})
+
+
+@route("/api/accounts/login")
+def account_login(app, payload):
+    app.store.set_account_login(str(payload.get("id", "")), bool(payload.get("ok")))
+    return OK
 
 
 @route("/api/accounts/delete")

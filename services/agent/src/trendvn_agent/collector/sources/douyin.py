@@ -1,9 +1,10 @@
 """Douyin (CN): the "jingxuan" feed."""
 
-import time
+import re
 
 from ..capture import Blocked, capture_streams
 from ..normalize import to_int
+from ..rules import rotate
 
 
 def parse_douyin(payload):
@@ -50,16 +51,39 @@ TABS = {
     "lifestyle": "生活vlog",
     "knowledge": "知识",
 }
+# The id the page puts in the feed request of each tab (`...module/feed/?module_id=3003101&tag_id=300209`): it tells exactly which tab a
+# response belongs to, however late it arrives. Measured on the live site; an id the site changes only loses that exactness.
+TAG_IDS = {
+    "music": "300209",
+    "comedy": "300214",
+    "pets": "300220",
+    "food": "300204",
+    "travel": "300221",
+    "family": "300217",
+    "beauty": "300222",
+    "sports": "300207",
+    "gaming": "300205",
+    "anime": "300206",
+    "movies": "300215",
+    "lifestyle": "300216",
+    "knowledge": "300213",
+}
 MAX_TABS = 6  # tabs read per scan; with more topics wanted they take turns, so a scan stays about a minute longer, not ten
 
 
 def tabs_this_scan(topics, now=None):
-    """The wanted topics that have a tab, at most MAX_TABS of them, rotating with the clock (every 3 hours) so all get their turn."""
-    available = [t for t in topics if t in TABS]
-    if len(available) <= MAX_TABS:
-        return available
-    start = int((now if now is not None else time.time()) // 10800) % len(available)
-    return [available[(start + i) % len(available)] for i in range(MAX_TABS)]
+    """The wanted topics that have a tab, at most MAX_TABS of them, rotating with the clock so all get their turn."""
+    return rotate([t for t in topics if t in TABS], MAX_TABS, now)
+
+
+def stream_of(url, streams):
+    """The stream a feed response belongs to according to the tab id in its request, or None when the id is missing or unknown."""
+    found = re.search(r"[?&]tag_id=(\d+)", url)
+    if found:
+        for topic, tag in TAG_IDS.items():
+            if tag == found.group(1) and "jingxuan_" + topic in streams:
+                return "jingxuan_" + topic
+    return None
 
 
 def click_tab(label):
@@ -80,12 +104,14 @@ def scan_douyin(ctx, topics=()):
     """The featured feed, plus one stream per wanted topic that has a tab (all from a single page load)."""
     wanted = tabs_this_scan(topics)
     streams = [("jingxuan", None)] + [("jingxuan_" + t, click_tab(TABS[t])) for t in wanted]
+    names = {name for name, _ in streams}
     found = capture_streams(
         ctx,
         "https://www.douyin.com/jingxuan",
         lambda u: "/aweme/v2/web/module/feed" in u or "/aweme/v1/web/tab/feed" in u,
         parse_douyin,
         streams,
+        route=lambda u: stream_of(u, names),
     )
     if not found["jingxuan"] and not any(found.values()):
         raise Blocked("no videos returned")

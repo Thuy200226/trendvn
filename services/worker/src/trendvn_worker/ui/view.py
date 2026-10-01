@@ -30,10 +30,18 @@ class View:
         self.waiting = self.counts.get("queued", 0) + self.counts.get("processing", 0)
         self.n8n_url = data.get("n8n_url") or "http://localhost:5680"
 
+    def takers(self, topic):
+        """The enabled accounts that take a video of this topic (a video without a topic goes anywhere)."""
+        return [a for a in self.d.get("accounts", []) if a["enabled"] and (topic is None or topic in a["topics"])]
+
     def destination(self, topic):
-        """The account a hand-picked video of this topic goes to (the fitting one with the fewest posts today), or None if none takes it."""
-        fitting = [a for a in self.d.get("accounts", []) if a["enabled"] and (topic is None or topic in a["topics"])]
-        return min(fitting, key=lambda a: a["published_today"], default=None)
+        """Where the 'Đăng ngay' button sends a video of this topic. Same rule as the worker: of the accounts that take the topic the one
+        with the fewest posts today, and when none does, the default account (the first enabled one)."""
+        takers = self.takers(topic)
+        if takers:
+            return min(takers, key=lambda a: a["published_today"])
+        enabled = [a for a in self.d.get("accounts", []) if a["enabled"]]
+        return enabled[0] if enabled else None
 
     @property
     def clock(self):

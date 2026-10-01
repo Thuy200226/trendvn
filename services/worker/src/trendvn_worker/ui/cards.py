@@ -43,15 +43,20 @@ def _score_line(meta, with_views=True):
 
 
 def _destination_line(view, job):
-    """Which topic the video is about and which account it goes to; says so when no account takes the topic."""
+    """Which topic the video is about and which accounts take it; says so when none does."""
     topic = job.get("topic")
     if len(view.d.get("accounts", [])) < 2 and not topic:
         return ""
-    account = view.destination(topic)
     label = topics.label(topic) if topic else "chưa phân loại"
-    if account:
-        return '<div class="muted small">Chủ đề: <b>%s</b> · lịch tự động đăng lên <b>@%s</b></div>' % (E(label), E(account["username"]))
-    default = view.destination(None)
+    takers = view.takers(topic)
+    if takers:
+        names = ", ".join("@" + a["username"] for a in takers)
+        return '<div class="muted small">Chủ đề: <b>%s</b> · %s <b>%s</b></div>' % (
+            E(label),
+            "lịch tự động đăng lên" if len(takers) == 1 else "lịch tự động chọn một trong",
+            E(names),
+        )
+    default = view.destination(topic)
     return (
         '<div class="note warn small">Chủ đề <b>%s</b> chưa có tài khoản nào nhận. Lịch tự động sẽ không đăng; nút Đăng ngay dùng @%s.</div>'
         % (
@@ -64,7 +69,7 @@ def _destination_line(view, job):
 def _confirm_text(view, job):
     """The question asked before 'Đăng ngay': where it goes, how visible, and any rule the click overrides."""
     d, cfg = view.d, view.cfg
-    account = view.destination(job.get("topic")) or view.destination(None)
+    account = view.destination(job.get("topic"))
     warnings = []
     if d["published_today"] >= d["daily_limit"]:
         warnings.append("Hôm nay đã đăng đủ %d/%d bài, bạn vẫn muốn đăng thêm?" % (d["published_today"], d["daily_limit"]))

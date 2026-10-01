@@ -8,7 +8,7 @@ from ..config import RUNTIME
 from ..log import log
 from .challenge import Challenge, wait_for_upload_ui
 from .constants import HEADED, POST_LABELS, UPLOAD_URL
-from .profile import logged_in, own_descriptions, profile_name
+from .profile import logged_in, own_descriptions, profile_name, wrong_account
 from .screenshots import export_shot, shot
 from .studio import dismiss_popups, set_caption, set_visibility, studio_shows, wait_uploaded
 from .text import norm, sha256
@@ -19,7 +19,7 @@ PROFILE_CHECKS = 4  # how many times the public profile is read after posting, 4
 
 
 def publish_one(job, dry_run=True):
-    """Never raises. Returns (outcome, url, reason) with outcome in published|failed|deferred|challenge|unknown|duplicate|dry_run.
+    """Never raises. Returns (outcome, url, reason) with outcome in published|failed|deferred|challenge|signed_out|unknown|duplicate|dry_run.
     Any error before the Post button is clicked is 'failed' (nothing was posted); after the click it is always 'unknown'."""
     state = {"clicked": False}
     try:
@@ -39,7 +39,10 @@ def _publish_one(job, dry_run, state):
         return "failed", "", "Hash video thay đổi sau khi dựng; không đăng"
     with chrome(profile_name(job.get("account")), locale="vi-VN", headless=not HEADED, viewport=(1280, 1000)) as ctx:
         if not logged_in(ctx):
-            return "failed", "", "Chưa đăng nhập TikTok cho @%s trong hồ sơ riêng" % job["target"]
+            return "signed_out", "", "Chưa đăng nhập TikTok cho @%s trong hồ sơ riêng" % job["target"]
+        mismatch = wrong_account(ctx, job["target"])
+        if mismatch:
+            return "signed_out", "", mismatch
         existing = own_descriptions(ctx, job["target"])
         refusal = _duplicate_refusal(job, existing)
         if refusal:

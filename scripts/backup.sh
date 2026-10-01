@@ -49,7 +49,14 @@ trap 'restart_n8n; rm -rf "$TMP"' EXIT
 if docker run --rm --user 0 --entrypoint tar -v "${PROJ}_n8n_data":/d:ro -v "$TMP":/out "$IMG" czf /out/n8n_data.tgz -C /d . 2>/dev/null; then :
 else rm -f "$TMP/n8n_data.tgz"; warn "không sao lưu được volume n8n (n8n chưa từng chạy?); bản sao lưu này KHÔNG có dữ liệu n8n"; fi
 restart_n8n
-if [ "$WITH_SESSION" = 1 ] && [ -d data/agent/profiles/publisher ]; then tar czf "$TMP/tiktok_session.tgz" -C data/agent/profiles publisher; fi
+# one Chrome profile per TikTok account: `publisher` (the main account) and `publisher-<id>` (the others)
+if [ "$WITH_SESSION" = 1 ]; then
+  profiles=()
+  for d in data/agent/profiles/publisher data/agent/profiles/publisher-*; do
+    if [ -d "$d" ]; then profiles+=("$(basename "$d")"); fi
+  done
+  if [ "${#profiles[@]}" -gt 0 ]; then tar czf "$TMP/tiktok_session.tgz" -C data/agent/profiles "${profiles[@]}"; fi
+fi
 OUT="data/backups/trendvn-$STAMP.tar.gz"
 tar czf "$OUT" -C "$TMP" .
 chmod 600 "$OUT"

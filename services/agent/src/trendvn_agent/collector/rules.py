@@ -11,6 +11,14 @@ TOPIC_FACTOR = 0.15
 TOPIC_AGE_FACTOR = 4
 
 
+def rotate(available, limit, now=None):
+    """At most `limit` of `available`, rotating with the clock (every 3 hours) so that, scan after scan, every one gets its turn."""
+    if len(available) <= limit:
+        return list(available)
+    start = int((now if now is not None else time.time()) // 10800) % len(available)
+    return [available[(start + i) % len(available)] for i in range(limit)]
+
+
 def age_hours(item, now=None):
     created = item.get("created")
     return max(0.0, ((now or time.time()) - created) / 3600) if created else None

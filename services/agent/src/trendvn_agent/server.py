@@ -44,7 +44,7 @@ def session(payload):
     accounts = [(a["id"], a["username"]) for a in worker_get("/api/status").get("accounts", []) if a["enabled"]]
     results = {}
     for account, username in accounts or [("main", "")]:
-        results[account] = (username, publisher.session_status(account=account))
+        results[account] = (username, publisher.session_status(account=account, expected=username or None))
     logins = {account: bool(status.get("logged_in")) for account, (_, status) in results.items()}
     missing = ["@%s" % (username or account) for account, (username, _) in results.items() if not logins[account]]
     ok = not missing

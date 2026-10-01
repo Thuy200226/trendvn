@@ -61,6 +61,8 @@ class StoreBase:
         if clean.get("processing_enabled") and not (self.root / "gemini.key").exists():
             raise ValueError("Gemini key is required to enable processing")
         target = clean.pop("target", None)  # renames the default account instead of being stored
+        if target is not None:
+            self.set_default_username(target)  # first: a name another account already uses must not leave the other settings half saved
         with self.transaction() as db:
             for key, value in clean.items():
                 if key in PARTIAL_DICT_SETTINGS:  # a partial form must never erase the other sources' thresholds
@@ -70,7 +72,6 @@ class StoreBase:
                 db.execute("INSERT OR REPLACE INTO settings VALUES (?, ?)", (key, json.dumps(value)))
             self.event(db, "", "settings", ", ".join(sorted(clean)))
         if target is not None:
-            self.set_default_username(target)
             clean["target"] = target
         return clean
 

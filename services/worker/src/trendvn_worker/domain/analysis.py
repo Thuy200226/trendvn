@@ -57,7 +57,7 @@ def validate_analysis(a, duration, confidence=0.90, strict=False, lenient=False,
     if not lenient and a.get("sensitive") is True:
         raise ValueError("Sensitive content (politics, violence, tragedy, adult or medical claims) needs review")
     if not lenient and a.get("topic") == OTHER:
-        raise ValueError("Off-topic for an entertainment and music channel")
+        raise ValueError("Off-topic: not entertaining content")
     if not lenient and accepted_topics is not None and a.get("topic") in TOPIC_IDS and a["topic"] not in accepted_topics:
         raise ValueError("Chủ đề «%s» chưa có tài khoản nào nhận" % label(a["topic"]))
     segments = a.get("segments", [])

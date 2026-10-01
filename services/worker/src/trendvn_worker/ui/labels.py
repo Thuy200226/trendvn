@@ -67,7 +67,7 @@ EVENT_LABELS = {
 REASONS = (
     ("Audio needs review", "Gemini chưa đủ chắc chắn về loại âm thanh"),
     ("Sensitive content", "Nội dung nhạy cảm (chính trị, bạo lực, bi kịch, y tế...)"),
-    ("Off-topic", "Lệch chủ đề giải trí và âm nhạc"),
+    ("Off-topic", "Nội dung không thuộc loại giải trí"),
     ("Possible visual duplicate", "Có thể trùng với một video đã xử lý"),
     ("Video duration outside", "Thời lượng ngoài giới hạn cho phép"),
     ("Speech detected without transcript", "Có lời nói nhưng không chép được lời"),

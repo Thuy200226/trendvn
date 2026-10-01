@@ -1,11 +1,20 @@
 """What the schedule and the dashboard ask the publisher to do: post, rehearse, read stats, verify."""
 
 from ..browser import chrome
+from ..log import log
 from ..worker_client import worker, worker_get
 from .constants import HEADED
 from .post import publish_one
 from .profile import own_descriptions, profile_name
 from .text import norm
+
+
+def report_login(account, ok):
+    """Tell the worker whether the browser is signed in to an account. Never raises: this is bookkeeping, not part of a post."""
+    try:
+        worker("/api/accounts/login", {"id": account or "main", "ok": bool(ok)})
+    except Exception as error:
+        log("could not report the login state: " + str(error)[:120])
 
 
 def run_publish(job_id=None):
@@ -22,9 +31,12 @@ def run_publish(job_id=None):
         "unknown": "unknown",
         "deferred": "deferred",
         "challenge": "deferred",
+        "signed_out": "deferred",  # not the video's fault either: nothing was posted
     }.get(outcome, "failed")
     if outcome == "challenge":
         worker("/api/publisher/challenge", {"active": True})
+    if outcome == "signed_out":
+        report_login(claim.get("account"), False)  # the schedule leaves this account alone until it is signed in again
     worker(
         "/api/publish/finish",
         {"id": claim["id"], "lease": claim["lease"], "outcome": finish, "url": url if url.startswith("https://") else "", "reason": reason},

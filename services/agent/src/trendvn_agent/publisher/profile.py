@@ -23,6 +23,39 @@ def logged_in(ctx):
     return any(c["name"] == "sessionid" and "tiktok.com" in c["domain"] for c in ctx.cookies())
 
 
+WHO_AM_I = """() => {
+  const el = document.getElementById('__UNIVERSAL_DATA_FOR_REHYDRATION__');
+  if (!el) return null;
+  try {
+    const user = JSON.parse(el.textContent).__DEFAULT_SCOPE__['webapp.app-context'].user;
+    return user && user.uniqueId ? String(user.uniqueId) : null;
+  } catch (e) { return null; }
+}"""
+
+
+def signed_in_as(ctx):
+    """The TikTok handle this browser profile is signed in as, read from the page's own data; None when it cannot be read. A profile
+    that is signed in to a different account than the one a video is meant for must never post it."""
+    page = ctx.new_page()
+    try:
+        page.goto("https://www.tiktok.com/", wait_until="domcontentloaded", timeout=45000)
+        page.wait_for_timeout(3000)
+        return page.evaluate(WHO_AM_I)
+    except Exception as e:
+        log("could not read the signed-in account: " + str(e)[:120])
+        return None
+    finally:
+        page.close()
+
+
+def wrong_account(ctx, expected):
+    """A Vietnamese message when the profile is signed in as someone other than `expected`, else None (including when unreadable)."""
+    who = signed_in_as(ctx)
+    if who and who.lower() != str(expected).lower():
+        return "Hồ sơ Chrome đang đăng nhập @%s, không phải @%s. Đăng nhập lại đúng tài khoản." % (who, expected)
+    return None
+
+
 def own_descriptions(ctx, target):
     """Captions already on the account (public profile), used to avoid re-posting the same idea."""
     page = ctx.new_page()

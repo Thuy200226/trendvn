@@ -7,7 +7,13 @@ from ..log import log
 from ..worker_client import worker
 from .challenge import has_challenge
 from .constants import HEADED, LOGIN_URL, UPLOAD_URL
-from .profile import logged_in, profile_name
+from .profile import logged_in, profile_name, wrong_account
+
+
+def _report(account, ok):
+    from .jobs import report_login
+
+    report_login(account, ok)
 
 
 def _account_flag(account):
@@ -25,6 +31,7 @@ def login(minutes=10, account=None):
             if logged_in(ctx):
                 page.wait_for_timeout(4000)
                 log("Đã có phiên đăng nhập; phiên chỉ lưu trong hồ sơ trình duyệt riêng.")
+                _report(account, True)
                 return True
             page.wait_for_timeout(2000)
     return False
@@ -50,11 +57,16 @@ def trust(minutes=15, account=None):
     return False
 
 
-def session_status(deep=False, account=None):
-    """Shallow (default, used by the schedule): is there a login cookie? No window opens. Deep (CLI `status`): load Studio and confirm."""
+def session_status(deep=False, account=None, expected=None):
+    """Shallow (default, used by the schedule): is there a login cookie? No window opens. Deep (CLI `status`): load Studio and confirm.
+    expected: the TikTok handle the profile must be signed in as; a profile signed in as somebody else is reported as not signed in."""
     with chrome(profile_name(account), locale="vi-VN", headless=not (deep and HEADED)) as ctx:
         if not logged_in(ctx):
             return {"logged_in": False, "reason": "Chưa đăng nhập. Chạy: ./trendvn tiktok login" + _account_flag(account)}
+        if expected:
+            mismatch = wrong_account(ctx, expected)
+            if mismatch:
+                return {"logged_in": False, "reason": mismatch}
         if not deep:
             return {"logged_in": True}
         page = ctx.new_page()

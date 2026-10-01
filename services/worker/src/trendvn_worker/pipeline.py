@@ -1,6 +1,8 @@
 """The processing pipeline: one queued video in, one rendered, checked, captioned video (or a reason) out."""
 
 import json
+import os
+import threading
 from pathlib import Path
 
 from .ai.analyzer import analyze
@@ -16,6 +18,43 @@ from .media.geometry import display_size, layout
 from .media.render import covered_hard_subtitles, make_poster, qc, render
 
 REASON_LIMIT = 700
+TERMINAL_STATUSES = ("disabled", "blocked", "idle", "rate_limited")  # after one of these there is nothing more to do right now
+# Videos processed at once. A video spends most of its time waiting for Gemini (about two thirds), so a second one in flight nearly doubles
+# throughput; more than a few would only fight over the CPU for ffmpeg. TRENDVN_PROCESS_PARALLEL=1 gives the old one-at-a-time behaviour.
+PARALLEL = max(1, min(4, int(os.environ.get("TRENDVN_PROCESS_PARALLEL", "2") or 2)))
+
+
+def process_many(store, count, parallel=None, one=None):
+    """Process up to `count` queued videos, `parallel` at a time (default PARALLEL). Each thread claims the next video when it is free;
+    once any run reports a terminal status (disabled, blocked, idle, rate limited) nothing new is started. Returns the results in the
+    order they finished; a run that raises is reported as an error instead of stopping the others."""
+    one = one or process_one
+    threads = max(1, min(parallel or PARALLEL, count))
+    results, budget, stop, lock = [], [count], threading.Event(), threading.Lock()
+
+    def work():
+        while not stop.is_set():
+            with lock:
+                if budget[0] <= 0:
+                    return
+                budget[0] -= 1
+            try:
+                result = one(store)
+            except Exception as error:  # process_one answers instead of raising; this is a safety net, not a code path
+                result = {"status": "error", "reason": str(error)[:REASON_LIMIT]}
+            with lock:
+                results.append(result)
+            if result.get("status") in TERMINAL_STATUSES:
+                stop.set()
+
+    if count <= 0:
+        return []
+    workers = [threading.Thread(target=work, name="process-%d" % n, daemon=True) for n in range(threads)]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+    return results
 
 
 def process_one(store):

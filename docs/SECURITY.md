@@ -48,7 +48,7 @@
 | `N8N_ENCRYPTION_KEY`, `TRENDVN_TOKEN`, proxy, token thông báo | `.env` (0600, trong `.gitignore`) | Sao lưu cùng dữ liệu; không đưa lên git |
 | Khóa Gemini | `data/worker/gemini.key` (0600) | |
 | Kênh thông báo | `data/worker/notify.json` (0600) | |
-| Phiên TikTok | `data/agent/profiles/publisher` | Ai có thư mục này là đăng nhập được kênh của bạn. Không sao lưu mặc định (`--with-session` mới kèm) |
+| Phiên TikTok | `data/agent/profiles/publisher` (tài khoản `main`) và `publisher-<mã>` (mỗi tài khoản thêm một thư mục) | Ai có thư mục này là đăng nhập được kênh của bạn. Không sao lưu mặc định (`--with-session` mới kèm) |
 | Bản sao lưu | `data/backups/*.tar.gz` (0600) | Chứa bí mật; mã hóa hoặc cất nơi an toàn |
 
 Nếu nghi ngờ lộ `TRENDVN_TOKEN`: sửa giá trị trong `.env`, chạy `./trendvn up`, `./trendvn n8n import` (cập nhật credential n8n) rồi `./trendvn agent restart`.

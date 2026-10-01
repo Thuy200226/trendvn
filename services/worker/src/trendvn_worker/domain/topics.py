@@ -104,7 +104,25 @@ TOPIC_LABEL = {t.id: t.vi for t in TOPICS}
 BY_ID = {t.id: t for t in TOPICS}
 # what the single account of 1.0 - 1.3 accepted, spelled out in the finer topics (it used to be "entertainment" and "music")
 LEGACY_TOPICS = ("entertainment", "music", "comedy", "pets", "family", "lifestyle")
-_KEYWORDS = {t.id: re.compile(t.keywords, re.I) for t in TOPICS if t.keywords}
+_CJK = re.compile("[\u3400-\u9fff]")
+_LETTER = "A-Za-z0-9\u00c0-\u024f\u1e00-\u1eff"  # Latin and Vietnamese letters; Chinese characters are deliberately not "letters" here
+
+
+def _compile(keywords):
+    """Chinese keywords match anywhere (Chinese has no spaces); Latin and Vietnamese ones only as whole words, so that 'cat' is not
+    found in 'location', 'live' in 'deliver' or 'ăn' in 'Chăn nuôi'. Hashtags glued to Chinese text ('#vlog日常') still match."""
+    words = keywords.split("|")
+    chinese = [w for w in words if _CJK.search(w)]
+    others = [w for w in words if not _CJK.search(w)]
+    parts = []
+    if chinese:
+        parts.append("(?:%s)" % "|".join(chinese))
+    if others:
+        parts.append("(?<![%s])(?:%s)(?![%s])" % (_LETTER, "|".join(others), _LETTER))
+    return re.compile("|".join(parts), re.I)
+
+
+_KEYWORDS = {t.id: _compile(t.keywords) for t in TOPICS if t.keywords}
 
 
 def label(topic):

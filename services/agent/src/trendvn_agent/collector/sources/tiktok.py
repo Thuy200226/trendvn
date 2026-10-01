@@ -5,6 +5,7 @@ import re
 from ...log import log
 from ..capture import Blocked, NotThere, capture
 from ..normalize import to_int
+from ..rules import rotate
 
 
 def parse_tiktok(payload):
@@ -68,7 +69,7 @@ MAX_CHIPS = 5
 
 def scan_tiktok(ctx, topics=()):
     """One stream per wanted topic that has a chip (the default few when no account has wishes), each from a fresh page load."""
-    wanted = [t for t in topics if t in CHIPS][:MAX_CHIPS] or list(DEFAULT_TOPICS)
+    wanted = rotate([t for t in topics if t in CHIPS], MAX_CHIPS) or list(DEFAULT_TOPICS)
     out = {}
     for topic in wanted:
         try:

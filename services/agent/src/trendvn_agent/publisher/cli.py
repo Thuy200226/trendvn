@@ -23,15 +23,32 @@ def _minutes(argv, default):
     return int(argv[1]) if len(argv) > 1 else default
 
 
+def _account_username(account):
+    """(known, username): whether the worker knows this account id, and its TikTok name. If the worker cannot be asked, anything goes."""
+    from ..worker_client import worker_get
+
+    try:
+        accounts = worker_get("/api/status").get("accounts", [])
+    except Exception:
+        return True, None
+    for entry in accounts:
+        if entry["id"] == (account or "main"):
+            return True, entry["username"]
+    return False, None
+
+
 def main(argv=None):
     argv, account = _split(list(sys.argv[1:] if argv is None else argv))
     command = argv[0] if argv else "status"
+    known, username = _account_username(account) if command in ("login", "trust", "status") else (True, None)
+    if not known:
+        raise SystemExit("Không có tài khoản có mã %r. Thêm nó ở bảng điều khiển → Thêm → Tài khoản TikTok và chủ đề." % account)
     if command == "login":
         print("OK" if login(_minutes(argv, 10), account) else "TIMEOUT")
     elif command == "trust":
         print("OK" if trust(_minutes(argv, 15), account) else "TIMEOUT")
     elif command == "status":
-        print(json.dumps(session_status(deep=True, account=account), ensure_ascii=False))
+        print(json.dumps(session_status(deep=True, account=account, expected=username), ensure_ascii=False))
     elif command == "dry-run":
         print(json.dumps(dry_run_next(), ensure_ascii=False))
     elif command == "stats":

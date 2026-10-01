@@ -102,7 +102,7 @@ def _account_data(form):
     data["min_gap"] = round(float(gap) * 3600) if gap else None
     data["windows"] = parse_windows(field("post_windows")) if field("post_windows") else None
     data["visibility"] = field("visibility") or None
-    if "enabled" in form:
+    if field("enabled") in ("true", "false"):  # anything else leaves the account as it is
         data["enabled"] = field("enabled") == "true"
     return data
 

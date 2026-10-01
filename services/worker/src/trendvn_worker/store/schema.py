@@ -90,7 +90,17 @@ def _accounts(db):
     )
 
 
-MIGRATIONS = [_baseline, _accounts]
+def _legacy_posts(db):
+    """Version 3: posts made before accounts existed belong to `main`, whatever the default account is today."""
+    row = db.execute("SELECT username FROM accounts WHERE id='main'").fetchone()
+    if row:
+        db.execute(
+            "UPDATE jobs SET account='main',target=COALESCE(target,?) WHERE account IS NULL AND state IN ('publishing','published','publish_unknown')",
+            (row[0],),
+        )
+
+
+MIGRATIONS = [_baseline, _accounts, _legacy_posts]
 
 
 def migrate(db):
