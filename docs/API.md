@@ -9,7 +9,7 @@ Mọi lời gọi `POST` (trừ các form của bảng điều khiển) dùng `A
 | Phương thức, đường dẫn | Xác thực | Trả về |
 |---|---|---|
 | `GET /health` | không | `{ok, project, version}` |
-| `GET /api/status` | token hoặc bảng điều khiển nội bộ | Trạng thái gọn: `counts`, `jobs` (100 mới nhất), `discovery`, `publisher`, `published_today`, `daily_limit`, `thresholds`, `weights`, `unresolved_publishes`... Collector và n8n dùng cái này |
+| `GET /api/status` | token hoặc bảng điều khiển nội bộ | Trạng thái gọn: `counts`, `jobs` (100 mới nhất), `discovery`, `publisher`, `published_today`, `daily_limit` (tổng giới hạn của các tài khoản đang bật), `accounts` (từng tài khoản: `id, username, topics, enabled, daily_limit, published_today, logged_in`...), `wanted_topics` (chủ đề có tài khoản nhận: collector tìm đúng các chủ đề này), `thresholds`, `weights`, `unresolved_publishes`... Collector và n8n dùng cái này |
 | `GET /api/dashboard` | như trên | Toàn bộ dữ liệu bảng điều khiển: `review`, `approval`, `pipeline`, `performance`, `events`, `settings`, `by_platform`... |
 | `GET /` | chỉ `Host` cho phép | Bảng điều khiển HTML |
 | `GET /media/<id>/final`, `/source`, `/media/voice-sample` | chỉ `Host` cho phép | Video/âm thanh, hỗ trợ `Range` |
@@ -18,19 +18,23 @@ Mọi lời gọi `POST` (trừ các form của bảng điều khiển) dùng `A
 
 | Đường dẫn | Nội dung | Ghi chú |
 |---|---|---|
-| `POST /api/ingest` | `{platform, stream, observed_at, items:[{source_id, url, country, title, rank, views, evidence_url, meta}]}` | ≤ 100 mục; lần đầu của mỗi luồng là baseline. Trả `{baseline, new, existing, candidates:[{id, source_id}]}` |
+| `POST /api/ingest` | `{platform, stream, observed_at, topic?, items:[{source_id, url, country, title, rank, views, evidence_url, meta}]}` | ≤ 100 mục; `topic` (không bắt buộc) là danh mục của chính luồng đó (tab Douyin, chip TikTok), một mã trong thực đơn chủ đề; từ đó và từ từ khóa trong tiêu đề worker suy ra gợi ý chủ đề của từng video. Lần đầu của mỗi luồng là baseline. Trả `{baseline, new, existing, candidates:[{id, source_id}]}` |
 | `POST /api/media/pending` | `{limit}` | Ứng viên chưa có video |
 | `POST /api/attach` | `{id, filename}` | Gắn file đã tải trong `data/worker/inbox`; trả `queued` hoặc `duplicate` |
 | `POST /api/media/failed` | `{id, reason}` | Ghi tải lỗi (lần thứ 3 thành `failed`) |
 | `POST /api/process` | `{max}` (1–8) | Xử lý tối đa `max` video liên tiếp; dừng khi `disabled`, `blocked`, `idle`, `rate_limited` |
 | `POST /api/housekeeping` | `{}` | Dọn tác vụ treo |
 | `POST /api/heartbeat` | `{component: discovery\|publisher, ok, detail}` | Cập nhật tình trạng; `detail` dạng object được **gộp** với lần trước |
-| `POST /api/publish/claim` | `{}` | `{status: claimed\|disabled\|blocked\|wait\|limit\|idle, ...}`; khi `claimed` kèm `id, lease, caption, output_file, output_hash, target` |
+| `POST /api/publish/claim` | `{}` | `{status: claimed\|disabled\|blocked\|wait\|limit\|idle, ...}`; khi `claimed` kèm `id, lease, caption, output_file, output_hash, account` (mã tài khoản, agent dùng để mở đúng hồ sơ Chrome), `target` (tên TikTok), `visibility`. Lịch tự động thử lần lượt các tài khoản (tài khoản đăng lâu nhất trước), mỗi tài khoản theo giờ vàng, giới hạn ngày và giãn cách riêng, và chọn video điểm cao nhất thuộc chủ đề tài khoản đó nhận |
 | `POST /api/publish/finish` | `{id, lease, outcome: published\|failed\|unknown\|duplicate, url, reason}` | `lease` phải đúng; `url` phải là địa chỉ `*.tiktok.com` |
 | `POST /api/publish/peek` | `{}` | Bài kế tiếp (chạy thử, không đổi trạng thái) |
 | `POST /api/publish/unresolved`, `/api/publish/resolve` | `{}` / `{id, outcome: published\|failed, url}` | Bài chưa xác nhận |
 | `POST /api/stats` | `{items:[{video_id, views, likes, comments, shares}]}` | Khớp bài đã đăng theo `/video/<id>` |
 | `POST /api/publisher/challenge` | `{active: bool}` | Bật/tắt trạng thái "TikTok đang đòi xác minh": bật thì `publish/claim` trả `blocked` cho tới khi tắt |
+| `POST /api/accounts` | `{}` | `{accounts, wanted_topics}` |
+| `POST /api/accounts/add` | `{username, topics:[...], id?, label?, enabled?, daily_limit?, min_gap?, windows?, visibility?}` | Thêm tài khoản (tối đa 10). Giới hạn bỏ trống/`null` = dùng cài đặt chung |
+| `POST /api/accounts/update` | `{id, ...các trường như trên}` | Sửa; không cho tắt tài khoản cuối cùng đang bật |
+| `POST /api/accounts/delete` | `{id}` | Xóa; không xóa tài khoản cuối cùng hoặc tài khoản đang có bài chưa xác nhận |
 | `POST /api/settings` | Một phần của cài đặt (xem `validate_settings`) | Trả `{changed:[...]}` |
 | `POST /api/notify` | `{kind:"summary"}` hoặc `{kind:"text", text}` | Gửi qua các kênh đã cấu hình; trả kênh nào thành công |
 

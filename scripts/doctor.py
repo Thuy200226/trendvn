@@ -174,6 +174,17 @@ if status:
         required=False,
     )
     check("Đã đăng nhập TikTok", status["publisher"] == "connected", status["publisher"], "./trendvn tiktok login", required=False)
+    for account in status.get("accounts", []):
+        if account["enabled"] and len(status["accounts"]) > 1:
+            flag = "" if account["id"] == "main" else " --account " + account["id"]
+            known = account["logged_in"]
+            check(
+                "  @%s đã đăng nhập" % account["username"],
+                known is True,
+                "chưa kiểm tra" if known is None else ("rồi" if known else "chưa"),
+                "./trendvn tiktok login" + flag,
+                required=False,
+            )
     check(
         "Tự đăng",
         status["publisher_enabled"],

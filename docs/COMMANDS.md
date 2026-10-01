@@ -59,10 +59,10 @@ Chi tiết cách hệ thống n8n được sinh ra: [N8N.md](N8N.md).
 | `./trendvn agent logs [-f] [-n N]` | Log agent |
 | `./trendvn agent run` | Chạy trong terminal này (Ctrl+C dừng), tiện gỡ lỗi |
 | `./trendvn agent venv` / `update` | Tạo lại `.venv` / nâng yt-dlp và playwright rồi khởi động lại |
-| `./trendvn tiktok login [phút]` | Mở Chrome thật để **bạn** đăng nhập TikTok một lần (không bao giờ tự nhập mật khẩu) |
-| `./trendvn tiktok trust [phút]` | Giải hình xác minh của TikTok một lần |
+| `./trendvn tiktok login [phút] [--account ID]` | Mở Chrome thật để **bạn** đăng nhập TikTok một lần (không bao giờ tự nhập mật khẩu). Mỗi tài khoản có hồ sơ Chrome riêng; không có `--account` là tài khoản `main` (tài khoản mặc định). `ID` là mã hiện trong thẻ tài khoản ở bảng điều khiển |
+| `./trendvn tiktok trust [phút] [--account ID]` | Giải hình xác minh của TikTok một lần |
 | `./trendvn tiktok dry-run` | Tải video lên TikTok Studio, điền mô tả, chụp ảnh rồi dừng — **không đăng**. Ảnh: `data/worker/exports/shot_*.png` (tên in trong kết quả; nút "Xem thử" trên bảng điều khiển cũng hiện ảnh). Cần đã có video xử lý xong; báo `"status": "idle"` nghĩa là chưa có. Ảnh lỗi nằm ở `data/agent/shots/` |
-| `./trendvn tiktok status` / `verify` / `stats` | Kiểm tra phiên / đối chiếu bài chưa xác nhận / đọc lượt xem |
+| `./trendvn tiktok status [--account ID]` / `verify` / `stats` | Kiểm tra phiên của một tài khoản / đối chiếu bài chưa xác nhận (trên đúng tài khoản đã đăng) / đọc lượt xem của mọi tài khoản đang bật |
 
 ## Dữ liệu và bàn giao
 

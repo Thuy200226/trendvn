@@ -57,7 +57,7 @@ def run_platform(ctx, platform, thresholds, download_media, ingest, limit, topic
     downloads = []
     weights = thresholds.get("weights") or {}
     for stream, raw in streams.items():
-        good = [i for i in raw if qualifies(platform, i, thresholds)]
+        good = [i for i in raw if qualifies(platform, i, thresholds, topic_stream=bool(i.get("topic")))]
         for i in good:
             age = age_hours(i)
             i["score"] = score(platform, i, weights)

@@ -565,6 +565,45 @@ def main():
             )
             check("Process does not call the browser agent", not FakeAgent.calls, str(FakeAgent.calls))
 
+            # accounts: add one, choose its topics by tapping, save, see where a video would go, delete it
+            go(pg, base + "/#accounts")
+            check("Accounts section opens from its link", pg.is_visible("#accounts .acct"))
+            pg.fill('#accounts form[action="/account-add"] input[name="username"]', "kenh_meo")
+            for topic in ("pets", "food"):
+                pg.click('#accounts form[action="/account-add"] label.tg:has(input[value="%s"])' % topic)
+            pg.click('#accounts form[action="/account-add"] button')
+            pg.wait_for_selector('#accounts .acct:has-text("@kenh_meo")', timeout=6000)
+            added = Store(tmp).account("kenh_meo")
+            check(
+                "Adding an account by tapping topics saves exactly those topics", added and added["topics"] == ["pets", "food"], str(added)
+            )
+            card = '#accounts .acct:has-text("@kenh_meo")'
+            pg.click(card + " label.tg:has(input[value='pets'])")  # untick pets
+            pg.click(card + " label.tg:has(input[value='gaming'])")  # tick gaming
+            pg.click(card + " summary")
+            pg.fill(card + ' input[name="daily_limit"]', "4")
+            pg.click(card + " button.go")
+            pg.wait_for_timeout(900)
+            saved = Store(tmp).account("kenh_meo")
+            check(
+                "Saving changes the topics and the account's own daily limit",
+                saved["topics"] == ["food", "gaming"] and saved["daily_limit"] == 4,
+                str(saved),
+            )
+            check(
+                "The topics the accounts take are listed for the collector",
+                {"food", "gaming"} <= set(Store(tmp).wanted_topics()),
+            )
+            pg.click(card + ' button:has-text("Xóa")')
+            pg.wait_for_timeout(900)
+            check("Deleting removes the account", Store(tmp).account("kenh_meo") is None)
+            pg.fill('#accounts form[action="/account-add"] input[name="username"]', "no_topics")
+            pg.click('#accounts form[action="/account-add"] button')
+            pg.wait_for_timeout(900)
+            check(
+                "Adding without a topic is refused with a message", Store(tmp).account("no_topics") is None and pg.is_visible(".flash.bad")
+            )
+
             check("No console or page errors during flows", not errors, "; ".join(errors[:3]))
             ctx.close()
             browser.close()

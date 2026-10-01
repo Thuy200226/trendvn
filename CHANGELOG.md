@@ -9,6 +9,17 @@
 - Chạy theo module (`python -m trendvn_worker`, `python -m trendvn_agent`); mẫu systemd/launchd và `agent.sh` cập nhật theo; `./trendvn update` cài lại dịch vụ nền của agent nên bản đang chạy theo bố cục cũ vẫn chuyển được.
 - Cơ sở dữ liệu có phiên bản (`PRAGMA user_version` + danh sách migration); CSDL 1.0–1.3 được nhận nguyên trạng.
 - `tests/` chia `worker/ agent/ tools/ e2e/`; thêm `./trendvn fmt` (black + ruff, bản ghim trong `requirements-dev.txt`), doclint kiểm tra mọi lệnh đều có tài liệu.
+**Phase B — chất lượng phân tích và video (đo trên video Douyin thật).**
+- Quyết định giữ nguyên / Vietsub / thuyết minh là một hàm riêng (`domain/route.py`) có bảng quyết định, kèm lý do bằng tiếng Việt hiện trên thẻ video.
+- Phụ đề cứng của video gốc (chữ Trung burned-in) được làm mờ đúng dải đó trước khi đốt phụ đề Việt (Gemini báo vị trí); dòng phụ đề quá nhanh được kéo dài vào quãng nghỉ sau nó (21 → 17 ký tự/giây trên video đo).
+- Mã hóa `veryfast/crf 24`: SSIM 0,992 so với bản tham chiếu, nhỏ hơn và nhanh hơn khoảng 40%. Đo âm lượng ngay trong lần giải mã kiểm tra.
+- Sửa lỗi có từ 1.3: đường âm thanh im lặng tuyệt đối làm bộ mã hóa AAC từ chối; giọng đọc Gemini nhanh bất thường (bỏ sót câu) bị từ chối.
+
+**Phase C — chủ đề và nhiều tài khoản.**
+- Thực đơn 14 chủ đề; Gemini phân loại, collector tìm theo chủ đề (Douyin: tab của từng chủ đề; TikTok: chip), chọn tải chia lượt giữa các chủ đề.
+- Nhiều tài khoản TikTok, mỗi tài khoản nhận một số chủ đề, giới hạn ngày/giãn cách/giờ vàng riêng, hồ sơ Chrome riêng (`./trendvn tiktok login --account ID`). Tài khoản của bản cũ thành `main`; CSDL cũ tự chuyển (đã thử trên bản sao CSDL thật của 1.2).
+- Giao diện: mục "Tài khoản TikTok và chủ đề" ở tab Thêm; thẻ video ghi chủ đề và tài khoản sẽ nhận.
+
 - Sửa lỗi tìm thấy khi tách: `sys` chưa import trong đường tải Instagram của collector; bước kiểm tra e2e bố cục từng chập chờn vì đo khi trang chưa về đầu.
 
 ## 1.3 — 2026-09-30

@@ -74,20 +74,28 @@ Bất biến quan trọng (đều có test):
 | Gửi thông báo | `services/worker/src/trendvn_worker/notify.py` | `Notifier` (chống spam theo loại + khóa) |
 | Cài đặt đổi được | `services/worker/src/trendvn_worker/domain/settings.py` | `validate_settings` (mỗi khóa có khoảng giá trị chặt) |
 
+## 3b. Chủ đề và nhiều tài khoản
+
+- **Thực đơn chủ đề** (`domain/topics.py`): 14 chủ đề (âm nhạc/nhảy, hài, thú cưng, ẩm thực, du lịch, gia đình, làm đẹp, thể thao, game, anime, phim, đời sống, kiến thức, giải trí tổng hợp) cộng `other` (tin tức, chính trị, quảng cáo... không bao giờ tự đăng). Prompt Gemini, schema và giao diện đều sinh từ cùng một bảng này.
+- **Hai lần quyết định chủ đề.** Trước khi tải: *gợi ý* miễn phí từ danh mục của nguồn (tab Douyin, chip TikTok) và từ khóa trong tiêu đề (đo trên 230 tiêu đề Douyin thật: đoán trúng 67% trong số tiêu đề có từ khóa; danh mục của nguồn tự nó cũng nhiễu nên chỉ dùng để chọn tải). Sau khi phân tích: **Gemini quyết định**; video thuộc chủ đề không tài khoản nào nhận vào "Cần xem" với lý do rõ.
+- **Tài khoản** (`accounts`, `store/accounts.py`, `domain/accounts.py`): mỗi tài khoản có tên TikTok, danh sách chủ đề nhận, và (tùy chọn) giới hạn ngày, giãn cách, giờ vàng, chế độ hiển thị riêng; bỏ trống thì dùng cài đặt chung. Tài khoản của bản 1.0–1.3 thành `main` (nhận các chủ đề cũ: giải trí, nhạc, hài, thú cưng, gia đình, đời sống). Mỗi tài khoản có **hồ sơ Chrome riêng** (`data/agent/profiles/publisher-<id>`; `main` giữ `publisher`) nên phiên đăng nhập không lẫn.
+- **Lịch đăng** (`store/publishing.py`): mỗi lần hỏi, thử lần lượt các tài khoản đang bật, tài khoản đăng lâu nhất trước; tài khoản nào còn chỗ (giờ vàng, giới hạn ngày, giãn cách, không có bài chưa xác nhận) và có video điểm cao thuộc chủ đề của nó thì nhận video đó. Bài chưa xác nhận chỉ chặn tài khoản của nó; một bài đang đăng chặn mọi tài khoản (agent chỉ làm một việc trình duyệt một lúc). Nút Đăng ngay chọn tài khoản nhận chủ đề đó (ít bài hôm nay nhất), nếu không có thì tài khoản mặc định.
+- **Thu thập theo chủ đề** (`collector/sources`): Douyin: một lần mở trang `jingxuan`, đọc luồng mặc định rồi bấm tab của từng chủ đề cần (tối đa 6 tab mỗi lần quét, luân phiên theo đồng hồ); Kuaishou không có danh mục cho khách chưa đăng nhập; TikTok: chip theo chủ đề; chip không có thì bỏ qua không thử lại. Ngưỡng cho tab chủ đề thấp hơn luồng chung vì đo trên 520 video Douyin thật: chỉ 12% video trong tab đạt mốc 150 nghìn tim của luồng chung (trung vị 10–70 nghìn) và tuổi trung vị là 39 ngày nên giới hạn 7 ngày chỉ cho qua 10%; luồng chủ đề dùng 15% ngưỡng tim/lượt xem và cho phép cũ gấp 4 lần (28 ngày), điểm xếp hạng vẫn ưu tiên video mới. Chọn tải (`choose_downloads`): bỏ video có gợi ý là chủ đề không ai nhận, chia lượt giữa các chủ đề, điểm cao trước, để một chủ đề đông không lấn át chủ đề khác.
+
 ## 4. Nguồn thu thập
 
 | Nguồn | Cách lấy | Ghi chú |
 |---|---|---|
-| Douyin | Trang 精选 (`/jingxuan`), bắt JSON `aweme/v2/web/module/feed` | Trình duyệt tự ký yêu cầu; chỉ nhận `aweme_type == 0` (video), bỏ quảng cáo và album ảnh |
+| Douyin | Trang 精选 (`/jingxuan`), bắt JSON `aweme/v2/web/module/feed`; mỗi tab chủ đề (音乐, 小剧场, 动物, 美食, 旅行, 亲子, 美妆穿搭, 体育, 游戏, 二次元, 影视, 生活vlog, 知识) cho khoảng 40 video riêng | Trình duyệt tự ký yêu cầu; chỉ nhận `aweme_type == 0` (video), bỏ quảng cáo và album ảnh |
 | Kuaishou | Trang `brilliant`, bắt GraphQL `brilliantTypeData` | Đôi khi ngắt kết nối: thử lại tối đa 3 lần |
-| TikTok | Trang Explore, nhấn các chip Singing & Dancing, Comedy, Lipsync, Shows, bắt `explore/item_list` | **Chỉ chạy khi IP thoát là Mỹ** |
+| TikTok | Trang Explore, nhấn các chip theo chủ đề (Singing & Dancing, Comedy, Animals, Food...), bắt `explore/item_list` | **Chỉ chạy khi IP thoát là Mỹ** |
 | Instagram | Trang Reels công khai, lấy mã reel, `yt-dlp` lấy siêu dữ liệu và tải | **Chỉ chạy khi IP thoát là Mỹ** |
 
 Douyin và Kuaishou chỉ phục vụ nội dung trong nước nên IP nào cũng cho đúng nguồn Trung Quốc. TikTok và Instagram đổi nội dung theo IP, nên agent kiểm tra quốc gia của IP thoát (`exit_country`) trước mỗi lần quét. Nếu gặp CAPTCHA hoặc yêu cầu đăng nhập, luồng đó báo lỗi thay vì cố vượt qua.
 
 ## 5. Dữ liệu
 
-- `data/worker/trendvn.sqlite3` (WAL): `jobs` (mỗi video một dòng), `observations` (lịch sử thứ hạng/lượt xem mỗi lần quét), `events` (nhật ký), `settings`, `api_calls` (đếm lượt gọi Gemini), `post_stats` (lượt xem sau đăng), `notif_log` (chống spam thông báo).
+- `data/worker/trendvn.sqlite3` (WAL): `jobs` (mỗi video một dòng), `observations` (lịch sử thứ hạng/lượt xem mỗi lần quét), `events` (nhật ký), `settings`, `accounts` (các tài khoản TikTok: chủ đề nhận, giới hạn riêng), `api_calls` (đếm lượt gọi Gemini), `post_stats` (lượt xem sau đăng), `notif_log` (chống spam thông báo).
 - `data/worker/inbox/` video gốc tải về; `data/worker/jobs/<id>/` sản phẩm dựng (`final.mp4`, `vi.ass`, `manifest.json` ghi cả phiên bản prompt).
 - `data/worker/gemini.key`, `data/worker/notify.json`: bí mật, quyền 0600, không bao giờ trả về qua API.
 - `data/agent/profiles/collector-*`, `data/agent/profiles/publisher` (phiên TikTok), `data/agent/agent.log`, `data/agent/shots/` (ảnh chụp khi đăng lỗi; ảnh của lần chạy thử nằm ở `data/worker/exports/` để bảng điều khiển hiển thị).

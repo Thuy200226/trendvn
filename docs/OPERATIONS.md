@@ -66,6 +66,16 @@ Từ trên xuống:
 
 Mọi giá trị đều được kiểm tra khoảng hợp lệ ở worker (`validate_settings`), nhập sai sẽ báo lỗi chứ không lưu.
 
+### Nhiều tài khoản TikTok, mỗi tài khoản vài chủ đề
+
+Thêm → **Tài khoản TikTok và chủ đề**. Mỗi thẻ là một tài khoản: chạm để chọn các chủ đề nó nhận (hài, thú cưng, ẩm thực...), bấm **Lưu tài khoản**. Mở "Tên gọi, bật/tắt và giới hạn riêng" nếu muốn tài khoản có số bài tối đa mỗi ngày, giãn cách, giờ vàng hoặc chế độ hiển thị khác với cài đặt chung (để trống là dùng cài đặt chung).
+
+1. **Thêm tài khoản:** nhập tên người dùng TikTok, chọn chủ đề, bấm Thêm.
+2. **Đăng nhập một lần cho tài khoản đó:** chạy lệnh hiện trong thẻ, dạng `./trendvn tiktok login --account <mã>`, rồi tự đăng nhập trong cửa sổ Chrome hiện ra (mỗi tài khoản có hồ sơ Chrome riêng). Thẻ báo "đã đăng nhập" sau lần kiểm tra phiên kế tiếp của lịch.
+3. Từ lần thu thập kế tiếp, hệ thống tìm video thuộc các chủ đề có tài khoản nhận (lần quét đầu của mỗi tab chủ đề mới chỉ ghi mốc, nên video đầu tiên của chủ đề mới đến sau lần quét thứ hai, tối đa vài giờ), rồi đăng mỗi video lên đúng tài khoản nhận chủ đề của nó.
+
+Thẻ video ở tab Đăng bài ghi rõ chủ đề và tài khoản sẽ nhận. Video thuộc chủ đề không tài khoản nào nhận bị giữ ở "Cần xem" (bạn vẫn đăng tay được lên tài khoản mặc định).
+
 ### Khi đăng bài, cửa sổ Chrome hiện lên
 
 Trình đăng mặc định mở **cửa sổ Chrome thật** (khi máy có màn hình), khoảng 1–2 phút mỗi bài: tải video, điền mô tả, bấm Đăng, xác nhận. Đừng đóng nó giữa chừng. Trên máy chủ không có màn hình, nó chạy ẩn (TikTok sẽ đòi xác minh nhiều hơn). Ép một trong hai cách bằng `TRENDVN_PUBLISH_HEADED=1` hoặc `0` trong `.env`. Trên Linux dùng dịch vụ systemd, `./trendvn install` đã ghi `DISPLAY` hiện tại vào dịch vụ; nếu cửa sổ không hiện, kiểm tra `systemctl --user cat trendvn-agent`.

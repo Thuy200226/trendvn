@@ -96,6 +96,29 @@ class GateTests(unittest.TestCase):
         self.assertTrue(qualifies("instagram", {"duration": None, "views": None, "likes": 5}, TH))
 
 
+class TopicBarTests(unittest.TestCase):
+    def test_a_topic_tab_may_carry_older_videos(self):
+        now = 1_790_000_000
+        thresholds = {"max_age_days": 7, "max_duration": 180}
+        month_old = {"duration": 30, "created": now - 20 * 86400}
+        self.assertFalse(qualifies("douyin", month_old, thresholds, now=now))
+        self.assertTrue(qualifies("douyin", month_old, thresholds, now=now, topic_stream=True))
+        self.assertFalse(qualifies("douyin", dict(month_old, created=now - 40 * 86400), thresholds, now=now, topic_stream=True))
+
+    def test_a_topic_tab_uses_a_lower_engagement_bar_than_the_general_feed(self):
+        thresholds = {"min_likes": {"douyin": 150_000}, "max_duration": 180}
+        item = {"likes": 30_000, "duration": 40, "created": None}
+        self.assertFalse(qualifies("douyin", item, thresholds))
+        self.assertTrue(qualifies("douyin", item, thresholds, topic_stream=True))
+        self.assertFalse(qualifies("douyin", dict(item, likes=5_000), thresholds, topic_stream=True))  # still not a nobody
+        self.assertFalse(
+            qualifies("douyin", dict(item, duration=300), thresholds, topic_stream=True)
+        )  # length and freshness stay as they were
+        views = {"min_views": {"kuaishou": 1_000_000}, "max_duration": 180}
+        self.assertTrue(qualifies("kuaishou", {"views": 200_000, "duration": 30}, views, topic_stream=True))
+        self.assertFalse(qualifies("kuaishou", {"views": 100_000, "duration": 30}, views, topic_stream=True))
+
+
 class ScoringTests(unittest.TestCase):
     def test_fresh_beats_stale_and_weight_applies(self):
         now = time.time()
