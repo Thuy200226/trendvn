@@ -15,13 +15,22 @@ def blocked_reason(view):
     return ""
 
 
+def _today(view):
+    """Posts made today: one total, or one figure per account when there are several."""
+    d = view.d
+    enabled = [a for a in d["accounts"] if a["enabled"]]
+    if len(enabled) < 2:
+        return "%d / %d" % (d["published_today"], d["daily_limit"])
+    return " · ".join("@%s %d/%d" % (a["username"], a["published_today"], a["daily_limit"]) for a in enabled)
+
+
 def _strip(view):
     d, cfg = view.d, view.cfg
     window = "đang mở" if d["in_window"] else E("mở lúc " + (d["next_window"] or "—"))
     return (
-        '<div class="card strip"><div><small>Hôm nay</small><b>%d / %d</b></div><div><small>Hiển thị</small><b>%s</b></div>'
+        '<div class="card strip"><div><small>Hôm nay</small><b>%s</b></div><div><small>Hiển thị</small><b>%s</b></div>'
         "<div><small>Giờ vàng</small><b>%s</b></div></div>"
-    ) % (d["published_today"], d["daily_limit"], E(VISIBILITY_LABEL.get(cfg["visibility"], cfg["visibility"])), window)
+    ) % (E(_today(view)), E(VISIBILITY_LABEL.get(cfg["visibility"], cfg["visibility"])), window)
 
 
 def _empty_guide(view):

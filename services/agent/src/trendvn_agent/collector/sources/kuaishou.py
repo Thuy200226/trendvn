@@ -31,7 +31,8 @@ def parse_kuaishou(payload):
     return items
 
 
-def scan_kuaishou(ctx):
+def scan_kuaishou(ctx, topics=()):
+    """Kuaishou shows anonymous visitors one feed only (its search and categories need a sign-in), so topics are told apart later."""
     return {
         "brilliant": capture(ctx, "https://www.kuaishou.com/brilliant", lambda u: u.endswith("/graphql"), parse_kuaishou, wait_ms=14000)
     }

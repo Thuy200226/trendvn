@@ -40,7 +40,7 @@ class CaptionMixin:
         """Everything that has been rendered and can be posted, best first, with the caption that would be used and its quality check."""
         with self.connect() as db:
             rows = db.execute(
-                """SELECT id,platform,title,state,route,meta,analysis,caption_user,output_info,duration,updated,first_seen
+                """SELECT id,platform,title,state,route,topic,meta,analysis,caption_user,output_info,duration,updated,first_seen
                 FROM jobs WHERE state IN ('ready','awaiting_approval') AND output_file IS NOT NULL
                 ORDER BY COALESCE(json_extract(meta,'$.score'),0) DESC, first_seen LIMIT ?""",
                 (limit,),

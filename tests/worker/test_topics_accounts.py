@@ -1,6 +1,7 @@
 """Topics (menu, hints) and TikTok accounts (rules, store, migration from the single-account database)."""
 
 import json
+import time
 import sqlite3
 import tempfile
 import unittest
@@ -185,3 +186,50 @@ class AccountMigrationTests(unittest.TestCase):
             schema.migrate(db)  # idempotent
             self.assertEqual(db.execute("SELECT count(*) FROM accounts").fetchone()[0], 1)
             db.close()
+
+
+class IngestTopicTests(StoreCase):
+    def batch(self, observed, items, topic=None, stream="jingxuan"):
+        body = {"platform": "douyin", "stream": stream, "observed_at": observed, "items": items}
+        if topic is not None:
+            body["topic"] = topic
+        return body
+
+    def item(self, source_id, title="t"):
+        return {
+            "source_id": source_id,
+            "url": "https://www.douyin.com/video/" + source_id,
+            "country": "CN",
+            "title": title,
+            "evidence_url": "https://www.douyin.com/",
+        }
+
+    def hints(self):
+        with self.s.connect() as db:
+            return {r["source_id"]: r["topic_hint"] for r in db.execute("SELECT source_id,topic_hint FROM jobs")}
+
+    def test_the_stream_topic_becomes_the_videos_hint_and_unknown_topics_are_refused(self):
+        now = time.time()
+        self.s.ingest(self.batch(now - 10, [], topic="pets", stream="pets_tab"), now=now)  # first scan of the stream: baseline
+        result = self.s.ingest(self.batch(now - 5, [self.item("1", "一只可爱的猫")], topic="pets", stream="pets_tab"), now=now)
+        self.assertEqual(result["new"], 1)
+        self.assertEqual(self.hints(), {"1": "pets"})
+        with self.assertRaisesRegex(ValueError, "Unknown topic"):
+            self.s.ingest(self.batch(now - 4, [], topic="cooking", stream="bad_tab"), now=now)
+
+    def test_without_a_stream_topic_the_keywords_guess_and_a_tab_later_overrides_the_guess(self):
+        now = time.time()
+        self.s.ingest(self.batch(now - 20, []), now=now)
+        self.s.ingest(self.batch(now - 19, [self.item("2", "牛肉面探店"), self.item("3", "哈哈哈")]), now=now)
+        self.assertEqual(self.hints(), {"2": "food", "3": None})  # keywords guess; nothing to go on for the other
+        self.s.ingest(self.batch(now - 18, [], topic="comedy", stream="comedy_tab"), now=now)
+        self.s.ingest(self.batch(now - 5, [self.item("3", "哈哈哈")], topic="comedy", stream="comedy_tab"), now=now)
+        self.assertEqual(self.hints()["3"], "comedy")  # the tab's own category fills the gap
+        self.s.ingest(self.batch(now - 4, [self.item("3", "哈哈哈")]), now=now)
+        self.assertEqual(self.hints()["3"], "comedy")  # and the general feed seeing it again does not erase it
+
+    def test_candidates_come_back_with_their_hint(self):
+        now = time.time()
+        self.s.ingest(self.batch(now - 20, [], topic="food", stream="food_tab"), now=now)
+        self.s.ingest(self.batch(now - 5, [self.item("9", "x")], topic="food", stream="food_tab"), now=now)
+        self.assertEqual([c["topic_hint"] for c in self.s.candidates_without_media()], ["food"])

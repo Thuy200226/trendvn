@@ -1,22 +1,31 @@
 """Hàng đợi: videos waiting to be processed (in the order they will be), and candidates not yet downloaded."""
 
+from ...domain import topics
 from ..components import accordion, cell, platform_badge, state_chip, table, task_panel
 from ..format import ago, escape as E, meta_of, num
 
 
+def _topic_cell(job):
+    """The topic Gemini decided on, or the collector's guess (marked with ~) while the video is still unprocessed."""
+    if job.get("topic"):
+        return E(topics.label(job["topic"]))
+    return ("~" + E(topics.label(job["topic_hint"]))) if job.get("topic_hint") else "—"
+
+
 def _video_table(items, now, empty):
     rows = [
-        "<tr>%s%s%s%s%s</tr>"
+        "<tr>%s%s%s%s%s%s</tr>"
         % (
             cell("Nguồn", platform_badge(j["platform"])),
             cell("Video", E((j["title"] or "")[:90]), "t"),
+            cell("Chủ đề", _topic_cell(j)),
             cell("Trạng thái", state_chip(j["state"])),
             cell("Điểm", E(num(meta_of(j).get("score"))) if meta_of(j).get("score") else "—"),
             cell("Tìm thấy", ago(j["first_seen"], now)),
         )
         for j in items
     ]
-    return table(("Nguồn", "Video", "Trạng thái", "Điểm", "Tìm thấy"), rows, empty)
+    return table(("Nguồn", "Video", "Chủ đề", "Trạng thái", "Điểm", "Tìm thấy"), rows, empty)
 
 
 def processing_card(view):

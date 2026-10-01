@@ -1,9 +1,22 @@
 """The signed-in account: is the session alive, and what is already on the profile."""
 
 import json
+import re
 import time
 
 from ..log import log
+
+MAIN_PROFILE = "publisher"  # the account of 1.0 - 1.3 keeps its signed-in profile
+ACCOUNT_ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,23}")
+
+
+def profile_name(account):
+    """The Chrome profile folder of an account: one per TikTok account, so their sessions never mix."""
+    if account in (None, "", "main"):
+        return MAIN_PROFILE
+    if not ACCOUNT_ID.fullmatch(str(account)):
+        raise ValueError("Mã tài khoản không hợp lệ")
+    return MAIN_PROFILE + "-" + account
 
 
 def logged_in(ctx):

@@ -3,7 +3,7 @@
 from ..domain.accounts import effective
 
 # columns of a job shown in lists on the dashboard
-JOB_COLUMNS = "id,platform,title,state,reason,route,meta,url,updated,first_seen,duration"
+JOB_COLUMNS = "id,platform,title,state,reason,route,meta,url,updated,first_seen,duration,topic,topic_hint"
 # settings the dashboard page needs (a subset of all settings)
 DASHBOARD_SETTINGS = (
     "daily_limit", "min_publish_gap", "post_windows", "max_age_days", "max_duration", "max_candidates_per_scan", "max_backlog",

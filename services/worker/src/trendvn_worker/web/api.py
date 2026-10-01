@@ -137,6 +137,28 @@ def publisher_challenge(app, payload):
     return OK
 
 
+# ------------------------------------------------------------------ accounts
+@route("/api/accounts")
+def accounts(app, payload):
+    return {"accounts": app.store.status()["accounts"], "wanted_topics": app.store.wanted_topics()}
+
+
+@route("/api/accounts/add")
+def add_account(app, payload):
+    return app.store.add_account(payload)
+
+
+@route("/api/accounts/update")
+def update_account(app, payload):
+    return app.store.update_account(str(payload.get("id", "")), {k: v for k, v in payload.items() if k != "id"})
+
+
+@route("/api/accounts/delete")
+def delete_account(app, payload):
+    app.store.delete_account(str(payload.get("id", "")))
+    return OK
+
+
 # ------------------------------------------------------------------ feedback, settings, notifications
 @route("/api/stats")
 def stats(app, payload):

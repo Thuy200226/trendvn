@@ -8,7 +8,7 @@ from ..config import RUNTIME
 from ..log import log
 from .challenge import Challenge, wait_for_upload_ui
 from .constants import HEADED, POST_LABELS, UPLOAD_URL
-from .profile import logged_in, own_descriptions
+from .profile import logged_in, own_descriptions, profile_name
 from .screenshots import export_shot, shot
 from .studio import dismiss_popups, set_caption, set_visibility, studio_shows, wait_uploaded
 from .text import norm, sha256
@@ -37,9 +37,9 @@ def _publish_one(job, dry_run, state):
         return "failed", "", "Không thấy file video đã dựng"
     if sha256(video) != job["output_hash"]:
         return "failed", "", "Hash video thay đổi sau khi dựng; không đăng"
-    with chrome("publisher", locale="vi-VN", headless=not HEADED, viewport=(1280, 1000)) as ctx:
+    with chrome(profile_name(job.get("account")), locale="vi-VN", headless=not HEADED, viewport=(1280, 1000)) as ctx:
         if not logged_in(ctx):
-            return "failed", "", "Chưa đăng nhập TikTok trong hồ sơ riêng"
+            return "failed", "", "Chưa đăng nhập TikTok cho @%s trong hồ sơ riêng" % job["target"]
         existing = own_descriptions(ctx, job["target"])
         refusal = _duplicate_refusal(job, existing)
         if refusal:

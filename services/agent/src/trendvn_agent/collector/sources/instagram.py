@@ -24,7 +24,7 @@ def parse_instagram_codes(text):
     return codes
 
 
-def scan_instagram(ctx):
+def scan_instagram(ctx, topics=()):
     page = ctx.new_page()
     try:
         try:

@@ -4,7 +4,7 @@ from ..browser import chrome
 from ..worker_client import worker, worker_get
 from .constants import HEADED
 from .post import publish_one
-from .profile import own_descriptions
+from .profile import own_descriptions, profile_name
 from .text import norm
 
 
@@ -41,44 +41,61 @@ def dry_run_next(job_id=None):
     return {"status": outcome, "reason": reason, "screenshot": shot}
 
 
+def _accounts():
+    """(id, username) of every enabled account, as the worker knows them."""
+    status = worker_get("/api/status")
+    return [(a["id"], a["username"]) for a in status.get("accounts", []) if a["enabled"]] or [("main", status["target"])]
+
+
 def run_stats():
-    """Read views/likes of our posts from the public profile and hand them to the worker (feeds the source weights)."""
-    target = worker_get("/api/status")["target"]
-    with chrome("publisher", locale="vi-VN", headless=not HEADED) as ctx:
-        posts = own_descriptions(ctx, target)
-    items = [
-        {
-            "video_id": p["id"],
-            "views": p["views"] or 0,
-            "likes": p["likes"] or 0,
-            "comments": p["comments"] or 0,
-            "shares": p["shares"] or 0,
-        }
-        for p in posts
-        if p["id"].isdigit()
-    ]
+    """Read views/likes of our posts from the public profile of every account and hand them to the worker (feeds the source weights)."""
+    items, errors = [], []
+    for account, username in _accounts():
+        try:
+            with chrome(profile_name(account), locale="vi-VN", headless=not HEADED) as ctx:
+                posts = own_descriptions(ctx, username)
+        except Exception as error:  # one account failing must not hide the others' numbers
+            errors.append("@%s: %s" % (username, str(error)[:80]))
+            continue
+        items += [
+            {
+                "video_id": p["id"],
+                "views": p["views"] or 0,
+                "likes": p["likes"] or 0,
+                "comments": p["comments"] or 0,
+                "shares": p["shares"] or 0,
+            }
+            for p in posts
+            if p["id"].isdigit()
+        ]
     matched = 0
     for i in range(0, len(items), 200):  # the worker accepts 200 posts per call; a busy channel has more
         matched += worker("/api/stats", {"items": items[i : i + 200]}).get("matched", 0)
-    return {"read": len(items), "matched": matched}
+    result = {"read": len(items), "matched": matched}
+    if errors:
+        result["errors"] = errors
+    return result
 
 
 def verify_unresolved():
-    """Resolve uncertain publishes by reading the public profile; never re-posts."""
+    """Resolve uncertain publishes by reading the public profile of the account each was posted to; never re-posts."""
     items = worker("/api/publish/unresolved", {})["items"]
     if not items:
         return {"resolved": 0}
-    target = worker_get("/api/status")["target"]
+    default = _accounts()[0]
     resolved = 0
-    with chrome("publisher", locale="vi-VN", headless=not HEADED) as ctx:
-        posts = own_descriptions(ctx, target)
-        for job in items:
+    for account in sorted({job.get("account") or default[0] for job in items}):
+        mine = [job for job in items if (job.get("account") or default[0]) == account]
+        username = mine[0].get("target") or next((u for a, u in _accounts() if a == account), default[1])
+        with chrome(profile_name(account), locale="vi-VN", headless=not HEADED) as ctx:
+            posts = own_descriptions(ctx, username)
+        for job in mine:
             key = norm(job.get("caption"))
             match = [p for p in posts if key and norm(p["desc"]) == key]
             if match:
                 worker(
                     "/api/publish/resolve",
-                    {"id": job["id"], "outcome": "published", "url": "https://www.tiktok.com/@%s/video/%s" % (target, match[0]["id"])},
+                    {"id": job["id"], "outcome": "published", "url": "https://www.tiktok.com/@%s/video/%s" % (username, match[0]["id"])},
                 )
                 resolved += 1
     return {"resolved": resolved, "still_unknown": len(items) - resolved}

@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .config import ENV, TOKEN
 from .log import log
-from .worker_client import worker
+from .worker_client import worker, worker_get
 
 BIND = ENV.get("TRENDVN_AGENT_BIND", "172.20.0.1")
 PORT = int(ENV.get("TRENDVN_AGENT_PORT", "5682"))
@@ -38,15 +38,23 @@ def dry_run(payload):
 
 
 def session(payload):
+    """Is the browser signed in to each enabled account? One heartbeat for the publisher, with the answer per account."""
     from . import publisher
 
-    status = publisher.session_status()
-    logged_in = status.get("logged_in", False)
-    worker(
-        "/api/heartbeat",
-        {"component": "publisher", "ok": logged_in, "detail": "Đã đăng nhập TikTok, sẵn sàng" if logged_in else status.get("reason")},
-    )
-    return status
+    accounts = [(a["id"], a["username"]) for a in worker_get("/api/status").get("accounts", []) if a["enabled"]]
+    results = {}
+    for account, username in accounts or [("main", "")]:
+        results[account] = (username, publisher.session_status(account=account))
+    logins = {account: bool(status.get("logged_in")) for account, (_, status) in results.items()}
+    missing = ["@%s" % (username or account) for account, (username, _) in results.items() if not logins[account]]
+    ok = not missing
+    detail = {
+        "login": logins,
+        "text": "Đã đăng nhập TikTok, sẵn sàng" if ok else "Chưa đăng nhập: " + ", ".join(missing),
+    }
+    worker("/api/heartbeat", {"component": "publisher", "ok": ok, "detail": detail})
+    first = next(iter(results.values()))[1]
+    return dict(first, accounts=logins) if len(results) > 1 else first
 
 
 def stats(payload):

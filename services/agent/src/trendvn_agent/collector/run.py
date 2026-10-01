@@ -7,7 +7,7 @@ from ..log import log
 from ..worker_client import worker, worker_get
 from .capture import Blocked, exit_country
 from .download import download
-from .rules import age_hours, qualifies, score
+from .rules import age_hours, choose_downloads, qualifies, score
 from .sources import SOURCES
 
 
@@ -15,6 +15,7 @@ def collect(platforms=None, download_media=True, ingest=True, thresholds=None, l
     st = worker_get("/api/status")
     thresholds = dict(thresholds or st.get("thresholds") or {}, weights=st.get("weights") or {})
     limit = limit or thresholds.get("max_candidates_per_scan", 6)
+    topics = st.get("wanted_topics") or []  # what the accounts take: the scan looks for these, the download picks among them
     report = {}
     selected = list(platforms or SOURCES)
     by_country = {}
@@ -33,7 +34,7 @@ def collect(platforms=None, download_media=True, ingest=True, thresholds=None, l
                             % (country, exit_c or "không xác định", country),
                         }
                         continue
-                    report[platform] = run_platform(ctx, platform, thresholds, download_media, ingest, limit)
+                    report[platform] = run_platform(ctx, platform, thresholds, download_media, ingest, limit, topics)
         except Exception as e:
             for platform in plats:
                 report.setdefault(platform, {"status": "error", "reason": str(e)[:200]})
@@ -44,10 +45,10 @@ def collect(platforms=None, download_media=True, ingest=True, thresholds=None, l
     return report
 
 
-def run_platform(ctx, platform, thresholds, download_media, ingest, limit):
+def run_platform(ctx, platform, thresholds, download_media, ingest, limit, topics=()):
     cfg = SOURCES[platform]
     try:
-        streams = cfg["scan"](ctx)
+        streams = cfg["scan"](ctx, topics)
     except Blocked as e:
         return {"status": "error", "reason": "Trang yêu cầu xác minh/đăng nhập (%s); không vượt qua CAPTCHA." % e}
     except Exception as e:
@@ -78,6 +79,7 @@ def run_platform(ctx, platform, thresholds, download_media, ingest, limit):
             "platform": platform,
             "stream": stream,
             "observed_at": time.time(),
+            "topic": next((i.get("topic") for i in raw if i.get("topic")), None),  # the source's own category for this stream
             "items": [
                 {
                     "source_id": i["source_id"],
@@ -99,7 +101,7 @@ def run_platform(ctx, platform, thresholds, download_media, ingest, limit):
             summary[stream]["error"] = str(e)[:160]
         downloads.extend(good)
     if download_media and ingest:
-        summary["media"] = fetch_pending(ctx, platform, {i["source_id"]: i for i in downloads}, limit)
+        summary["media"] = fetch_pending(ctx, platform, {i["source_id"]: i for i in downloads}, limit, topics)
     return {
         "status": "ok" if any(s.get("seen") for s in summary.values() if isinstance(s, dict)) else "error",
         "summary": summary,
@@ -107,17 +109,19 @@ def run_platform(ctx, platform, thresholds, download_media, ingest, limit):
     }
 
 
-def fetch_pending(ctx, platform, seen_now, limit):
-    counts = worker_get("/api/status")["counts"]
+def fetch_pending(ctx, platform, seen_now, limit, wanted=()):
+    status = worker_get("/api/status")
+    counts = status["counts"]
     backlog = sum(counts.get(k, 0) for k in ("queued", "processing", "ready"))
-    room = max(0, (worker_get("/api/status")["thresholds"].get("max_backlog", 4)) - backlog)
+    room = max(0, status["thresholds"].get("max_backlog", 4) - backlog)
     limit = min(limit, room)
     if limit == 0:
         return {"downloaded": 0, "failed": 0, "waiting": 0, "note": "Hàng chờ đã đủ; chưa tải thêm"}
     pending = [p for p in worker("/api/media/pending", {"limit": 100})["items"] if p["platform"] == platform and p["source_id"] in seen_now]
-    pending.sort(key=lambda p: seen_now[p["source_id"]].get("score", 0), reverse=True)
+    scores = {sid: item.get("score", 0) for sid, item in seen_now.items()}
+    chosen = choose_downloads(pending, scores, wanted, limit)
     done = failed = 0
-    for job in pending[:limit]:
+    for job in chosen:
         item = seen_now[job["source_id"]]
         try:
             name = download(ctx, item, platform)
@@ -131,4 +135,4 @@ def fetch_pending(ctx, platform, seen_now, limit):
                 worker("/api/media/failed", {"id": job["id"], "reason": str(e)[:300]})
             except Exception:
                 pass
-    return {"downloaded": done, "failed": failed, "waiting": max(0, len(pending) - limit)}
+    return {"downloaded": done, "failed": failed, "waiting": max(0, len(pending) - len(chosen))}

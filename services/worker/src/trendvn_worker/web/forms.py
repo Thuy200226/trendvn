@@ -82,6 +82,48 @@ def save_settings(app, form):
     return Redirect("saved", anchor="#" + (back if back in SETTINGS_TABS else "settings"))
 
 
+def _optional_int(value):
+    """Blank = 'use the global setting' (None); digits = the number; anything else is passed on as -1 for the validator to refuse."""
+    if not value:
+        return None
+    return int(value) if re.fullmatch(r"\d{1,9}", value) else -1
+
+
+def _account_data(form):
+    """The account fields a dashboard form carries, ready for the store's validation. Blank limits mean 'use the global setting'."""
+
+    def field(key):
+        return form.get(key, [""])[0].strip()
+
+    data = {"topics": form.get("topic", []), "label": field("label"), "daily_limit": _optional_int(field("daily_limit"))}
+    gap = field("gap_hours")
+    if gap and not re.fullmatch(r"\d{1,3}(\.\d{1,2})?", gap):
+        raise ValueError("Giãn cách nhập số giờ, ví dụ 3 hoặc 2.5")
+    data["min_gap"] = round(float(gap) * 3600) if gap else None
+    data["windows"] = parse_windows(field("post_windows")) if field("post_windows") else None
+    data["visibility"] = field("visibility") or None
+    if "enabled" in form:
+        data["enabled"] = field("enabled") == "true"
+    return data
+
+
+def account_add(app, form):
+    data = _account_data(form)
+    data["username"] = form.get("username", [""])[0]
+    app.store.add_account({k: v for k, v in data.items() if v is not None and v != ""})
+    return Redirect("account_added", anchor="#accounts")
+
+
+def account_save(app, form):
+    app.store.update_account(form["id"][0], _account_data(form))
+    return Redirect("account_saved", anchor="#accounts")
+
+
+def account_delete(app, form):
+    app.store.delete_account(form["id"][0])
+    return Redirect("account_deleted", anchor="#accounts")
+
+
 def start_task(app, form):
     kind = form.get("kind", [""])[0]
     job = form.get("id", [""])[0] or None
@@ -173,6 +215,9 @@ FORMS = {
     "/voice-test": test_voice,
     "/task": start_task,
     "/caption": edit_caption,
+    "/account-add": account_add,
+    "/account-save": account_save,
+    "/account-delete": account_delete,
 }
 
 # what the page says after each successful form (shown once, as a green banner)
@@ -189,4 +234,7 @@ FLASH = {
     "notify_sent": "Đã gửi tin thử. Hãy kiểm tra điện thoại.",
     "ingested": "Đã nhập dữ liệu quan sát.",
     "voice": "Đã tạo giọng đọc thử. Kéo xuống mục Cài đặt để nghe.",
+    "account_added": "Đã thêm tài khoản. Đăng nhập TikTok cho tài khoản này bằng lệnh hiện trong thẻ của nó.",
+    "account_saved": "Đã lưu tài khoản.",
+    "account_deleted": "Đã xóa tài khoản.",
 }

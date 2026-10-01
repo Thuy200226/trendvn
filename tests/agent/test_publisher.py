@@ -241,3 +241,141 @@ class LoggingNeverBreaksJobsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AccountProfileTests(unittest.TestCase):
+    """One Chrome profile per TikTok account; every publisher job opens the profile of the account it belongs to."""
+
+    def test_profile_names(self):
+        from trendvn_agent.publisher.profile import profile_name
+
+        self.assertEqual(profile_name(None), "publisher")  # the signed-in profile of 1.0 - 1.3 is the main account's
+        self.assertEqual(profile_name("main"), "publisher")
+        self.assertEqual(profile_name("kenh-meo"), "publisher-kenh-meo")
+        for bad in ("../x", "A", "a b", "x" * 40, "a/b"):
+            with self.assertRaises(ValueError, msg=bad):
+                profile_name(bad)
+
+    def test_cli_takes_the_account_flag_anywhere(self):
+        from trendvn_agent.publisher import cli
+
+        self.assertEqual(cli._split(["login", "5", "--account", "pets"]), (["login", "5"], "pets"))
+        self.assertEqual(cli._split(["--account", "pets", "status"]), (["status"], "pets"))
+        self.assertEqual(cli._split(["status"]), (["status"], None))
+        with self.assertRaises(SystemExit):
+            cli._split(["login", "--account"])
+
+    def test_the_login_hint_names_the_account(self):
+        from trendvn_agent.publisher import session
+
+        self.assertEqual(session._account_flag(None), "")
+        self.assertEqual(session._account_flag("main"), "")
+        self.assertEqual(session._account_flag("pets"), " --account pets")
+
+
+class RecordingChrome:
+    """Stands in for chrome(): remembers which profiles were opened and hands out a context that knows which one it is."""
+
+    def __init__(self):
+        self.opened = []
+
+    def __call__(self, profile, **kw):
+        self.opened.append(profile)
+
+        class Context:
+            def __enter__(inner):
+                return inner
+
+            def __exit__(inner, *a):
+                return False
+
+        return Context()
+
+
+class PerAccountJobTests(unittest.TestCase):
+    def setUp(self):
+        self.chrome = RecordingChrome()
+        self.sent = []
+        status = {
+            "target": "main_user",
+            "accounts": [
+                {"id": "main", "username": "main_user", "enabled": True},
+                {"id": "pets", "username": "meo", "enabled": True},
+                {"id": "off", "username": "tat", "enabled": False},
+            ],
+        }
+        self.patches = mock.patch.multiple(
+            jobs,
+            chrome=self.chrome,
+            worker_get=lambda path, timeout=30: status,
+            worker=lambda path, payload=None, timeout=900: self.sent.append((path, payload)) or self.answer(path),
+            own_descriptions=lambda ctx, target: [
+                {
+                    "id": "11" if target == "main_user" else "22",
+                    "desc": "mô tả " + target,
+                    "views": 5,
+                    "likes": 1,
+                    "comments": 0,
+                    "shares": 0,
+                }
+            ],
+        )
+        self.patches.start()
+        self.addCleanup(self.patches.stop)
+        self.unresolved = []
+
+    def answer(self, path):
+        if path == "/api/publish/unresolved":
+            return {"items": self.unresolved}
+        return {"matched": 1}
+
+    def test_stats_are_read_from_every_enabled_account(self):
+        result = jobs.run_stats()
+        self.assertEqual(self.chrome.opened, ["publisher", "publisher-pets"])  # the disabled account is not visited
+        self.assertEqual(result["read"], 2)
+        sent = [p for path, p in self.sent if path == "/api/stats"][0]["items"]
+        self.assertEqual({i["video_id"] for i in sent}, {"11", "22"})
+
+    def test_one_failing_account_does_not_hide_the_others(self):
+        calls = []
+
+        def flaky(profile, **kw):
+            calls.append(profile)
+            if profile == "publisher":
+                raise RuntimeError("Chrome crashed")
+            return self.chrome(profile, **kw)
+
+        with mock.patch.object(jobs, "chrome", flaky):
+            result = jobs.run_stats()
+        self.assertEqual(result["read"], 1)
+        self.assertIn("main_user", result["errors"][0])
+
+    def test_unconfirmed_posts_are_looked_for_on_the_account_they_were_posted_to(self):
+        self.unresolved = [
+            {"id": "a", "caption": "mô tả meo", "account": "pets", "target": "meo"},
+            {"id": "b", "caption": "mô tả main_user", "account": None, "target": None},  # made before accounts existed: the default one
+        ]
+        result = jobs.verify_unresolved()
+        self.assertEqual(result, {"resolved": 2, "still_unknown": 0})
+        self.assertEqual(sorted(self.chrome.opened), ["publisher", "publisher-pets"])
+        urls = {p["id"]: p["url"] for path, p in self.sent if path == "/api/publish/resolve"}
+        self.assertEqual(urls, {"a": "https://www.tiktok.com/@meo/video/22", "b": "https://www.tiktok.com/@main_user/video/11"})
+
+
+class PostUsesTheAccountProfileTests(unittest.TestCase):
+    def test_the_claim_decides_the_profile(self):
+        opened = RecordingChrome()
+
+        def boom(profile, **kw):
+            opened(profile)
+            raise RuntimeError("stop here")
+
+        folder = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(folder, ignore_errors=True))
+        (folder / "jobs" / "j1").mkdir(parents=True)
+        video = folder / "jobs" / "j1" / "final.mp4"
+        video.write_bytes(b"x" * 100)
+        job = {"id": "j1", "output_hash": sha256(video), "caption": "c", "target": "meo", "account": "pets"}
+        with mock.patch.multiple(post, RUNTIME=folder, chrome=boom):
+            self.assertEqual(post.publish_one(job, dry_run=False)[0], "failed")
+        self.assertEqual(opened.opened, ["publisher-pets"])

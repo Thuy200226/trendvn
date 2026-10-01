@@ -2,6 +2,7 @@
 
 import re
 
+from ..domain import topics
 from .components import chip, platform_badge, state_chip
 from .format import escape as E, meta_of, num
 from .labels import ROUTE_LABEL, vi_reason
@@ -41,16 +42,41 @@ def _score_line(meta, with_views=True):
     return " · ".join(parts)
 
 
-def _confirm_text(view):
+def _destination_line(view, job):
+    """Which topic the video is about and which account it goes to; says so when no account takes the topic."""
+    topic = job.get("topic")
+    if len(view.d.get("accounts", [])) < 2 and not topic:
+        return ""
+    account = view.destination(topic)
+    label = topics.label(topic) if topic else "chưa phân loại"
+    if account:
+        return '<div class="muted small">Chủ đề: <b>%s</b> · lịch tự động đăng lên <b>@%s</b></div>' % (E(label), E(account["username"]))
+    default = view.destination(None)
+    return (
+        '<div class="note warn small">Chủ đề <b>%s</b> chưa có tài khoản nào nhận. Lịch tự động sẽ không đăng; nút Đăng ngay dùng @%s.</div>'
+        % (
+            E(label),
+            E(default["username"] if default else view.cfg["target"]),
+        )
+    )
+
+
+def _confirm_text(view, job):
     """The question asked before 'Đăng ngay': where it goes, how visible, and any rule the click overrides."""
     d, cfg = view.d, view.cfg
+    account = view.destination(job.get("topic")) or view.destination(None)
     warnings = []
     if d["published_today"] >= d["daily_limit"]:
         warnings.append("Hôm nay đã đăng đủ %d/%d bài, bạn vẫn muốn đăng thêm?" % (d["published_today"], d["daily_limit"]))
     if not d["in_window"]:
         warnings.append("Đang ngoài giờ vàng.")
-    visibility = CONFIRM_VISIBILITY.get(cfg["visibility"], cfg["visibility"])
-    return "Đăng video này lên @%s ngay bây giờ? Chế độ hiển thị: %s. %s" % (cfg["target"], visibility, " ".join(warnings))
+    shown = account["visibility"] if account else cfg["visibility"]
+    visibility = CONFIRM_VISIBILITY.get(shown, shown)
+    return "Đăng video này lên @%s ngay bây giờ? Chế độ hiển thị: %s. %s" % (
+        account["username"] if account else cfg["target"],
+        visibility,
+        " ".join(warnings),
+    )
 
 
 def ready_card(job, view, blocked):
@@ -88,7 +114,7 @@ def ready_card(job, view, blocked):
         '<div class="row">%(plat)s%(state)s</div>'
         '<div class="ttl">%(title)s</div>'
         '<div class="muted small">%(score)s</div>'
-        '<div class="facts">%(facts)s</div>%(why)s'
+        '<div class="facts">%(facts)s</div>%(why)s%(dest)s'
         '<label class="cap">Mô tả và hashtag sẽ đăng'
         '<textarea name="caption" rows="4" maxlength="2200" data-caption spellcheck="false">%(caption)s</textarea></label>'
         '<div class="row small"><span class="muted"><span data-len>%(length)d</span> ký tự · <span data-tags>%(ntags)d</span> hashtag%(edited)s</span></div>'
@@ -109,6 +135,7 @@ def ready_card(job, view, blocked):
         "score": E(_score_line(meta_of(job))),
         "facts": _fact_chips(job, info),
         "why": '<div class="muted small">%s</div>' % E(info["why"]) if info.get("why") else "",
+        "dest": _destination_line(view, job),
         "caption": E(job["caption"]),
         "length": lint["length"],
         "ntags": lint["tags"],
@@ -116,7 +143,7 @@ def ready_card(job, view, blocked):
         "chips": tags,
         "lint": lint_html,
         "reason": reason,
-        "confirm": E(_confirm_text(view)),
+        "confirm": E(_confirm_text(view, job)),
         "dis": disabled,
         "approve": approve,
         "reset": reset,

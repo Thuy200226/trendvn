@@ -3,7 +3,7 @@
 import re
 
 from ...log import log
-from ..capture import Blocked, capture
+from ..capture import Blocked, NotThere, capture
 from ..normalize import to_int
 
 
@@ -39,30 +39,55 @@ def parse_tiktok(payload):
 
 def click_chip(text):
     def go(page):
-        page.locator('[data-e2e="explore-category-chip"]', has_text=re.compile("^" + re.escape(text) + "$")).first.click(timeout=8000)
+        chip = page.locator('[data-e2e="explore-category-chip"]', has_text=re.compile("^" + re.escape(text) + "$")).first
+        if not chip.count():
+            raise NotThere(text)
+        chip.click(timeout=8000)
 
     return go
 
 
-TIKTOK_CHIPS = [("singing_dancing", "Singing & Dancing"), ("comedy", "Comedy"), ("lipsync", "Lipsync"), ("shows", "Shows")]
+# The explore page's category chips (US site). topic -> chip name; chips we cannot find are skipped without retries.
+CHIPS = {
+    "music": "Singing & Dancing",
+    "comedy": "Comedy",
+    "pets": "Animals",
+    "food": "Food",
+    "family": "Family",
+    "beauty": "Beauty Care",
+    "sports": "Sports",
+    "gaming": "Games",
+    "anime": "Anime & Comics",
+    "movies": "Shows",
+    "lifestyle": "Daily Life",
+    "knowledge": "Education",
+}
+DEFAULT_TOPICS = ("music", "comedy", "movies")
+MAX_CHIPS = 5
 
 
-def scan_tiktok(ctx):
+def scan_tiktok(ctx, topics=()):
+    """One stream per wanted topic that has a chip (the default few when no account has wishes), each from a fresh page load."""
+    wanted = [t for t in topics if t in CHIPS][:MAX_CHIPS] or list(DEFAULT_TOPICS)
     out = {}
-    for stream, chip in TIKTOK_CHIPS:
+    for topic in wanted:
         try:
-            out[stream] = capture(
+            items = capture(
                 ctx,
                 "https://www.tiktok.com/explore",
                 lambda u: "/api/explore/item_list/" in u,
                 parse_tiktok,
                 scrolls=2,
                 wait_ms=9000,
-                before_scroll=click_chip(chip),
+                before_scroll=click_chip(CHIPS[topic]),
             )
+            out["explore_" + topic] = [dict(item, topic=topic) for item in items]
         except Blocked:
             raise
+        except NotThere as e:
+            log("tiktok chip %s not found; skipped" % e)
+            out["explore_" + topic] = []
         except Exception as e:
-            log("tiktok chip %s failed: %s" % (chip, str(e)[:120]))
-            out[stream] = []
+            log("tiktok chip %s failed: %s" % (CHIPS[topic], str(e)[:120]))
+            out["explore_" + topic] = []
     return out

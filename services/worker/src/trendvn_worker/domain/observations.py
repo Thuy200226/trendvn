@@ -7,11 +7,12 @@ from collections import namedtuple
 from urllib.parse import urlsplit
 
 from .platforms import COUNTRIES, PLATFORMS, canonical_url
+from .topics import TOPIC_IDS
 
 MAX_ITEMS = 100
 META_KEYS = ("score", "likes", "views", "age_h", "created")
 
-Batch = namedtuple("Batch", "platform stream observed items")
+Batch = namedtuple("Batch", "platform stream observed items topic")
 Item = namedtuple("Item", "source_id url rank views evidence title meta")
 
 
@@ -58,4 +59,7 @@ def validate_batch(batch, now):
         raise ValueError("observed_at must be Unix timestamp")
     if not now - 86400 <= observed <= now + 60:
         raise ValueError("Stale/future batch")
-    return Batch(platform, platform + ":" + stream, observed, [clean_item(platform, raw) for raw in batch["items"]])
+    topic = batch.get("topic")  # the source's own category for this stream (a Douyin tab, a TikTok chip), if it has one
+    if topic is not None and topic not in TOPIC_IDS:
+        raise ValueError("Unknown topic")
+    return Batch(platform, platform + ":" + stream, observed, [clean_item(platform, raw) for raw in batch["items"]], topic)

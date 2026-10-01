@@ -38,3 +38,27 @@ def score(platform, item, weights=None, now=None):
     age = age_hours(item, now)
     per_hour = base / (max(age, 6.0) ** 0.6) if age is not None else base / 24**0.6
     return round(per_hour * (weights or {}).get(platform, 1.0))
+
+
+def choose_downloads(pending, scores, wanted, limit):
+    """Which candidates to download now. Videos whose topic hint is a topic no account takes are skipped (no hint = unknown, kept);
+    the rest are taken round-robin across hints, best score first within each, so one busy topic cannot crowd out the others.
+    `pending` are the worker's candidates (with `topic_hint`), `scores` maps source_id -> score."""
+    groups = {}
+    for job in pending:
+        hint = job.get("topic_hint")
+        if wanted and hint is not None and hint not in wanted:
+            continue
+        groups.setdefault(hint, []).append(job)
+    best_first = lambda job: -scores.get(job["source_id"], 0)  # noqa: E731
+    queues = [sorted(group, key=best_first) for group in groups.values()]
+    queues.sort(key=lambda queue: best_first(queue[0]))  # the group with the best video goes first in each round
+    chosen = []
+    while queues and len(chosen) < limit:
+        for queue in list(queues):
+            if len(chosen) >= limit:
+                break
+            chosen.append(queue.pop(0))
+            if not queue:
+                queues.remove(queue)
+    return chosen

@@ -7,12 +7,16 @@ from ..log import log
 from ..worker_client import worker
 from .challenge import has_challenge
 from .constants import HEADED, LOGIN_URL, UPLOAD_URL
-from .profile import logged_in
+from .profile import logged_in, profile_name
 
 
-def login(minutes=10):
+def _account_flag(account):
+    return "" if account in (None, "", "main") else " --account " + account
+
+
+def login(minutes=10, account=None):
     """Open a visible window and wait (default 10 minutes) for you to finish signing in yourself."""
-    with chrome("publisher", headless=False, locale="vi-VN", viewport=(1280, 900)) as ctx:
+    with chrome(profile_name(account), headless=False, locale="vi-VN", viewport=(1280, 900)) as ctx:
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         page.goto(LOGIN_URL, wait_until="domcontentloaded")
         log("Đăng nhập TikTok trong cửa sổ vừa mở. Hệ thống không nhập mật khẩu thay bạn.")
@@ -26,9 +30,9 @@ def login(minutes=10):
     return False
 
 
-def trust(minutes=15):
+def trust(minutes=15, account=None):
     """Open the upload page in a visible window so YOU can pass TikTok's human check once. Nothing is uploaded or posted."""
-    with chrome("publisher", headless=False, locale="vi-VN", viewport=(1280, 900)) as ctx:
+    with chrome(profile_name(account), headless=False, locale="vi-VN", viewport=(1280, 900)) as ctx:
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         page.goto(UPLOAD_URL, wait_until="domcontentloaded")
         log("Nếu TikTok hiện hình xác minh, hãy tự giải trong cửa sổ vừa mở. Hệ thống không giải thay bạn.")
@@ -46,11 +50,11 @@ def trust(minutes=15):
     return False
 
 
-def session_status(deep=False):
+def session_status(deep=False, account=None):
     """Shallow (default, used by the schedule): is there a login cookie? No window opens. Deep (CLI `status`): load Studio and confirm."""
-    with chrome("publisher", locale="vi-VN", headless=not (deep and HEADED)) as ctx:
+    with chrome(profile_name(account), locale="vi-VN", headless=not (deep and HEADED)) as ctx:
         if not logged_in(ctx):
-            return {"logged_in": False, "reason": "Chưa đăng nhập. Chạy: ./trendvn tiktok login"}
+            return {"logged_in": False, "reason": "Chưa đăng nhập. Chạy: ./trendvn tiktok login" + _account_flag(account)}
         if not deep:
             return {"logged_in": True}
         page = ctx.new_page()
@@ -58,7 +62,7 @@ def session_status(deep=False):
             page.goto(UPLOAD_URL, wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(6000)
             if "/login" in page.url:
-                return {"logged_in": False, "reason": "Phiên đã hết hạn. Đăng nhập lại."}
+                return {"logged_in": False, "reason": "Phiên đã hết hạn. Đăng nhập lại: ./trendvn tiktok login" + _account_flag(account)}
             return {"logged_in": True}
         finally:
             page.close()

@@ -30,6 +30,11 @@ class View:
         self.waiting = self.counts.get("queued", 0) + self.counts.get("processing", 0)
         self.n8n_url = data.get("n8n_url") or "http://localhost:5680"
 
+    def destination(self, topic):
+        """The account a hand-picked video of this topic goes to (the fitting one with the fewest posts today), or None if none takes it."""
+        fitting = [a for a in self.d.get("accounts", []) if a["enabled"] and (topic is None or topic in a["topics"])]
+        return min(fitting, key=lambda a: a["published_today"], default=None)
+
     @property
     def clock(self):
         return datetime.fromtimestamp(self.now, ZoneInfo(self.cfg["timezone"])).strftime("%H:%M %d/%m")

@@ -6,6 +6,7 @@ import uuid
 
 from ..domain.observations import validate_batch
 from ..domain.platforms import COUNTRIES
+from ..domain.topics import topic_hint
 from ..files import file_hash
 
 
@@ -33,14 +34,20 @@ class IngestMixin:
         if row:
             job_id = row["id"]
             result["existing"] += 1
-            db.execute("UPDATE jobs SET last_seen=?,updated=?,meta=COALESCE(?,meta) WHERE id=?", (report.observed, now, item.meta, job_id))
+            hint = topic_hint(report.topic, item.title)
+            # a stream with its own category (a Douyin tab) knows better than the keywords that guessed when the video first appeared
+            keep = "COALESCE(?,topic_hint)" if report.topic else "COALESCE(topic_hint,?)"
+            db.execute(
+                "UPDATE jobs SET last_seen=?,updated=?,meta=COALESCE(?,meta),topic_hint=%s WHERE id=?" % keep,
+                (report.observed, now, item.meta, hint, job_id),
+            )
         else:
             job_id = uuid.uuid4().hex
             state = "baseline" if baseline else "candidate"
             reason = "Initial observation only" if baseline else "New in monitored source; validate evidence before processing"
             db.execute(
-                """INSERT INTO jobs(id,platform,source_id,url,country,title,first_seen,last_seen,state,reason,updated,meta)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                """INSERT INTO jobs(id,platform,source_id,url,country,title,first_seen,last_seen,state,reason,updated,meta,topic_hint)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     job_id,
                     report.platform,
@@ -54,6 +61,7 @@ class IngestMixin:
                     reason,
                     now,
                     item.meta,
+                    topic_hint(report.topic, item.title),
                 ),
             )
             result["new"] += 1
@@ -91,7 +99,8 @@ class IngestMixin:
             return [
                 dict(r)
                 for r in db.execute(
-                    "SELECT id,platform,source_id,url,title FROM jobs WHERE state='candidate' ORDER BY first_seen DESC LIMIT ?", (limit,)
+                    "SELECT id,platform,source_id,url,title,topic_hint FROM jobs WHERE state='candidate' ORDER BY first_seen DESC LIMIT ?",
+                    (limit,),
                 )
             ]
 

@@ -1,4 +1,4 @@
-"""Thêm: sources, settings, phone notifications, the event log and the manual-import box."""
+"""Thêm: accounts, sources, settings, phone notifications, the event log and the manual-import box."""
 
 import json
 
@@ -16,6 +16,7 @@ from ..components import (
     text_input,
 )
 from ..format import ago, escape as E, windows_text
+from . import accounts
 from ..labels import EVENT_LABELS, PLATFORM, STATE_LABELS, vi_reason
 
 
@@ -86,7 +87,11 @@ def _schedule_group(view):
                     text_input("post_windows", windows_text(cfg["post_windows"]), 'placeholder="11-14, 19-23" inputmode="text"'),
                     "Để trống nếu muốn đăng bất kỳ lúc nào.",
                 ),
-                field("Tài khoản TikTok đích", text_input("target", cfg["target"], PLAIN_INPUT)),
+                field(
+                    "Tài khoản TikTok mặc định",
+                    text_input("target", cfg["target"], PLAIN_INPUT),
+                    "Thêm tài khoản khác ở mục Tài khoản TikTok và chủ đề.",
+                ),
                 field("Chế độ hiển thị bài đăng", select("visibility", cfg["visibility"], visibility), "Áp dụng cho mọi bài sắp đăng."),
             )
         ),
@@ -235,6 +240,7 @@ def render(view):
     return "".join(
         (
             '<h2 class="desk">Nguồn, cài đặt, thông báo, nhật ký</h2>',
+            accordion("accounts", "Tài khoản TikTok và chủ đề", accounts.render(view)),
             accordion("sources", "Nguồn thu thập", sources(view)),
             accordion("settings", "Cài đặt", settings_form(view) + '<h3 class="sub">Khóa Gemini và giọng đọc</h3>' + gemini_key_form(view)),
             accordion("notify", "Thông báo điện thoại", notify_form(view)),

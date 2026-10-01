@@ -199,6 +199,87 @@ class LocalServerTests(unittest.TestCase):
         self.assertEqual(self.srv.req("GET", "/health")[0], 200)
 
 
+class AccountWebTests(unittest.TestCase):
+    """Account forms and API on a server of their own (they change which accounts exist)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.srv = Server()
+        body = cls.srv.req("GET", "/")[2]
+        cls.csrf = re.search(rb'name="csrf" value="([^"]+)"', body).group(1).decode()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.stop()
+
+    def post_pairs(self, path, pairs):
+        """A form with repeated fields (the topic checkboxes)."""
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Origin": "http://localhost:%d" % self.srv.port,
+            "Sec-Fetch-Site": "same-origin",
+        }
+        return self.srv.req("POST", path, urlencode([("csrf", self.csrf), *pairs]), headers)
+
+    def test_account_forms_add_save_and_delete(self):
+        store = Store(self.srv.tmp.name)
+        status, headers, _ = self.post_pairs(
+            "/account-add", [("username", "@Meo_Kenh"), ("topic", "pets"), ("topic", "food"), ("daily_limit", "")]
+        )
+        self.assertEqual((status, "ok=account_added" in headers["location"]), (303, True))
+        self.assertEqual(store.account("meo_kenh")["topics"], ["pets", "food"])  # in menu order
+        status, headers, _ = self.post_pairs(
+            "/account-save",
+            [("id", "meo_kenh"), ("topic", "pets"), ("label", "Kênh mèo"), ("enabled", "true"), ("daily_limit", "3"), ("gap_hours", "1.5"),
+             ("post_windows", "9-11"), ("visibility", "friends")],
+        )  # fmt: skip
+        self.assertIn("ok=account_saved", headers["location"])
+        saved = store.account("meo_kenh")
+        self.assertEqual((saved["topics"], saved["label"], saved["daily_limit"], saved["min_gap"], saved["windows"], saved["visibility"]),
+                         (["pets"], "Kênh mèo", 3, 5400, [[9, 11]], "friends"))  # fmt: skip
+        self.post_pairs(
+            "/account-save",
+            [("id", "meo_kenh"), ("topic", "pets"), ("daily_limit", ""), ("gap_hours", ""), ("post_windows", ""), ("visibility", "")],
+        )
+        cleared = store.account("meo_kenh")
+        self.assertEqual(
+            (cleared["daily_limit"], cleared["min_gap"], cleared["windows"], cleared["visibility"]), (None, None, None, None)
+        )  # blank = inherit
+        self.assertIn("ok=account_deleted", self.post_pairs("/account-delete", [("id", "meo_kenh")])[1]["location"])
+        self.assertIsNone(store.account("meo_kenh"))
+
+    def test_account_forms_say_what_is_wrong(self):
+        for pairs in (
+            [("username", "x"), ("topic", "pets")],  # too short
+            [("username", "good_name")],  # no topic
+            [("username", "good_name"), ("topic", "cooking")],  # not in the menu
+        ):
+            location = self.post_pairs("/account-add", pairs)[1]["location"]
+            self.assertIn("err=", location, pairs)
+        self.assertIn("err=", self.post_pairs("/account-save", [("id", "main"), ("topic", "music"), ("daily_limit", "99")])[1]["location"])
+        for other in Store(self.srv.tmp.name).accounts():
+            if other["id"] != "main":
+                Store(self.srv.tmp.name).delete_account(other["id"])
+        self.assertIn("err=", self.post_pairs("/account-delete", [("id", "main")])[1]["location"])  # the last account stays
+        self.assertEqual(self.srv.req("GET", "/health")[0], 200)
+
+    def test_accounts_api_needs_the_token_and_checks_input(self):
+        auth = {"Authorization": "Bearer " + "t" * 40}
+        listing = self.srv.req("POST", "/api/accounts", "{}", auth)
+        self.assertEqual(listing[0], 200)
+        self.assertIn(b'"main"', listing[2])
+        self.assertEqual(self.srv.req("POST", "/api/accounts", "{}", {"Authorization": "Bearer wrong"})[0], 401)
+        added = self.srv.req("POST", "/api/accounts/add", '{"username": "api_acct", "topics": ["gaming"]}', auth)
+        self.assertEqual(added[0], 200)
+        self.assertEqual(
+            self.srv.req("POST", "/api/accounts/add", '{"username": "api_acct", "topics": ["gaming"]}', auth)[0], 400
+        )  # duplicate
+        self.assertEqual(self.srv.req("POST", "/api/accounts/update", '{"id": "api_acct", "topics": []}', auth)[0], 400)
+        self.assertEqual(self.srv.req("POST", "/api/accounts/update", '{"id": "api_acct", "enabled": false}', auth)[0], 200)
+        self.assertEqual(self.srv.req("POST", "/api/accounts/delete", '{"id": "api_acct"}', auth)[0], 200)
+        self.assertEqual(self.srv.req("POST", "/api/accounts/delete", '{"id": "api_acct"}', auth)[0], 400)
+
+
 class RemoteAccessTests(unittest.TestCase):
     def test_other_hosts_need_the_password(self):
         srv = Server(lambda p: {"TRENDVN_UI_HOSTS": "box.test:%d" % p, "TRENDVN_UI_PASSWORD": "correct-horse-battery"})
