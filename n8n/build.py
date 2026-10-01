@@ -139,7 +139,7 @@ save(
 # 01 · collect + process (every 3 hours)
 schedule = node("Mỗi 3 giờ", "scheduleTrigger", {"rule": {"interval": [{"field": "hours", "hoursInterval": 3}]}}, 0, 200, version=1.2)
 manual = node("Chạy thử toàn chu trình", "manualTrigger", {}, 0, 0)
-session = request("Kiểm tra phiên TikTok", "/api/session", 260, base=AGENT, tolerant=True, timeout=180000)
+session = request("Kiểm tra phiên TikTok", "/api/session", 260, base=AGENT, tolerant=True, timeout=600000)  # a Chrome launch per account
 verify = request("Đối chiếu bài chưa xác nhận", "/api/verify", 520, base=AGENT, tolerant=True, timeout=300000)
 collect = request("Thu thập xu hướng và tải video mới", "/api/collect", 780, base=AGENT, tolerant=True)
 house = request("Phát hiện tác vụ gián đoạn", "/api/housekeeping", 1040, tolerant=True)

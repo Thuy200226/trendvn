@@ -354,6 +354,13 @@ class AdaptiveWaitTests(unittest.TestCase):
         self.assertGreaterEqual(page.waited, 7000)
         self.assertLess(page.waited, 12000)
 
+    def test_answers_without_videos_do_not_end_the_wait(self):
+        """Kuaishou answers a config call and a login query long before the feed itself: those say nothing about the feed."""
+        feed, page, clock = self.feed([(0.5, []), (1.0, []), (7.0, ["a", "b"])])
+        feed.settle(floor_ms=4000, ceiling_ms=12000, quiet_ms=1500, since=clock.now)
+        self.assertEqual(feed.count(), 2)
+        self.assertGreaterEqual(page.waited, 7000)
+
     def test_a_page_that_never_answers_stops_at_the_ceiling(self):
         feed, page, clock = self.feed([])
         feed.settle(floor_ms=4000, ceiling_ms=12000, quiet_ms=1500, since=clock.now)

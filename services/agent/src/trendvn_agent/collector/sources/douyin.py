@@ -112,6 +112,7 @@ def scan_douyin(ctx, topics=()):
         parse_douyin,
         streams,
         route=lambda u: stream_of(u, names),
+        scrolls=2,  # the page gives 20 videos per load: the first load and two scrolls are 60, plenty to pick the best few from
     )
     if not found["jingxuan"] and not any(found.values()):
         raise Blocked("no videos returned")

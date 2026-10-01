@@ -73,11 +73,14 @@ class Feed:
     def _on_response(self, r):
         try:
             if r.status == 200 and self.match(r.url) and "json" in r.headers.get("content-type", ""):
+                items = self.parse(json.loads(r.body()))
+                if not items:
+                    return  # an answer without videos (a config call, a login query) says nothing about whether the feed has arrived
                 self.last = time.time()
                 named = self.route(r.url) if self.route else None
                 name = named if named in self.found else self.current
                 bucket, ids = self.found[name], self.order[name]
-                for item in self.parse(json.loads(r.body())):
+                for item in items:
                     if item["source_id"] not in bucket:
                         bucket[item["source_id"]] = item
                         ids.append(item["source_id"])
@@ -178,6 +181,7 @@ def capture_once_streams(ctx, url, match, parse, streams, route=None, wait_ms=12
             log("goto warning %s: %s" % (url, str(e)[:100]))
         feed.settle(4000, wait_ms, 2500, mark)
         for index, (name, enter) in enumerate(streams):
+            started = time.time()
             try:
                 if enter is not None:
                     feed.drain(quiet_ms)
@@ -192,6 +196,7 @@ def capture_once_streams(ctx, url, match, parse, streams, route=None, wait_ms=12
                 raise
             except Exception as e:
                 log("category %s skipped: %s" % (name, str(e)[:100]))
+            log("read %s: %d videos in %.0fs" % (name, feed.count(), time.time() - started))
         return feed.result()
     finally:
         page.close()
