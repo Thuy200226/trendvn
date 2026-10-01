@@ -2,7 +2,7 @@
 """Keep the documentation honest (run by `./trendvn test lint`):
 1. every `./trendvn <command> [<sub>]` written in docs, code strings and scripts is a command the CLI really has (read from `./trendvn help`);
 2. every relative markdown link points at a file that exists;
-3. no leftovers of the pre-1.3 layout (old paths and old script names) outside the history files.
+3. no leftovers of the pre-1.4 layouts (old paths and old script names) outside the history files.
 """
 
 import re
@@ -11,7 +11,13 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-HISTORY = {"CHANGELOG.md", "docs/REVIEW-1.2.md", "docs/REVIEW-1.3.md", "scripts/migrate.sh"}  # these describe the old layout on purpose
+HISTORY = {
+    "CHANGELOG.md",
+    "docs/REVIEW-1.2.md",
+    "docs/REVIEW-1.3.md",
+    "docs/ROADMAP.md",
+    "scripts/migrate.sh",
+}  # these describe the old layout on purpose
 problems = []
 
 # ---- 1. commands: the truth is the help text
@@ -73,7 +79,8 @@ for f in list(ROOT.glob("*.md")) + list((ROOT / "docs").glob("*.md")):
 # ---- 3. old layout leftovers
 OLD = re.compile(
     r"agent_data|(?<![\w/])runtime/|(?<![\w.])setup\.py|(?<![\w/])install\.sh|package\.sh|CAI-DAT|Cai-dat-Mac|import_workflows|build_workflows|"
-    r"python agent/|(?<![\w/])agent/(?:server|publisher|collector|common)\.py|(?<![\w/])worker/(?:core|media|server|ui|tasks|prompts|notify)\.py"
+    r"python agent/|(?<![\w/])agent/(?:server|publisher|collector|common)\.py|(?<![\w/])worker/(?:core|media|server|ui|tasks|prompts|notify)\.py|"
+    r"services/worker/app|services/agent/(?:server|publisher|collector|common)\.py|(?<![\w/.])(?:publisher|collector)\.py|_looks_blocked"
 )
 ALLOWED_LINE = ("thư-mục-1.2", "thư mục cũ", "bản 1.2")  # the migration recipe legitimately names the old scripts
 for f in files:

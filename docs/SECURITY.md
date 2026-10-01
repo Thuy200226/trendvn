@@ -14,9 +14,9 @@
 
 | Hành vi | Cách đảm bảo |
 |---|---|
-| Nhập mật khẩu thay bạn | Không có mã nào làm việc này; đăng nhập chỉ qua cửa sổ Chrome bạn tự thao tác (`publisher.py login`) |
+| Nhập mật khẩu thay bạn | Không có mã nào làm việc này; đăng nhập chỉ qua cửa sổ Chrome bạn tự thao tác (`./trendvn tiktok login`) |
 | Giấu việc tự động hóa với trang web | Không dùng: không tắt cờ `AutomationControlled`, không sửa User-Agent, không giả lập thao tác người. Trình duyệt tự khai đúng là Chrome do chương trình điều khiển |
-| Vượt CAPTCHA/xác minh | `_looks_blocked` (thu thập) và `has_challenge` (trình đăng) phát hiện, báo lỗi và **tạm dừng đăng** cho tới khi chính bạn giải (`publisher.py trust`); không có mã giải hay né |
+| Vượt CAPTCHA/xác minh | `looks_blocked` (thu thập) và `has_challenge` (trình đăng) phát hiện, báo lỗi và **tạm dừng đăng** cho tới khi chính bạn giải (`./trendvn tiktok trust`); không có mã giải hay né |
 | Gắn nhãn nhầm nguồn Mỹ | Từ chối quét TikTok/Instagram nếu IP thoát ≠ Mỹ (`exit_country`); `ingest` cũng từ chối `country` không khớp nền tảng |
 | Đăng khi không chắc | `publish_unknown` chặn mọi lần đăng sau đó; không tự thử lại bài đã bấm Đăng |
 | Đăng ngoài luật | Lịch tự động: công tắc, giờ vàng, giới hạn ngày, giãn cách đều kiểm tra ở worker trong một giao dịch. **Đăng thủ công** (nút Đăng ngay) bỏ qua các luật đó vì bạn đã bấm, nhưng vẫn bị chặn khi có một bài đang đăng, có bài chưa xác nhận, hoặc TikTok đang đòi xác minh; mỗi lần bấm chỉ đăng đúng video đã chọn (bấm đúp không đăng hai lần) |

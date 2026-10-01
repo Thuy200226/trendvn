@@ -14,7 +14,12 @@ for source in (ROOT / "services" / "worker" / "src", ROOT / "services" / "agent"
     if str(source) not in sys.path:
         sys.path.insert(0, str(source))
 
+from trendvn_agent import log as agent_log  # noqa: E402
 from trendvn_worker.store import Store  # noqa: E402
+
+# the agent log of the real installation (data/agent/agent.log) must not collect lines written by tests
+_LOG_FOLDER = tempfile.TemporaryDirectory()
+agent_log.DATA = Path(_LOG_FOLDER.name)
 
 TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 

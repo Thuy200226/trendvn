@@ -1,8 +1,9 @@
 """Database schema and its migrations.
 
-The schema version is kept in SQLite's `PRAGMA user_version`. Migrations run once each, in order, inside the opening
-transaction. The first migration is idempotent on purpose: databases created by TrendVN 1.0 - 1.3 carry no version number but
-already have these tables, so they are adopted as version 1 without touching their data.
+The schema version is kept in SQLite's `PRAGMA user_version`. Each migration runs once, in order, in its own transaction
+together with the version bump, so a crash half-way leaves the database as it was. The first migration is idempotent on purpose:
+databases created by TrendVN 1.0 - 1.3 carry no version number but already have these tables, so they are adopted as version 1
+without touching their data.
 """
 
 import json
@@ -53,7 +54,9 @@ JOB_COLUMNS = (
 
 
 def _baseline(db):
-    db.executescript(BASELINE_TABLES)
+    for statement in BASELINE_TABLES.split(";"):  # one by one: executescript would commit the migration's transaction
+        if statement.strip():
+            db.execute(statement)
     present = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
     for column in JOB_COLUMNS:
         if column.split()[0] not in present:
@@ -65,11 +68,16 @@ MIGRATIONS = [_baseline]
 
 def migrate(db):
     """Bring the database to the latest schema version."""
-    version = db.execute("PRAGMA user_version").fetchone()[0]
     for number, step in enumerate(MIGRATIONS, start=1):
-        if number > version:
-            step(db)
-            db.execute("PRAGMA user_version = %d" % number)
+        db.execute("BEGIN IMMEDIATE")  # one migrator at a time, and the version is read under that lock
+        try:
+            if db.execute("PRAGMA user_version").fetchone()[0] < number:
+                step(db)
+                db.execute("PRAGMA user_version = %d" % number)
+            db.execute("COMMIT")
+        except BaseException:
+            db.execute("ROLLBACK")
+            raise
 
 
 def seed_settings(db):

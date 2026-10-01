@@ -81,9 +81,10 @@ cmd_uninstall() {
   info "Đã gỡ dịch vụ agent."
 }
 
-# The pid file survives reboots, and the number may since belong to an unrelated process: only trust it if that process is our agent.
+# The pid file survives reboots, and the number may since belong to an unrelated process: only trust it if that process is our agent
+# (also the pre-1.4 layout's server.py, so an upgrade can stop the agent it is replacing).
 pid_is_agent() { # pid_is_agent PID
-  [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null && ps -p "$1" -o command= 2>/dev/null | grep -qF "trendvn_agent"
+  [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null && ps -p "$1" -o command= 2>/dev/null | grep -qE "trendvn_agent|services/agent/server\.py"
 }
 pid_running() { [ -f "$PIDFILE" ] && pid_is_agent "$(cat "$PIDFILE" 2>/dev/null || true)"; }
 cmd_stop_pid() {

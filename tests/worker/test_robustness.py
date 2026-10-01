@@ -1,10 +1,14 @@
 """Odd inputs and failures must never wedge the queue."""
 
+import sqlite3
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tests.support import TZ, StoreCase, at  # noqa: F401  (also puts the source folders on sys.path)
 from trendvn_worker.domain.captions import build_caption
+from trendvn_worker.store import schema
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -38,3 +42,42 @@ class RobustnessTests(StoreCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MigrationTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name) / "m.sqlite3"
+
+    def open(self):
+        db = sqlite3.connect(self.path)
+        self.addCleanup(db.close)
+        return db
+
+    def test_a_migration_that_crashes_leaves_no_trace_and_no_version(self):
+        def second(db):
+            db.execute("CREATE TABLE half_done (x)")
+            raise RuntimeError("crash in the middle of a migration")
+
+        db = self.open()
+        schema.migrate(db)
+        with mock.patch.object(schema, "MIGRATIONS", schema.MIGRATIONS + [second]):
+            with self.assertRaises(RuntimeError):
+                schema.migrate(db)
+        self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 1)
+        self.assertIsNone(db.execute("SELECT 1 FROM sqlite_master WHERE name='half_done'").fetchone())
+
+    def test_each_migration_runs_once_and_a_database_without_version_is_adopted(self):
+        db = self.open()
+        db.executescript(schema.BASELINE_TABLES)  # a 1.0 database: the tables, none of the later columns, no version number
+        db.execute("INSERT INTO jobs(id,title) VALUES ('a','kept')")
+        db.commit()
+        schema.migrate(db)
+        self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], len(schema.MIGRATIONS))
+        self.assertEqual(db.execute("SELECT title FROM jobs").fetchone()[0], "kept")
+        self.assertIn("output_info", {row[1] for row in db.execute("PRAGMA table_info(jobs)")})
+        ran = []
+        with mock.patch.object(schema, "MIGRATIONS", [lambda d: ran.append(1)] * len(schema.MIGRATIONS)):
+            schema.migrate(db)
+        self.assertEqual(ran, [])
