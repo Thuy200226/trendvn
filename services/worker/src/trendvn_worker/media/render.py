@@ -15,6 +15,7 @@ UNLEVELLED = (
 )
 QUIET_LUFS = -35  # a render quieter than this is flagged on the dashboard
 BLUR_MAX_RADIUS = 20
+COPY_MAX_BITRATE = 6_000_000  # a source above this is re-encoded to the 4 Mb/s cap instead of being kept bit for bit
 
 
 def render(path, folder, a, route, duration, voice=None):
@@ -26,16 +27,21 @@ def render(path, folder, a, route, duration, voice=None):
     vs = next(s for s in meta["streams"] if s["codec_type"] == "video")
     has_audio = any(s["codec_type"] == "audio" for s in meta["streams"])
     geo = layout(*display_size(vs))
-    chain, last = _picture_chain(geo, fps_of(vs), a, route, folder)
+    if can_copy_video(vs, geo, route):
+        chain, picture = [], ["-map", "0:v:0", "-c:v", "copy"]  # the picture is already what we would make: keep it bit for bit
+    else:
+        chain, last = _picture_chain(geo, fps_of(vs), a, route, folder)
+        picture = ["-map", "[%s]" % last, *VIDEO_ENCODER]
     inputs = ["-i", str(path)]
     if voice:
         inputs += ["-i", str(voice["wav"])]
     for levelled in (True, False) if a.get("kind") != "silent" else (False,):
         audio, amap = _audio_chain(has_audio, voice, levelled)
+        graph = ["-filter_complex", ";".join(chain + audio)] if chain or audio else []
         try:
             ffmpeg(
-                *inputs, "-filter_complex", ";".join(chain + audio), "-map", "[%s]" % last, *amap, "-t", "%.3f" % duration,
-                *VIDEO_ENCODER, *AUDIO_ENCODER, "-map_metadata", "-1", "-movflags", "+faststart", str(out),
+                *inputs, *graph, *picture, *amap, "-t", "%.3f" % duration,
+                *AUDIO_ENCODER, "-map_metadata", "-1", "-movflags", "+faststart", str(out),
                 timeout=900,
             )  # fmt: skip
             break
@@ -46,6 +52,23 @@ def render(path, folder, a, route, duration, voice=None):
     if abs(final_duration - duration) > 1:
         raise ValueError("Rendered duration mismatch")
     return out
+
+
+def can_copy_video(stream, geo, route):
+    """True when a video that stays as it is (music, no speech) already has the picture we would produce: portrait H.264 8-bit 4:2:0 that
+    needs no scaling, rotation or frame-rate change, at an ordinary bitrate. Then only the sound is levelled and the picture is copied:
+    no quality lost, a few seconds of work instead of a minute."""
+    if route != "original" or geo["reframe"]:
+        return False
+    if stream.get("codec_name") != "h264" or stream.get("pix_fmt") != "yuv420p":
+        return False
+    if (stream["width"], stream["height"]) != (geo["w"], geo["h"]) or display_size(stream) != (stream["width"], stream["height"]):
+        return False
+    try:
+        bit_rate = int(stream.get("bit_rate") or 0)
+    except (TypeError, ValueError):
+        return False
+    return fps_of(stream) <= 30.5 and 0 < bit_rate <= COPY_MAX_BITRATE
 
 
 def covered_hard_subtitles(a, route):

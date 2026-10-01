@@ -224,6 +224,78 @@ class HardSubtitleRenderTests(unittest.TestCase):
         self.assertEqual(problems, [])
 
 
+class CopyPathTests(unittest.TestCase):
+    """A portrait music video that is already what we would produce keeps its picture bit for bit; everything else is re-encoded."""
+
+    STREAM = {"codec_name": "h264", "pix_fmt": "yuv420p", "width": 1080, "height": 1920, "avg_frame_rate": "30/1", "bit_rate": "2000000"}
+
+    def can(self, route="original", **changes):
+        stream = dict(self.STREAM, **changes)
+        return render_mod.can_copy_video(stream, geometry.layout(*geometry.display_size(stream)), route)
+
+    def test_only_an_untouched_portrait_h264_at_an_ordinary_bitrate_is_copied(self):
+        self.assertTrue(self.can())
+        self.assertTrue(self.can(width=720, height=1280, bit_rate="900000"))
+        refused = {
+            "subtitles or voice-over need the picture re-made": dict(route="vietsub"),
+            "landscape goes on the blurred canvas": dict(width=1920, height=1080),
+            "square goes on the canvas": dict(width=1080, height=1080),
+            "hevc is not what phones expect": dict(codec_name="hevc"),
+            "10-bit": dict(pix_fmt="yuv420p10le"),
+            "60 fps is brought to 30": dict(avg_frame_rate="60/1"),
+            "bigger than the canvas is scaled down": dict(width=2160, height=3840),
+            "odd size is made even": dict(width=721, height=1281),
+            "rotation flag is applied by re-encoding": dict(tags={"rotate": "90"}, width=1920, height=1080),
+            "unknown bitrate": dict(bit_rate=None),
+            "too high a bitrate is brought down to the cap": dict(bit_rate="9000000"),
+        }
+        for why, changes in refused.items():
+            self.assertFalse(self.can(**changes), why)
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg/ffprobe (runs in the worker image)")
+    def test_a_copied_picture_is_identical_and_the_sound_is_levelled(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            src = d / "p.mp4"
+            subprocess.run(
+                ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=720x1280:d=3:r=25", "-f", "lavfi", "-i", "sine=frequency=300:duration=3",
+                 "-c:v", "libx264", "-pix_fmt", "yuv420p", "-b:v", "1M", "-c:a", "aac", str(src)],
+                check=True,
+            )  # fmt: skip
+
+            def picture_hash(path):
+                return subprocess.run(
+                    ["ffmpeg", "-v", "error", "-i", str(path), "-map", "0:v:0", "-f", "md5", "-"], check=True, stdout=subprocess.PIPE
+                ).stdout
+
+            folder = d / "o"
+            folder.mkdir()
+            out = render_mod.render(src, folder, {"kind": "music", "segments": []}, "original", ffmpeg_mod.probe(src)[0])
+            self.assertEqual(picture_hash(out), picture_hash(src))  # not one pixel changed
+            info, problems = render_mod.qc(out, True)
+            self.assertEqual(problems, [])
+            self.assertAlmostEqual(info["lufs"], -14, delta=2.5)  # the sound was still levelled
+            vsrc = next(s for s in ffmpeg_mod.probe(src)[1]["streams"] if s["codec_type"] == "video")
+            vout = next(s for s in ffmpeg_mod.probe(out)[1]["streams"] if s["codec_type"] == "video")
+            self.assertEqual((vsrc["codec_name"], vsrc["width"], vsrc["height"]), (vout["codec_name"], vout["width"], vout["height"]))
+            self.assertAlmostEqual(float(ffmpeg_mod.probe(out)[1]["format"]["duration"]), 3.0, delta=0.3)
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg/ffprobe (runs in the worker image)")
+    def test_a_video_without_sound_and_a_silent_track_also_copy(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            for name, audio in (("none", None), ("zero", "anullsrc=r=44100:cl=stereo")):
+                src = d / (name + ".mp4")
+                cmd = ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=360x640:d=2:r=25"]
+                cmd += ["-f", "lavfi", "-i", audio, "-c:a", "aac"] if audio else []
+                subprocess.run(cmd + ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-t", "2", str(src)], check=True)
+                folder = d / name
+                folder.mkdir()
+                out = render_mod.render(src, folder, {"kind": "silent", "segments": []}, "original", 2.0)
+                info, problems = render_mod.qc(out, audio is not None)
+                self.assertEqual((problems, info["audio"]), ([], audio is not None), name)
+
+
 class RotationZonesAndSizeTests(unittest.TestCase):
     def test_displayed_size_follows_rotation(self):
         self.assertEqual(geometry.display_size({"width": 1280, "height": 720}), (1280, 720))

@@ -82,6 +82,15 @@ Bất biến quan trọng (đều có test):
 - **Lịch đăng** (`store/publishing.py`): mỗi lần hỏi, thử lần lượt các tài khoản đang bật, tài khoản đăng lâu nhất trước; tài khoản nào còn chỗ (giờ vàng, giới hạn ngày, giãn cách, không có bài chưa xác nhận) và có video điểm cao thuộc chủ đề của nó thì nhận video đó. Bài chưa xác nhận chỉ chặn tài khoản của nó; một bài đang đăng chặn mọi tài khoản (agent chỉ làm một việc trình duyệt một lúc). Nút Đăng ngay chọn tài khoản nhận chủ đề đó (ít bài hôm nay nhất), nếu không có thì tài khoản mặc định.
 - **Thu thập theo chủ đề** (`collector/sources`): Douyin: một lần mở trang `jingxuan`, đọc luồng mặc định rồi bấm tab của từng chủ đề cần (tối đa 6 tab mỗi lần quét, luân phiên theo đồng hồ); Kuaishou không có danh mục cho khách chưa đăng nhập; TikTok: chip theo chủ đề; chip không có thì bỏ qua không thử lại. Ngưỡng cho tab chủ đề thấp hơn luồng chung vì đo trên 520 video Douyin thật: chỉ 12% video trong tab đạt mốc 150 nghìn tim của luồng chung (trung vị 10–70 nghìn) và tuổi trung vị là 39 ngày nên giới hạn 7 ngày chỉ cho qua 10%; luồng chủ đề dùng 15% ngưỡng tim/lượt xem và cho phép cũ gấp 4 lần (28 ngày), điểm xếp hạng vẫn ưu tiên video mới. Chọn tải (`choose_downloads`): bỏ video có gợi ý là chủ đề không ai nhận, chia lượt giữa các chủ đề, điểm cao trước, để một chủ đề đông không lấn át chủ đề khác.
 
+## 3c. Hiệu suất (đo trên video thật, máy 12 nhân)
+
+Thời gian xử lý một video: Gemini khoảng hai phần ba (30–100 giây, tùy lúc API rảnh; thường gặp lỗi 503 "quá tải" kéo dài nên chốt chặn và xếp hàng lại quan trọng hơn tối ưu), dựng khoảng một phần tư, phần còn lại là bản xem trước, dấu vân tay và kiểm tra (đo: video 78 giây dựng 24 giây; video ngang 153 giây dựng 40 giây).
+
+- **Xử lý song song** (`pipeline.process_many`): mặc định 2 video cùng lúc (`TRENDVN_PROCESS_PARALLEL`, 1 = lần lượt). Vì phần lớn thời gian một video là chờ Gemini nên 2 luồng gần như gấp đôi thông lượng mà không tranh CPU; dừng phát việc mới ngay khi gặp trạng thái dừng (tắt, thiếu khóa, hết hạn mức, hết hàng chờ).
+- **Giữ nguyên hình** (`media/render.can_copy_video`): video **giữ nguyên** (nhạc, không lời) đã là dọc H.264 8-bit trong khung 1080×1920, ≤ 30 khung/giây, bitrate ≤ 6 Mb/s thì chỉ chỉnh âm lượng, hình được sao nguyên từng điểm ảnh (kiểm bằng md5). Đo trên video thật: 3,3 giây thay cho 24 giây, tệp 13,8 MB thay cho 24,8 MB, không mất chất lượng.
+- **Chờ thích nghi khi thu thập** (`collector/capture.Feed`): thay các lần chờ cố định bằng "chờ tới khi trang đã trả lời và yên lặng", nên trang nhanh thì quét nhanh, trang chậm vẫn có đủ thời gian; cuộn dừng ngay khi không còn video mới.
+- Không đổi sau khi đo: bộ lọc khung 9:16 (giải mã 1080p và co ảnh chiếm hơn nửa, thử các biến thể không nhanh hơn), mã hóa `veryfast` (đã chọn ở Phase B), trang bảng điều khiển (8–12 ms mỗi lần tải).
+
 ## 4. Nguồn thu thập
 
 | Nguồn | Cách lấy | Ghi chú |

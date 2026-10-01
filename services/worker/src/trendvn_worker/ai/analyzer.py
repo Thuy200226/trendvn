@@ -11,9 +11,10 @@ from .prompts import ANALYSIS_PROMPT, ANALYSIS_SCHEMA
 
 def analyze(store, path, duration, cfg, folder, lenient=False):
     proxy = folder / "analysis.mp4"
+    # Gemini looks at one frame per second whatever the file's frame rate, so 1 fps loses nothing and halves the file and the work
     ffmpeg(
-        "-i", str(path), "-vf", "scale=384:-2,fps=2",
-        "-c:v", "libx264", "-preset", "fast", "-crf", "32",
+        "-i", str(path), "-vf", "scale=384:-2,fps=1",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "32",
         "-c:a", "aac", "-b:a", "48k", "-movflags", "+faststart", str(proxy),
     )  # fmt: skip
     if proxy.stat().st_size > 12 * 1024 * 1024:

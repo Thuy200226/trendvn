@@ -6,7 +6,7 @@ Mọi prompt và schema gửi Gemini nằm trong **một file duy nhất**: [`se
 
 | Lần gọi | Khi nào | Model mặc định | Đầu vào | Đầu ra |
 |---|---|---|---|---|
-| **Phân tích** (`media.analyze`) | Mỗi video được xử lý, 1 lần | `gemini-3.8-flash` (tự chuyển model khác khi gặp 404) | Bản xem trước 384px, 2 khung/giây, ≤ 12 MB + `ANALYSIS_PROMPT` | JSON theo `ANALYSIS_SCHEMA` |
+| **Phân tích** (`media.analyze`) | Mỗi video được xử lý, 1 lần | `gemini-3.8-flash` (tự chuyển model khác khi gặp 404) | Bản xem trước 384px, 1 khung/giây (Gemini chỉ lấy 1 khung/giây dù file có bao nhiêu), ≤ 12 MB + `ANALYSIS_PROMPT` | JSON theo `ANALYSIS_SCHEMA` |
 | **Giọng đọc** (`media.tts`) | Chỉ video thuyết minh khi bật lồng tiếng, 1 lần | `gemini-3.8-flash-tts` (đọc được WAV, PCM và định dạng khác qua ffmpeg) | `TTS_PROMPT` + `narration_vi` | Âm thanh PCM |
 | **Giọng đọc thử** | Khi bạn bấm "Nghe thử giọng đọc" | như trên | `VOICE_SAMPLE` | File `data/worker/exports/voice_sample.wav` |
 
@@ -65,4 +65,4 @@ Sau mỗi lần đổi prompt: bật "Duyệt tay trước khi đăng" trong và
 
 ## 5. Vì sao dùng bản xem trước 384px
 
-Video gửi Gemini đã hạ còn 384px, 2 khung/giây, âm thanh 48 kbps, ≤ 12 MB: đủ để nhận giọng nói, chữ trên hình và kiểu nội dung, nhưng rẻ và nhanh hơn nhiều so với video gốc. Video dựng cuối cùng vẫn từ file gốc chất lượng cao.
+Video gửi Gemini đã hạ còn 384px, 1 khung/giây, âm thanh 48 kbps, ≤ 12 MB: đủ để nhận giọng nói, chữ trên hình và kiểu nội dung, nhưng rẻ và nhanh hơn nhiều so với video gốc. Video dựng cuối cùng vẫn từ file gốc chất lượng cao.

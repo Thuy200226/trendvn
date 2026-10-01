@@ -300,3 +300,74 @@ class RunPlatformTopicTests(StoreCase):
         topics_sent = {p["stream"]: p["topic"] for path, p in sent if path == "/api/ingest"}
         self.assertEqual(topics_sent, {"jingxuan": None, "jingxuan_pets": "pets"})
         self.assertEqual(report["status"], "ok")
+
+
+class ClockedPage:
+    """A page on a fake clock: waiting advances it, and scripted answers arrive at given times."""
+
+    def __init__(self, clock, answers):
+        self.clock, self.answers, self.waited, self.feed = clock, sorted(answers), 0, None
+        self.mouse = mock.MagicMock()
+        self.mouse.wheel.side_effect = lambda *a: None
+
+    def on(self, event, handler):
+        self.handler = handler
+
+    def wait_for_timeout(self, ms):
+        self.clock.now += ms / 1000
+        self.waited += ms
+        while self.answers and self.answers[0][0] <= self.clock.now:
+            _, ids = self.answers.pop(0)
+            response = mock.MagicMock(status=200, url="https://x/feed", headers={"content-type": "application/json"})
+            response.body.return_value = json.dumps({"ids": ids}).encode()
+            self.handler(response)
+
+
+class Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+
+class AdaptiveWaitTests(unittest.TestCase):
+    def feed(self, answers):
+        clock = Clock()
+        page = ClockedPage(clock, [(clock.now + at, ids) for at, ids in answers])
+        patcher = mock.patch.object(capture.time, "time", clock)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        feed = capture.Feed(page, lambda u: True, lambda d: [{"source_id": i} for i in d["ids"]], ["s"])
+        return feed, page, clock
+
+    def test_a_fast_page_does_not_wait_out_the_ceiling(self):
+        feed, page, clock = self.feed([(1.0, ["a"]), (1.5, ["b"])])
+        feed.settle(floor_ms=2000, ceiling_ms=12000, quiet_ms=1500, since=clock.now)
+        self.assertLessEqual(page.waited, 3500)  # floor 2 s, then 1.5 s of quiet after the last answer at 1.5 s
+        self.assertEqual(feed.count(), 2)
+
+    def test_a_slow_first_answer_is_waited_for(self):
+        feed, page, clock = self.feed([(7.0, ["a"])])
+        feed.settle(floor_ms=4000, ceiling_ms=12000, quiet_ms=1500, since=clock.now)
+        self.assertEqual(feed.count(), 1)
+        self.assertGreaterEqual(page.waited, 7000)
+        self.assertLess(page.waited, 12000)
+
+    def test_a_page_that_never_answers_stops_at_the_ceiling(self):
+        feed, page, clock = self.feed([])
+        feed.settle(floor_ms=4000, ceiling_ms=12000, quiet_ms=1500, since=clock.now)
+        self.assertEqual(page.waited, 12000)
+
+    def test_answers_from_before_the_click_do_not_count_as_its_answer(self):
+        feed, page, clock = self.feed([(0.5, ["old"]), (6.0, ["new"])])
+        page.wait_for_timeout(1000)
+        feed.settle(floor_ms=2000, ceiling_ms=10000, quiet_ms=1500, since=clock.now)  # the click happens now; "old" was before it
+        self.assertEqual(feed.count(), 2)
+
+    def test_scrolling_stops_when_nothing_new_comes(self):
+        feed, page, clock = self.feed([(0.5, ["a"]), (3.0, ["b"])])
+        page.wait_for_timeout(1000)
+        feed.scroll(5)
+        self.assertEqual(page.mouse.wheel.call_count, 2)  # the second scroll brought nothing, so the third never happened
+        self.assertEqual(feed.count(), 2)
