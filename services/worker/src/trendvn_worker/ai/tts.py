@@ -11,6 +11,10 @@ from .errors import VoiceoverUnfit
 from . import gemini as client
 from .prompts import TTS_PROMPT
 
+# Gemini reads Vietnamese at about 9.5 characters a second. Told to hurry it jumps to 16 and silently skips whole sentences (measured by
+# transcribing the audio back: 79% of the words survived), so anything much faster than natural speech is refused instead of posted.
+MAX_CHARS_PER_SECOND = 14
+
 
 def tts(store, cfg, text, out):
     if not isinstance(text, str) or not text.strip() or len(text) > 6000:
@@ -58,6 +62,8 @@ def make_voice(store, cfg, a, folder):
     text = (a.get("narration_vi") or "").strip() or " ".join(s["vi"] for s in a["segments"])
     wav = folder / "voice.wav"
     seconds = tts(store, cfg, text, wav)
+    if len(text) / seconds > MAX_CHARS_PER_SECOND:
+        raise VoiceoverUnfit("Giọng đọc %.1fs quá ngắn cho %d ký tự: có thể bị bỏ sót chữ" % (seconds, len(text)))
     start = a["segments"][0]["start"]
     end = a["segments"][-1]["end"]
     span = max(2.0, end - start)

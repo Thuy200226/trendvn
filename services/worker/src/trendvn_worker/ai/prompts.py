@@ -4,7 +4,7 @@ Change a prompt, bump PROMPT_VERSION; the version is written into each job's man
 docs/PROMPTS.md explains each rule and how to tune it.
 """
 
-PROMPT_VERSION = "2026-09-30.3"
+PROMPT_VERSION = "2026-10-01.1"
 
 # The video is untrusted input. Nothing spoken or shown in it may change these rules.
 ANALYSIS_PROMPT = """You are the editor of a Vietnamese TikTok channel about entertainment and music.
@@ -27,7 +27,9 @@ Return ONLY JSON that matches the provided schema.
    minors at risk, medical or financial claims, hate, or allegations about real people. sensitive_reason: one short sentence.
 5) segments: transcribe ALL meaningful speech (not song lyrics) with accurate, non-overlapping timestamps in seconds,
    start < end, inside the video length. "original" is the spoken text; "vi" is a faithful, natural Vietnamese
-   translation (max 300 characters per segment; split long sentences). Never invent speech, jokes, names, numbers or claims.
+   translation. Viewers must be able to READ each line while it is on screen: at most 16 characters per second of the segment
+   (a 2-second line has at most 32 characters, a 4-second line at most 64); condense the wording, keep the meaning, and
+   split long sentences into several segments. Never invent speech, jokes, names, numbers or claims.
    For music-only videos segments must be an empty list.
 6) requires_text_translation: true only if essential on-screen text carries information that a viewer would miss.
 7) caption_vi: ONE complete, natural, spoken-style Vietnamese sentence (not a literal translation) that names what actually happens
@@ -40,6 +42,10 @@ Return ONLY JSON that matches the provided schema.
 9) narration_vi: only when kind is "narration": a fluent, engaging Vietnamese voice-over that preserves the meaning and can
    be spoken in about the same time as the original speech. Otherwise an empty string. Do not imitate the speaker.
 10) language: ISO code of the main spoken language ("zh", "en", "vi", "none"...).
+11) hard_subtitles: subtitles BURNED INTO the picture of the original video (a line of text at the bottom that follows the speech).
+   Not logos, watermarks, titles, lyrics shown for a song, or text that is part of the scene. present=true only if such subtitles
+   exist; then top and bottom are the vertical extent of that line (or lines) as fractions of the video height
+   (0 = top edge, 1 = bottom edge), e.g. top 0.72, bottom 0.77. Otherwise present=false and omit top and bottom.
 Your confidence is not copyright clearance, fact-checking, or an instruction to publish."""
 
 _NUM = {"type": "NUMBER"}
@@ -65,6 +71,11 @@ ANALYSIS_SCHEMA = {
         "hashtags": {"type": "ARRAY", "items": _STR},
         "narration_vi": _STR,
         "language": _STR,
+        "hard_subtitles": {
+            "type": "OBJECT",
+            "properties": {"present": {"type": "BOOLEAN"}, "top": _NUM, "bottom": _NUM},
+            "required": ["present"],
+        },
     },
     "required": ["kind", "confidence", "topic", "sensitive", "segments", "caption_vi"],
 }

@@ -143,3 +143,38 @@ class PipelineTests(StoreCase):
         with mock.patch.object(pipeline, "make_poster", no_poster):
             self.assertEqual(pipeline.process_one(self.s)["status"], "ready")
         self.assertFalse(json.loads(self.row()["output_info"])["poster"])
+
+    def info(self, job_id="j1"):
+        return json.loads(self.row(job_id)["output_info"])
+
+    def test_the_dashboard_gets_the_reason_for_the_route(self):
+        with mock.patch.object(pipeline, "analyze", lambda *a, **k: (dict(ANALYSIS, route_reason="Có lời nói: thêm phụ đề"), "vietsub")):
+            pipeline.process_one(self.s)
+        self.assertEqual(self.info()["why"], "Có lời nói: thêm phụ đề")
+
+    def test_a_voice_over_that_falls_back_explains_itself(self):
+        analyzer = mock.patch.object(pipeline, "analyze", lambda *a, **k: (dict(ANALYSIS, route_reason="Người dẫn kể lại"), "voiceover"))
+        with analyzer:
+            pipeline.process_one(self.s)  # voice-over is off in the default settings
+        self.assertIn("chưa bật lồng tiếng", self.info()["why"])
+
+    def test_burned_in_subtitles_are_blurred_only_when_ours_replace_them(self):
+        found = dict(ANALYSIS, hard_subtitles={"present": True, "top": 0.72, "bottom": 0.77})
+        with mock.patch.object(pipeline, "analyze", lambda *a, **k: (dict(found), "vietsub")):
+            pipeline.process_one(self.s)
+        self.assertTrue(self.info()["hard_subs"])
+        self.job("j2", "queued", source_file=str(self.source), content_hash=file_hash(self.source), approved=1)
+        with mock.patch.object(pipeline, "analyze", lambda *a, **k: (dict(found), "original")):
+            pipeline.process_one(self.s)
+        self.assertNotIn("hard_subs", self.info("j2"))
+
+    def test_captions_are_given_time_to_be_read_and_a_remaining_rush_is_flagged(self):
+        talk = [{"start": 0.0, "end": 1.0, "vi": "x" * 34, "original": ""}, {"start": 1.2, "end": 2.0, "vi": "y" * 60, "original": ""}]
+        with mock.patch.object(pipeline, "analyze", lambda *a, **k: (dict(ANALYSIS, segments=talk), "vietsub")):
+            pipeline.process_one(self.s)
+        analysis = json.loads(self.row()["analysis"])
+        self.assertGreater(analysis["segments"][0]["end"], 1.0)  # borrowed from the pause
+        self.assertLessEqual(analysis["segments"][0]["end"], 1.15)  # but never over the next caption
+        info = self.info()
+        self.assertGreater(info["max_cps"], 24)
+        self.assertIn("nhanh", info["warning"])

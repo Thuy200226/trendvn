@@ -66,7 +66,7 @@ Bất biến quan trọng (đều có test):
 | Trùng file? | `services/worker/src/trendvn_worker/store/ingest.py` | `Store.attach` (SHA-256 nội dung) |
 | Trùng hình dù mã hóa khác? | `services/worker/src/trendvn_worker/media/fingerprint.py` | `fingerprint` (5 khung hình, hash 64-bit) + `similar` |
 | Nhạc hay lời? Chủ đề? Nhạy cảm? | Gemini theo `services/worker/src/trendvn_worker/ai/prompts.py` | kiểm tra lại cứng ở `domain/analysis.py::validate_analysis` |
-| Xử lý theo đường nào? | `services/worker/src/trendvn_worker/domain/analysis.py` | `validate_analysis` trả `original`/`vietsub`/`voiceover` |
+| Xử lý theo đường nào? | `services/worker/src/trendvn_worker/domain/route.py` | `choose_route` trả đường đi và lý do; `validate_analysis` (analysis.py) kiểm tra rồi gọi nó |
 | Dựng video | `services/worker/src/trendvn_worker/media/` và `ai/tts.py` | `render`, `ass_subtitles`, `make_voice` |
 | Được đăng lúc này không? | `services/worker/src/trendvn_worker/store/publishing.py` | `publish_claim`: công tắc → không có bài chưa xác nhận → giờ vàng → giới hạn ngày → giãn cách → chọn bài điểm cao nhất |
 | Đăng và xác nhận | `services/agent/src/trendvn_agent/publisher/post.py`, `publisher/jobs.py` | `publish_one`, `verify_unresolved` |
@@ -104,7 +104,7 @@ Douyin và Kuaishou chỉ phục vụ nội dung trong nước nên IP nào cũn
 services/worker/
   Dockerfile
   src/trendvn_worker/                  → đóng gói thành image Docker (chỉ thư viện chuẩn của Python)
-    domain/        luật thuần, không đọc/ghi gì: platforms, settings, analysis, captions, schedule, states
+    domain/        luật thuần, không đọc/ghi gì: platforms, settings, analysis, route, readability, hardsubs, captions, schedule, states
     store/         SQLite: base, schema (di trú có số phiên bản), ingest, queue, publishing, captions, health, task_log, feedback, reporting
     ai/            Gemini: gemini (gọi, ngân sách, dự phòng model), prompts, analyzer, tts, errors
     media/         ffmpeg: ffmpeg, fingerprint, geometry, subtitles, render

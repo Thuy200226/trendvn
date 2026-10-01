@@ -7,11 +7,13 @@ from .ai.analyzer import analyze
 from .ai.errors import RateLimited
 from .ai.prompts import PROMPT_VERSION
 from .ai.tts import make_voice
+from .domain.readability import TOO_FAST, fit_reading_speed
+from .domain.route import REASONS
 from .files import file_hash
 from .media.ffmpeg import probe
 from .media.fingerprint import fingerprint, similar
 from .media.geometry import display_size, layout
-from .media.render import make_poster, qc, render
+from .media.render import covered_hard_subtitles, make_poster, qc, render
 
 REASON_LIMIT = 700
 
@@ -52,9 +54,17 @@ def _process(store, cfg, job):
     a, route = analyze(store, path, duration, cfg, folder, lenient=approved)
     if not approved and not str(a.get("caption_vi") or "").strip():
         raise ValueError("Gemini không soạn được mô tả tiếng Việt; cần bạn xem lại")
-    voice, route, note = _voice_or_subtitles(store, cfg, a, route, folder)
+    a["segments"], fastest = fit_reading_speed(a["segments"], duration)
+    voice, route, why, note = _voice_or_subtitles(store, cfg, a, route, folder)
     out = render(path, folder, a, route, duration, voice)
     info = _checked_output(out, path, route, folder, duration)
+    info["why"] = why
+    if covered_hard_subtitles(a, route):
+        info["hard_subs"] = True  # the source's own burned-in subtitles were blurred out
+    if route != "original" and a["segments"]:
+        info["max_cps"] = fastest
+        if fastest > TOO_FAST:
+            info["warning"] = info.get("warning") or "Phụ đề hơi nhanh (%.0f ký tự/giây)" % fastest
     digest = file_hash(out)
     _write_manifest(folder, job, cfg, a, route, digest, info)
     approval = cfg["require_approval"] and not approved
@@ -97,16 +107,18 @@ def _look_alike(store, jid, fp, duration):
 
 
 def _voice_or_subtitles(store, cfg, a, route, folder):
-    """Turn the analysis' route into what will really be rendered. Returns (voice or None, route, note for the dashboard).
-    A voice-over that cannot be made falls back to subtitles alone, which are a complete and safe result."""
+    """Turn the analysis' route into what will really be rendered. Returns (voice or None, route, why, note): `why` is the reason
+    shown on the dashboard, `note` the detail appended to the job's status. A voice-over that cannot be made falls back to subtitles
+    alone, which are a complete and safe result."""
+    why = a.get("route_reason") or ""
     if route != "voiceover":
-        return None, route, ""
+        return None, route, why, ""
     if not cfg["voiceover_enabled"]:
-        return None, "vietsub", ""
+        return None, "vietsub", REASONS["narration_no_voice"], ""
     try:
-        return make_voice(store, cfg, a, folder), "voiceover", ""
+        return make_voice(store, cfg, a, folder), "voiceover", why, ""
     except Exception as e:
-        return None, "vietsub", " (lồng tiếng bỏ qua: %s)" % str(e)[:120]
+        return None, "vietsub", REASONS["voice_failed"], " (lồng tiếng bỏ qua: %s)" % str(e)[:120]
 
 
 def _checked_output(out, source, route, folder, duration):

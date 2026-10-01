@@ -1,6 +1,8 @@
-"""Gemini's analysis of a video: repair timestamps, validate, and decide the route (original / vietsub / voiceover)."""
+"""Gemini's analysis of a video: repair timestamps, validate, and decide the route (see route.py)."""
 
 import math
+
+from .route import choose_route
 
 
 def normalize_segments(segments, duration):
@@ -72,12 +74,10 @@ def validate_analysis(a, duration, confidence=0.90, strict=False, lenient=False)
         raise ValueError("Speech detected without transcript")
     if a["kind"] == "music" and segments:
         raise ValueError("Music-only classification conflicts with speech")
-    if a["kind"] == "uncertain":
-        a = dict(a, kind="silent" if not segments else "mixed")
-    if a["kind"] in ("dialogue", "mixed"):
-        return "vietsub"
-    if a["kind"] == "narration":
-        return "voiceover"
-    if a.get("requires_text_translation") and not segments:
+    kind = a["kind"]
+    if kind == "uncertain":  # only reachable with lenient=True (a human approval): decide by what was actually heard
+        kind = "silent" if not segments else "mixed"
+    if kind in ("music", "silent") and a.get("requires_text_translation") and not segments:
         raise ValueError("On-screen information requires translation")
-    return "vietsub" if segments else "original"
+    chosen, a["route_reason"] = choose_route(kind, bool(segments))
+    return chosen

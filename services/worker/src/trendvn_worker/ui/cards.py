@@ -21,6 +21,8 @@ def _fact_chips(job, info):
     facts.append(chip(ROUTE_LABEL.get(job["route"], job["route"] or ""), "info"))
     if info.get("reframed"):
         facts.append(chip("đã đưa vào khung dọc", "mute"))
+    if info.get("hard_subs"):
+        facts.append(chip("đã che phụ đề gốc", "mute"))
     if info.get("warning"):
         facts.append(chip(info["warning"], "warn"))
     return "".join(facts)
@@ -86,7 +88,7 @@ def ready_card(job, view, blocked):
         '<div class="row">%(plat)s%(state)s</div>'
         '<div class="ttl">%(title)s</div>'
         '<div class="muted small">%(score)s</div>'
-        '<div class="facts">%(facts)s</div>'
+        '<div class="facts">%(facts)s</div>%(why)s'
         '<label class="cap">Mô tả và hashtag sẽ đăng'
         '<textarea name="caption" rows="4" maxlength="2200" data-caption spellcheck="false">%(caption)s</textarea></label>'
         '<div class="row small"><span class="muted"><span data-len>%(length)d</span> ký tự · <span data-tags>%(ntags)d</span> hashtag%(edited)s</span></div>'
@@ -106,6 +108,7 @@ def ready_card(job, view, blocked):
         "title": E((job["title"] or "(không có tiêu đề)")[:120]),
         "score": E(_score_line(meta_of(job))),
         "facts": _fact_chips(job, info),
+        "why": '<div class="muted small">%s</div>' % E(info["why"]) if info.get("why") else "",
         "caption": E(job["caption"]),
         "length": lint["length"],
         "ntags": lint["tags"],
