@@ -1,0 +1,45 @@
+# Secure CI skeleton (GitHub Actions). Adapt steps to the stack. Principles: read-only token by default, third-party actions pinned to a
+# full commit SHA (replace the placeholders; let Dependabot/Renovate update them), no long-lived cloud keys (OIDC), the same gate as local.
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read            # least privilege; grant more only in the job that needs it
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@<FULL_COMMIT_SHA>   # v4.x.x  (pin by SHA, keep the version in a comment)
+        with:
+          persist-credentials: false
+      - name: Quality gate (same command as local)
+        run: ./tool test            # format check, lint, unit tests, doc-lint
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@<FULL_COMMIT_SHA>
+      - name: Dependency vulnerabilities (SCA)
+        run: <osv-scanner / pip-audit / npm audit --omit=dev>
+      - name: Static analysis (SAST)
+        run: <semgrep ci / codeql>
+      - name: Dockerfile + image scan
+        run: |
+          <hadolint Dockerfile>
+          <docker build -t app:ci . && trivy image --exit-code 1 --severity HIGH,CRITICAL app:ci>
+  release:
+    if: github.ref == 'refs/heads/main'
+    needs: gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write       # OIDC for keyless signing / cloud auth
+      packages: write       # only if publishing images here
+    steps:
+      - uses: actions/checkout@<FULL_COMMIT_SHA>
+      - name: Build, generate SBOM, sign (cosign keyless), attest provenance
+        run: <build + syft SBOM + cosign sign + provenance attestation>
+      # Deploy only signed artifacts built here; use protected environments with required reviewers for production.

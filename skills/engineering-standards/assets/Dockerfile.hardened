@@ -1,0 +1,23 @@
+# Hardened multi-stage image (adapt to the stack). Principles: minimal base, pinned by digest for releases, non-root numeric UID,
+# read-only root filesystem at runtime, no build tools or secrets in the final image, healthcheck, version labels.
+FROM python:3.12-slim AS build
+WORKDIR /src
+COPY requirements.txt .
+RUN python -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt   # use hashes: pip install --require-hashes
+COPY src/ /app/
+
+FROM python:3.12-slim
+ARG VERSION=0.0.0
+ARG COMMIT=unknown
+LABEL org.opencontainers.image.version=$VERSION org.opencontainers.image.revision=$COMMIT
+ENV PATH=/opt/venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/app
+COPY --from=build /opt/venv /opt/venv
+COPY --from=build /app /app
+USER 10001:10001
+WORKDIR /app
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).status == 200 else 1)"]
+CMD ["python", "-m", "app"]
+
+# Run it with (compose / docker run):
+#   read_only: true, tmpfs: [/tmp], cap_drop: [ALL], security_opt: ["no-new-privileges:true"], mem/cpu limits, a named volume for state.
+# In CI: hadolint the Dockerfile, scan the image (Trivy/Grype), generate an SBOM, sign with cosign (keyless via OIDC), pin base by digest for releases.

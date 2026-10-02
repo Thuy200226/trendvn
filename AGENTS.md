@@ -1,8 +1,10 @@
 # AGENTS.md - quy tắc cho mọi agent làm việc trong repo này
 
 Đọc file này trước khi sửa bất cứ thứ gì. Người dùng viết tiếng Việt: trả lời bằng tiếng Việt, rõ ràng, không khoe.
-Quy tắc chung (bố cục, kiểm thử, rà soát, đo hiệu suất, an toàn) có đủ trong skill `engineering-standards`: bản trong repo ở
-[skills/engineering-standards](skills/engineering-standards/SKILL.md), cài cho mọi dự án bằng `cp -r skills/engineering-standards ~/.claude/skills/`. Nếu skill đã cài, hãy dùng nó. Phần dưới là những gì riêng của repo này.
+Các chuẩn dùng chung cho mọi dự án (bố cục và module, **bảo mật**, **hiệu năng và tốc độ**, kiểm thử, CI/CD và triển khai, quy trình 3 vòng rà soát) nằm trong skill
+`engineering-standards`: bản trong repo ở [skills/engineering-standards](skills/engineering-standards/SKILL.md), cài cho mọi dự án bằng
+`cp -r skills/engineering-standards ~/.claude/skills/`. Nếu skill đã cài, hãy dùng nó; file này chỉ ghi những gì **riêng của repo này**.
+Mẫu AGENTS.md dùng lại cho dự án khác: `skills/engineering-standards/assets/AGENTS-template.md`.
 
 ## Dự án là gì
 TrendVN thu thập video xu hướng (Douyin, Kuaishou; TikTok, Instagram cần IP Mỹ), thêm Vietsub hoặc thuyết minh tiếng Việt bằng Gemini, rồi đăng lên một hoặc nhiều tài khoản TikTok qua Chrome thật (không dùng API TikTok), theo lịch của n8n riêng của dự án.
