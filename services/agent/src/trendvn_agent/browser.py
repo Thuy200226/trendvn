@@ -36,7 +36,8 @@ def chrome(profile, locale="en-US", headless=True, region=None, viewport=(1366, 
             headless=headless,
             locale=locale,
             viewport={"width": viewport[0], "height": viewport[1]},
-            args=["--no-first-run", "--no-default-browser-check"],
+            # the page cache is capped: an uncapped Chrome cache grew one scanning profile past 230 MB on a disk with 1 GB to spare
+            args=["--no-first-run", "--no-default-browser-check", "--disk-cache-size=67108864", "--media-cache-size=1048576"],
         )
         proxy = proxy_for(region) if region else None
         if proxy:

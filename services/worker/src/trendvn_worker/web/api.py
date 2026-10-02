@@ -3,6 +3,7 @@
 import re
 
 from .. import notify
+from ..domain.platforms import PLATFORMS
 from ..pipeline import process_many
 
 JOB_ID = re.compile(r"[0-9a-f]{32}")
@@ -66,7 +67,10 @@ def attach(app, payload):
 
 @route("/api/media/pending")
 def media_pending(app, payload):
-    return {"items": app.store.candidates_without_media(int(payload.get("limit", 20)))}
+    platform = payload.get("platform")
+    if platform is not None and platform not in PLATFORMS:
+        raise ValueError("Nền tảng không hợp lệ")
+    return {"items": app.store.candidates_without_media(int(payload.get("limit", 20)), platform)}
 
 
 @route("/api/media/failed")
@@ -84,7 +88,10 @@ def heartbeat(app, payload):
 # ------------------------------------------------------------------ processing
 @route("/api/housekeeping")
 def housekeeping(app, payload):
-    return app.store.housekeeping()
+    result = app.store.housekeeping()
+    if any(result["pruned"].get(key) for key in ("expired", "files_removed", "rows_trimmed", "orphans")):
+        app.log("housekeeping: " + ", ".join("%s=%s" % item for item in result["pruned"].items() if item[1]))
+    return result
 
 
 @route("/api/process")

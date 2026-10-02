@@ -5,13 +5,20 @@ import re
 import subprocess
 
 DEFAULT_TIMEOUT = 300
+PATH = re.compile(r"(?:/[\w.@+-]+){2,}/([\w.@+-]+)")
+
+
+def tidy(stderr):
+    """The tail of a tool's error output for the dashboard and notifications: folders of the server's file system are cut down to the
+    file name (the reason is shown to people and sent to phones; where the data folder lives is nobody's business)."""
+    return PATH.sub(r"\1", stderr)[-700:]
 
 
 def run(args, timeout=DEFAULT_TIMEOUT):
     """Run a command and return its stdout; a non-zero exit raises ValueError carrying the tail of stderr."""
     process = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
     if process.returncode:
-        raise ValueError("Media operation failed: " + process.stderr.decode(errors="replace")[-700:])
+        raise ValueError("Media operation failed: " + tidy(process.stderr.decode(errors="replace")))
     return process.stdout
 
 
@@ -42,7 +49,7 @@ def decode_check(path, with_audio):
     )
     report = process.stderr.decode(errors="replace")
     if process.returncode:
-        raise ValueError("Media operation failed: " + report[-700:])
+        raise ValueError("Media operation failed: " + tidy(report))
     summary = report[report.rfind("Summary:") :] if "Summary:" in report else ""
     lufs = re.search(r"I:\s+(-?[\d.]+|-inf) LUFS", summary)
     peak = re.search(r"Peak:\s+(-?[\d.]+) dBFS", summary)

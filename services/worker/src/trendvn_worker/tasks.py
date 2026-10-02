@@ -13,6 +13,7 @@ import time
 import urllib.error
 import urllib.request
 
+from .domain.platforms import NAMES
 from .pipeline import process_many
 
 PROCESS_BATCH = 4  # videos processed per press of the button
@@ -25,7 +26,7 @@ LABELS = {
     "dryrun": "Xem thử (không đăng)",
     "stats": "Đọc lượt xem",
 }
-PLATFORM_NAMES = {"douyin": "Douyin", "kuaishou": "Kuaishou", "tiktok": "TikTok", "instagram": "Instagram"}
+PLATFORM_NAMES = NAMES
 PROCESS_LABELS = {
     "ready": "sẵn sàng đăng",
     "awaiting_approval": "chờ bạn duyệt",

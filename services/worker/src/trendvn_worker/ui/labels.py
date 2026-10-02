@@ -1,5 +1,7 @@
 """Vietnamese wording shown in the dashboard: states, sources, components, events, and the plain-language version of internal reasons."""
 
+from ..domain.platforms import REGISTRY
+
 STATE_LABELS = {
     "baseline": "Mốc ban đầu",
     "candidate": "Ứng viên",
@@ -30,7 +32,7 @@ STATE_TONE = {
     "duplicate": "mute",
     "rejected": "mute",
 }
-PLATFORM = {"douyin": ("Douyin", "CN"), "kuaishou": ("Kuaishou", "CN"), "tiktok": ("TikTok", "US"), "instagram": ("Instagram", "US")}
+PLATFORM = {p.id: (p.name, p.country) for p in REGISTRY}
 COMPONENT = {
     "connected": ("Hoạt động", "good"),
     "not_connected": ("Chưa kết nối", "mute"),

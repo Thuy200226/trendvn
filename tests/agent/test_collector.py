@@ -75,6 +75,43 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(instagram.parse_instagram_codes(text), ["DdPgJ99Ps8d", "Ddz3t5_K43z"])  # locale tags are not reel codes
 
 
+class RegistryContractTests(unittest.TestCase):
+    """The worker and the agent are separate programs that must agree on the list of platforms: this is the one place that checks it."""
+
+    def test_every_platform_exists_on_both_sides_with_the_same_country(self):
+        from trendvn_agent.collector.sources import SOURCES
+        from trendvn_worker.domain.platforms import COUNTRIES, DEFAULT_MIN_VIEWS, NAMES, PLATFORMS, REGISTRY
+
+        self.assertEqual(set(SOURCES), set(PLATFORMS))
+        self.assertEqual({p.id for p in REGISTRY}, set(SOURCES))
+        for platform, source in SOURCES.items():
+            self.assertEqual(source["country"], COUNTRIES[platform], platform)
+            for key in ("locale", "scan", "geo_locked", "cdn"):
+                self.assertIn(key, source, platform)
+            self.assertTrue(callable(source["scan"]))
+            self.assertIsInstance(source["cdn"], tuple)
+        self.assertEqual(set(NAMES), set(DEFAULT_MIN_VIEWS))
+
+    def test_derived_tables_follow_the_registry(self):
+        from trendvn_worker.domain.captions import BANNED_TAG_PARTS
+        from trendvn_worker.domain.platforms import PLATFORMS
+        from trendvn_worker.domain.settings import DEFAULTS
+        from trendvn_worker.ui.labels import PLATFORM
+
+        self.assertEqual(set(PLATFORM), set(PLATFORMS))
+        self.assertEqual(set(DEFAULTS["min_views"]), set(PLATFORMS))
+        self.assertTrue(set(PLATFORMS) <= set(BANNED_TAG_PARTS))
+
+    def test_the_settings_page_has_a_views_field_for_every_platform(self):
+        from trendvn_worker.domain.platforms import PLATFORMS
+        from trendvn_worker.ui.tabs import more
+
+        view = type("V", (), {"cfg": {"min_views": {}, "min_likes": {}}})()
+        html = more._threshold_group(view)
+        for platform in PLATFORMS:
+            self.assertIn('name="views_%s"' % platform, html)
+
+
 class GateTests(unittest.TestCase):
     def item(self, **kw):
         return dict({"duration": 30, "views": 2000000, "likes": 200000}, **kw)
@@ -91,6 +128,16 @@ class GateTests(unittest.TestCase):
 
     def test_unknown_views_rejected_where_required(self):
         self.assertFalse(qualifies("tiktok", self.item(views=None), TH))
+
+    def test_a_douyin_video_without_views_is_judged_by_its_likes_not_dropped(self):
+        th = dict(TH, min_views={"douyin": 1_000_000}, min_likes={"douyin": 1000})
+        self.assertTrue(qualifies("douyin", self.item(views=None, likes=200000), th))  # 200k likes ~ 5M views
+        self.assertFalse(qualifies("douyin", self.item(views=None, likes=2000), th))  # ~50k views: below the bar
+        self.assertFalse(qualifies("douyin", self.item(views=None, likes=None), th))  # nothing known at all
+
+    def test_the_owners_length_limit_is_not_capped_at_180_seconds(self):
+        self.assertTrue(qualifies("tiktok", self.item(duration=300), dict(TH, max_duration=600)))
+        self.assertFalse(qualifies("tiktok", self.item(duration=300), dict(TH, max_duration=240)))
 
     def test_instagram_unknown_duration_allowed(self):
         self.assertTrue(qualifies("instagram", {"duration": None, "views": None, "likes": 5}, TH))

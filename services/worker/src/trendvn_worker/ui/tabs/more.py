@@ -2,6 +2,8 @@
 
 import json
 
+from ...domain.platforms import REGISTRY
+
 from ..components import (
     PLAIN_INPUT,
     accordion,
@@ -125,10 +127,13 @@ def _threshold_group(view):
         "".join(
             (
                 field("Douyin: tim tối thiểu", number_input("likes_douyin", min_likes.get("douyin", 0), 0, 10**9)),
-                field("Kuaishou: lượt xem tối thiểu", number_input("views_kuaishou", min_views.get("kuaishou", 0), 0, 10**10)),
-                field("TikTok: lượt xem tối thiểu", number_input("views_tiktok", min_views.get("tiktok", 0), 0, 10**10)),
-                field("Instagram: lượt xem tối thiểu", number_input("views_instagram", min_views.get("instagram", 0), 0, 10**10)),
-                field("Douyin: lượt xem tối thiểu", number_input("views_douyin", min_views.get("douyin", 0), 0, 10**10)),
+                *(  # one views threshold per registered platform (domain/platforms.py)
+                    field(
+                        "%s: lượt xem tối thiểu" % platform.name,
+                        number_input("views_" + platform.id, min_views.get(platform.id, 0), 0, 10**10),
+                    )
+                    for platform in REGISTRY
+                ),
             )
         ),
         False,

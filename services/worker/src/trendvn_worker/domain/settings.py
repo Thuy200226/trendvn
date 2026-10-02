@@ -3,7 +3,7 @@
 import math
 import re
 
-from .platforms import PLATFORMS
+from .platforms import DEFAULT_MIN_VIEWS, PLATFORMS
 
 DEFAULT_TARGET = "user5706026522362"  # the account of a fresh install; real accounts live in the `accounts` table
 
@@ -23,7 +23,7 @@ DEFAULTS = {
     "min_publish_gap": 3 * 3600,
     "max_candidates_per_scan": 3,
     "max_backlog": 4,
-    "min_views": {"douyin": 0, "kuaishou": 1000000, "tiktok": 1000000, "instagram": 0},
+    "min_views": dict(DEFAULT_MIN_VIEWS),
     "min_likes": {"douyin": 150000},
     "post_windows": [[11, 14], [19, 23]],
     "max_age_days": 7,

@@ -15,7 +15,7 @@ Hệ thống tự động đăng lại video xu hướng lên kênh TikTok của
 Cần: Docker (Desktop trên Mac), **Python 3.10+** (macOS chỉ kèm 3.9: cài thêm `brew install python@3.12`), Google Chrome bản của Google. Hướng dẫn từng bước trên Mac: [docs/MAC.md](docs/MAC.md).
 
 ```bash
-tar xzf trendvn-1.4.tar.gz && cd trendvn-1.4     # hoặc nhấp đúp macos/Cai-dat.command
+tar xzf trendvn-1.5.tar.gz && cd trendvn-1.5     # hoặc nhấp đúp macos/Cai-dat.command
 ./trendvn install                                # cấu hình, build Docker, nạp workflow n8n, bật lịch, cài agent
 ```
 

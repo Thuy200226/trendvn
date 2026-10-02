@@ -7,6 +7,8 @@ from ..capture import Blocked, NotThere, capture
 from ..normalize import to_int
 from ..rules import rotate
 
+CDN = ("tiktok.com", "tiktokcdn.com", "tiktokcdn-us.com", "tiktokv.com", "tiktokv.us")
+
 
 def parse_tiktok(payload):
     items = []

@@ -7,6 +7,8 @@ from ..capture import Blocked, looks_blocked
 from ..download import ytdlp_meta
 from ..normalize import to_int
 
+CDN = ()  # reels are fetched through yt-dlp from the reel page, never from a direct media URL
+
 
 def parse_instagram_codes(text):
     """Reel shortcodes visible on the public Reels page (order preserved, de-duplicated)."""

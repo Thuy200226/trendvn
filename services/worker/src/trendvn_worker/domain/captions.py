@@ -3,11 +3,12 @@
 import re
 import unicodedata
 
+from .platforms import PLATFORMS
 from .text import clean_caption
 from .topics import TOPIC_TAGS
 
 # other platforms and editors give a repost away; reach tags (xuhuong, fyp, viral) are welcome
-BANNED_TAG_PARTS = ("tiktok", "douyin", "kuaishou", "instagram", "reels", "capcut")
+BANNED_TAG_PARTS = (*PLATFORMS, "reels", "capcut")
 
 
 def _cut_at_word(text, limit):

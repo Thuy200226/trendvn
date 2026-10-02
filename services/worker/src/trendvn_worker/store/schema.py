@@ -9,7 +9,6 @@ without touching their data.
 import json
 import time
 
-from ..domain import topics
 from ..domain.settings import DEFAULT_TARGET, DEFAULTS, RETIRED_MODELS, RETIRED_TTS
 
 BASELINE_TABLES = """
@@ -72,6 +71,11 @@ CREATE TABLE IF NOT EXISTS accounts (
 """
 
 
+# A migration must give the same result however the code around it changes later, so the constants it needs are written out here
+# instead of imported: what the single account of 1.0 - 1.3 took, spelled out in the finer topics.
+V2_MAIN_TOPICS = ("entertainment", "music", "comedy", "pets", "family", "lifestyle")
+
+
 def _accounts(db):
     """Version 2: several TikTok accounts, each with its topics, and a topic on every video. The account of 1.0 - 1.3 becomes `main`."""
     db.execute(ACCOUNTS_TABLE)
@@ -79,7 +83,7 @@ def _accounts(db):
     target = json.loads(row[0]) if row else DEFAULT_TARGET
     db.execute(
         "INSERT OR IGNORE INTO accounts(id,username,label,topics,enabled,created) VALUES ('main',?,?,?,1,?)",
-        (target, target, json.dumps(list(topics.DEFAULT_TOPICS)), time.time()),
+        (target, target, json.dumps(list(V2_MAIN_TOPICS)), time.time()),
     )
     present = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
     for column in ("topic TEXT", "topic_hint TEXT", "account TEXT"):
@@ -100,7 +104,24 @@ def _legacy_posts(db):
         )
 
 
-MIGRATIONS = [_baseline, _accounts, _legacy_posts]
+def _news_topic(db):
+    """Version 4: hot news and drama are wanted (owner's brief, October 2026). `main` takes them too, but only while it still has exactly
+    the topics it was created with: an account the owner has edited is never touched."""
+    row = db.execute("SELECT topics FROM accounts WHERE id='main'").fetchone()
+    if row and json.loads(row[0]) == list(V2_MAIN_TOPICS):
+        db.execute("UPDATE accounts SET topics=? WHERE id='main'", (json.dumps([*V2_MAIN_TOPICS, "news"]),))
+
+
+def _retention(db):
+    """Version 5: when a finished video's files were removed (so the cleanup never looks at it twice), and an index for the duplicate check
+    that runs whenever a download is attached (a scan of every video before; measured 2 ms at 20,000 videos, growing with them)."""
+    present = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
+    if "pruned_at" not in present:
+        db.execute("ALTER TABLE jobs ADD COLUMN pruned_at REAL")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_jobs_hash ON jobs(content_hash)")
+
+
+MIGRATIONS = [_baseline, _accounts, _legacy_posts, _news_topic, _retention]
 
 
 def migrate(db):

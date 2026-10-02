@@ -1,12 +1,24 @@
 """Supported source platforms and what makes a source video URL canonical."""
 
 import re
+from collections import namedtuple
 from urllib.parse import urlsplit, urlunsplit
 
-PLATFORMS = {"douyin": ("douyin.com",), "kuaishou": ("kuaishou.com",), "tiktok": ("tiktok.com",), "instagram": ("instagram.com",)}
+Platform = namedtuple("Platform", "id name country domains min_views")
 
-
-COUNTRIES = {"douyin": "CN", "kuaishou": "CN", "tiktok": "US", "instagram": "US"}
+# THE list of source platforms. Everything else that needs a platform's name, country, domains or default views bar is derived from
+# here (the dashboard labels, the settings defaults and form fields, banned hashtags, task texts). Adding a source = one line here
+# + one module and one line in the agent's collector/sources/__init__.py.
+REGISTRY = (
+    Platform("douyin", "Douyin", "CN", ("douyin.com",), 0),
+    Platform("kuaishou", "Kuaishou", "CN", ("kuaishou.com",), 1_000_000),
+    Platform("tiktok", "TikTok", "US", ("tiktok.com",), 1_000_000),
+    Platform("instagram", "Instagram", "US", ("instagram.com",), 0),
+)
+PLATFORMS = {p.id: p.domains for p in REGISTRY}
+COUNTRIES = {p.id: p.country for p in REGISTRY}
+NAMES = {p.id: p.name for p in REGISTRY}
+DEFAULT_MIN_VIEWS = {p.id: p.min_views for p in REGISTRY}
 
 
 def canonical_url(platform, value):

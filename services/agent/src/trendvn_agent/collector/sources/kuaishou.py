@@ -5,6 +5,8 @@ import re
 from ..capture import capture
 from ..normalize import to_int
 
+CDN = ("kwaicdn.com", "yximgs.com", "kuaishou.com", "gifshow.com", "ksapisrv.com")
+
 
 def parse_kuaishou(payload):
     items = []

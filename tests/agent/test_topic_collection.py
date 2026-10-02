@@ -417,12 +417,14 @@ class AdaptiveWaitTests(unittest.TestCase):
 
 
 class BacklogTests(unittest.TestCase):
-    def run_fetch(self, status):
+    def run_fetch(self, status, free=50 << 30, asked=None):
         downloaded = []
         pending = [{"id": "id1", "platform": "douyin", "source_id": "s1", "topic_hint": None}]
         seen = {"s1": {"source_id": "s1", "score": 5}}
 
         def worker(path, payload=None, **k):
+            if path == "/api/media/pending" and asked is not None:
+                asked.append(payload)
             return {"items": pending} if path == "/api/media/pending" else {"state": "queued"}
 
         with mock.patch.multiple(
@@ -430,6 +432,7 @@ class BacklogTests(unittest.TestCase):
             worker=worker,
             worker_get=lambda path, timeout=30: status,
             download=lambda ctx, item, platform: downloaded.append(item["source_id"]) or "f.mp4",
+            free_bytes=lambda: free,
         ):
             report = run.fetch_pending(None, "douyin", seen, 3, [])
         return report, downloaded
@@ -444,6 +447,30 @@ class BacklogTests(unittest.TestCase):
         self.assertEqual((report["downloaded"], downloaded), (0, []))
         report, downloaded = self.run_fetch({"counts": {"ready": 4}, "thresholds": {"max_backlog": 4}})  # no "backlog" field
         self.assertEqual(downloaded, [])
+
+    def test_a_nearly_full_disk_downloads_nothing(self):
+        status = {"counts": {}, "backlog": 0, "thresholds": {"max_backlog": 4}}
+        report, downloaded = self.run_fetch(status, free=200 << 20)
+        self.assertEqual((report["downloaded"], downloaded), (0, []))
+        self.assertIn("200 MB", report["note"])
+        report, downloaded = self.run_fetch(status, free=None)  # unreadable free space does not block the collector
+        self.assertEqual(downloaded, ["s1"])
+
+    def test_the_worker_is_asked_for_this_platforms_candidates_only(self):
+        asked = []
+        self.run_fetch({"counts": {}, "backlog": 0, "thresholds": {"max_backlog": 4}}, asked=asked)
+        self.assertEqual(asked[0]["platform"], "douyin")  # so another platform's newest rows cannot push the best ones out of the list
+
+
+class NothingReturnedTests(unittest.TestCase):
+    def test_an_empty_page_is_not_reported_as_a_verification_wall(self):
+        with mock.patch.object(run, "SOURCES", {"douyin": {"scan": lambda ctx, topics: (_ for _ in ()).throw(capture.NoVideos("x"))}}):
+            result = run.run_platform(None, "douyin", {}, False, False, 3)
+        self.assertEqual(result["status"], "error")
+        self.assertNotIn("CAPTCHA", result["reason"])
+        self.assertNotIn("xác minh", result["reason"])
+        with mock.patch.object(run, "SOURCES", {"douyin": {"scan": lambda ctx, topics: (_ for _ in ()).throw(capture.Blocked("wall"))}}):
+            self.assertIn("CAPTCHA", run.run_platform(None, "douyin", {}, False, False, 3)["reason"])  # a real wall still says so
 
 
 class LoginWindowTests(unittest.TestCase):

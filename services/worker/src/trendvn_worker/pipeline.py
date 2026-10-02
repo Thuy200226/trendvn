@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import threading
 from pathlib import Path
 
@@ -18,6 +19,8 @@ from .media.geometry import display_size, layout
 from .media.render import covered_hard_subtitles, make_poster, qc, render
 
 REASON_LIMIT = 700
+MIN_FREE_BYTES = 512 << 20  # below this much free disk nothing new is processed: a render needs room, and a full disk stops the database
+MIN_SIDE = 64  # pixels: a 1x1 or 2x2 "video" (a tracking pixel, a broken download) cannot become a post
 TERMINAL_STATUSES = ("disabled", "blocked", "idle", "rate_limited")  # after one of these there is nothing more to do right now
 
 
@@ -32,6 +35,11 @@ def _parallel_setting(text):
 
 
 PARALLEL = _parallel_setting(os.environ.get("TRENDVN_PROCESS_PARALLEL") or 2)
+
+
+def free_bytes(path):
+    """Free space on the disk holding `path` (a function of its own so tests need not depend on the real disk)."""
+    return shutil.disk_usage(path).free
 
 
 def process_many(store, count, parallel=None, one=None):
@@ -74,18 +82,30 @@ def process_one(store):
         return {"status": "disabled", "reason": "Enable processing after configuring Gemini"}
     if not (store.root / "gemini.key").exists():
         return {"status": "blocked", "reason": "Gemini API key missing"}
+    free = free_bytes(store.root)
+    if free < MIN_FREE_BYTES:
+        return {"status": "blocked", "reason": "Ổ đĩa chỉ còn %d MB trống; chưa dựng thêm (dọn ổ đĩa rồi chạy lại)" % (free >> 20)}
     job = store.claim()
     if not job:
         return {"status": "idle", "reason": "No staged media in queue"}
     try:
         return _process(store, cfg, job)
     except RateLimited as e:
-        store.release(job["id"], job["lease"], str(e))
-        return {"id": job["id"], "status": "rate_limited", "reason": str(e)}
+        reason = str(e)
+        return _settle(job, "rate_limited", reason, lambda: store.release(job["id"], job["lease"], reason))
     except Exception as e:
         reason = str(e)[:REASON_LIMIT]
-        store.finish(job["id"], job["lease"], "needs_review", reason=reason)
-        return {"id": job["id"], "status": "needs_review", "reason": reason}
+        return _settle(job, "needs_review", reason, lambda: store.finish(job["id"], job["lease"], "needs_review", reason=reason))
+
+
+def _settle(job, status, reason, record):
+    """Record how a run ended. If the job was taken away meanwhile (housekeeping gave it back after a long stall, so the lease is stale),
+    that is reported as an error for this run instead of raising: process_one always answers."""
+    try:
+        record()
+    except ValueError as error:
+        return {"id": job["id"], "status": "error", "reason": "%s (%s)" % (str(error)[:200], reason[:400])}
+    return {"id": job["id"], "status": status, "reason": reason}
 
 
 def _process(store, cfg, job):
@@ -142,9 +162,12 @@ def _source(job, cfg):
     path = Path(job["source_file"])
     if file_hash(path) != job["content_hash"]:
         raise ValueError("Source file changed after attachment")
-    duration, _ = probe(path)
+    duration, meta = probe(path)
     if not 1 <= duration <= cfg["max_duration"]:
         raise ValueError("Video duration outside configured limits")
+    video = next(s for s in meta["streams"] if s["codec_type"] == "video")
+    if min(video.get("width") or 0, video.get("height") or 0) < MIN_SIDE:
+        raise ValueError("Video quá nhỏ (%sx%s): không dựng được" % (video.get("width"), video.get("height")))
     return path, duration
 
 

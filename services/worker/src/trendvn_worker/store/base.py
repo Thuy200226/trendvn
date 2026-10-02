@@ -24,8 +24,20 @@ class StoreBase:
         for folder in DATA_FOLDERS:
             (self.root / folder).mkdir(exist_ok=True)
         self.db = self.root / "trendvn.sqlite3"
-        with self.connect() as db:
-            initialise(db)
+        self._initialise()
+
+    def _initialise(self, attempts=8):
+        """Open-time setup. Two processes starting together (the worker and a command-line tool) can collide on the journal-mode switch:
+        wait and retry instead of failing the start-up."""
+        for attempt in range(attempts):
+            try:
+                with self.connect() as db:
+                    initialise(db)
+                return
+            except sqlite3.OperationalError as error:
+                if "locked" not in str(error) or attempt == attempts - 1:
+                    raise
+                time.sleep(0.5)
 
     # ------------------------------------------------------------------ connections
     def connect(self):

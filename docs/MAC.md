@@ -17,10 +17,10 @@ Google Chrome phải nằm trong thư mục **/Applications** (cài mặc địn
 Trên **máy đang chạy**, đóng gói (không kèm mật khẩu, khóa hay dữ liệu):
 
 ```bash
-./trendvn package        # tạo dist/trendvn-1.4.tar.gz và file .sha256
+./trendvn package        # tạo dist/trendvn-1.5.tar.gz và file .sha256
 ```
 
-Chép file đó sang Mac bằng AirDrop, USB hoặc `scp`, rồi nhấp đúp để giải nén thành thư mục `trendvn-1.4`. **Hãy chuyển thư mục đó vào `~/trendvn`** (thư mục nhà của bạn), đừng để trong Downloads, Documents hay Desktop: macOS hạn chế các chương trình nền truy cập những thư mục này nên agent có thể không chạy được.
+Chép file đó sang Mac bằng AirDrop, USB hoặc `scp`, rồi nhấp đúp để giải nén thành thư mục `trendvn-1.5`. **Hãy chuyển thư mục đó vào `~/trendvn`** (thư mục nhà của bạn), đừng để trong Downloads, Documents hay Desktop: macOS hạn chế các chương trình nền truy cập những thư mục này nên agent có thể không chạy được.
 
 ## 3. Cài
 

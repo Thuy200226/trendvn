@@ -20,7 +20,8 @@ class View:
         self.now = now or time.time()
         self.cfg = data["settings"]
         self.counts = data["counts"]
-        self.ready = data.get("ready", [])
+        self.ready = data.get("ready", [])  # the best 30 rendered videos (what the Đăng bài tab lists)
+        self.ready_total = self.counts.get("ready", 0) + self.counts.get("awaiting_approval", 0)  # how many there really are
         self.tasks = data.get("tasks", [])
         running = [t for t in self.tasks if t["state"] == "running"]
         self.busy_browser = any(t["kind"] in BROWSER_TASKS for t in running)
@@ -72,7 +73,7 @@ class View:
         steps = (
             ("Ứng viên", self.counts.get("candidate", 0), "queue"),
             ("Chờ xử lý", self.waiting, "queue"),
-            ("Sẵn sàng", len(self.ready), "publish"),
+            ("Sẵn sàng", self.ready_total, "publish"),
             ("Đã đăng", self.counts.get("published", 0), "posted"),
         )
         items = "".join('<a class="step" href="#%s"><b>%d</b><small>%s</small></a>' % (tab, n, E(label)) for label, n, tab in steps)

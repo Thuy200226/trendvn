@@ -25,6 +25,16 @@ class PublishingMixin:
         with self.connect() as c:
             return c.execute(q, args).fetchone()[0]
 
+    def posts_today(self, start):
+        """{account id: posts since `start`} for every account in one pass (the dashboard asks about each account and about the total)."""
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT COALESCE(account,?) who,count(*) n FROM jobs WHERE state IN ('published','publishing','publish_unknown') "
+                "AND COALESCE(published_at,updated)>=? GROUP BY who",
+                (self._default_id(), start),
+            ).fetchall()
+        return {row["who"]: row["n"] for row in rows}
+
     def _default_id(self):
         default = self.default_account()
         return default["id"] if default else "main"

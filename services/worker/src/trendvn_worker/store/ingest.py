@@ -94,13 +94,20 @@ class IngestMixin:
             self.event(db, jid, state)
         return {"id": jid, "state": state}
 
-    def candidates_without_media(self, limit=20):
+    def candidates_without_media(self, limit=20, platform=None):
+        """Videos found but not downloaded, best score first. Newest-first would let a burst of weak new videos push the best ones past
+        `limit`; `platform` keeps another platform's rows out of the way."""
+        where, args = "state='candidate'", []
+        if platform is not None:
+            where += " AND platform=?"
+            args.append(platform)
         with self.connect() as db:
             return [
                 dict(r)
                 for r in db.execute(
-                    "SELECT id,platform,source_id,url,title,topic_hint FROM jobs WHERE state='candidate' ORDER BY first_seen DESC LIMIT ?",
-                    (limit,),
+                    "SELECT id,platform,source_id,url,title,topic_hint FROM jobs WHERE %s "
+                    "ORDER BY COALESCE(json_extract(meta,'$.score'),0) DESC, first_seen DESC LIMIT ?" % where,
+                    (*args, max(1, min(int(limit), 200))),
                 )
             ]
 

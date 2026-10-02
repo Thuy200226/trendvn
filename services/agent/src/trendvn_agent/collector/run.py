@@ -1,14 +1,26 @@
 """One collection run: scan the sources, qualify, hand to the worker, download the best."""
 
+import shutil
 import time
 
 from ..browser import chrome
+from ..config import RUNTIME
 from ..log import log
 from ..worker_client import worker, worker_get
-from .capture import Blocked, exit_country
+from .capture import Blocked, NoVideos, exit_country
 from .download import download
 from .rules import age_hours, choose_downloads, qualifies, score
 from .sources import SOURCES
+
+MIN_FREE_BYTES = 1 << 30  # below 1 GiB free nothing new is downloaded: a full disk stops the database, not just this collector
+
+
+def free_bytes():
+    """Free space on the disk that holds the shared data folder (None when it cannot be read)."""
+    try:
+        return shutil.disk_usage(RUNTIME).free
+    except OSError:
+        return None
 
 
 def collect(platforms=None, download_media=True, ingest=True, thresholds=None, limit=None):
@@ -49,6 +61,11 @@ def run_platform(ctx, platform, thresholds, download_media, ingest, limit, topic
     cfg = SOURCES[platform]
     try:
         streams = cfg["scan"](ctx, topics)
+    except NoVideos:
+        return {
+            "status": "error",
+            "reason": "Trang không trả về video nào (có thể bị giới hạn tốc độ hoặc đổi giao diện); thử lại ở lần quét sau.",
+        }
     except Blocked as e:
         return {"status": "error", "reason": "Trang yêu cầu xác minh/đăng nhập (%s); không vượt qua CAPTCHA." % e}
     except Exception as e:
@@ -110,6 +127,14 @@ def run_platform(ctx, platform, thresholds, download_media, ingest, limit, topic
 
 
 def fetch_pending(ctx, platform, seen_now, limit, wanted=()):
+    free = free_bytes()
+    if free is not None and free < MIN_FREE_BYTES:
+        return {
+            "downloaded": 0,
+            "failed": 0,
+            "waiting": 0,
+            "note": "Ổ đĩa chỉ còn %d MB trống; chưa tải thêm (dọn ổ đĩa rồi quét lại)" % (free >> 20),
+        }
     status = worker_get("/api/status")
     # the worker's own figure leaves out rendered videos no account takes; the raw counts are the fallback for an older worker
     backlog = status.get("backlog")
@@ -119,7 +144,8 @@ def fetch_pending(ctx, platform, seen_now, limit, wanted=()):
     limit = min(limit, room)
     if limit == 0:
         return {"downloaded": 0, "failed": 0, "waiting": 0, "note": "Hàng chờ đã đủ; chưa tải thêm"}
-    pending = [p for p in worker("/api/media/pending", {"limit": 100})["items"] if p["platform"] == platform and p["source_id"] in seen_now]
+    # the worker lists this platform's candidates best score first, so the newest 100 of other platforms cannot push the best ones out
+    pending = [p for p in worker("/api/media/pending", {"limit": 100, "platform": platform})["items"] if p["source_id"] in seen_now]
     scores = {sid: item.get("score", 0) for sid, item in seen_now.items()}
     chosen = choose_downloads(pending, scores, wanted, limit)
     done = failed = 0

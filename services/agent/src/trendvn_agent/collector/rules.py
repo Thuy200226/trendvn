@@ -2,7 +2,8 @@
 
 import time
 
-MAX_DURATION = 180
+MAX_DURATION = 180  # the default length limit; the owner's `max_duration` setting (10-600 s) is what actually applies
+LIKES_PER_VIEW = 25  # about 4% of viewers like a video: when only likes are shown they stand in for views (also used by score())
 # A topic tab (music, pets, food...) is a smaller pond than the general feed: measured on 520 live Douyin videos, only 12% of a tab's
 # videos reach the general feed's 150k-like bar, while the tab's median is 10-70k. Topic streams use this share of the thresholds.
 TOPIC_FACTOR = 0.15
@@ -33,16 +34,21 @@ def qualifies(platform, item, thresholds, now=None, topic_stream=False):
     duration = item.get("duration")
     if duration is None and platform == "instagram":
         pass  # yt-dlp omits it for some reels; the worker probes the real file and enforces the limit
-    elif not 1 <= (duration or 0) <= min(MAX_DURATION, thresholds.get("max_duration", MAX_DURATION)):
+    elif not 1 <= (duration or 0) <= thresholds.get("max_duration", MAX_DURATION):
         return False
     share = TOPIC_FACTOR if topic_stream else 1
     min_views = int((thresholds.get("min_views") or {}).get(platform, 0) * share)
     min_likes = int((thresholds.get("min_likes") or {}).get(platform, 0) * share)
-    if item.get("views") is not None and item["views"] < min_views:
+    views = item.get("views")
+    if views is None and platform == "douyin" and item.get("likes") is not None:
+        views = (
+            item["likes"] * LIKES_PER_VIEW
+        )  # Douyin hides views on many videos but shows likes; elsewhere a missing figure is a red flag
+    if views is not None and views < min_views:
         return False
     if min_likes and item.get("likes") is not None and item["likes"] < min_likes:
         return False
-    if min_views and item.get("views") is None and platform != "instagram":
+    if min_views and views is None and platform != "instagram":
         return False
     return True
 
@@ -50,7 +56,7 @@ def qualifies(platform, item, thresholds, now=None, topic_stream=False):
 def score(platform, item, weights=None, now=None):
     """Newly-trending score: engagement per (softened) hour of age, nudged by how well this source performed for us.
     Views are used when the site shows them; otherwise likes stand in (about 4% of viewers like a video)."""
-    base = item.get("views") or (item.get("likes") or 0) * 25
+    base = item.get("views") or (item.get("likes") or 0) * LIKES_PER_VIEW
     age = age_hours(item, now)
     per_hour = base / (max(age, 6.0) ** 0.6) if age is not None else base / 24**0.6
     return round(per_hour * (weights or {}).get(platform, 1.0))

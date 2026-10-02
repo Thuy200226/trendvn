@@ -2,9 +2,12 @@
 
 import re
 
-from ..capture import Blocked, capture_streams
+from ..capture import NoVideos, capture_streams
 from ..normalize import to_int
 from ..rules import rotate
+
+# hosts Douyin videos are served from (the downloader refuses anything else)
+CDN = ("zjcdn.com", "douyinvod.com", "douyincdn.com", "douyin.com", "bytecdn.cn", "bytedance.com", "ibytedtos.com")
 
 
 def parse_douyin(payload):
@@ -115,7 +118,7 @@ def scan_douyin(ctx, topics=()):
         scrolls=2,  # the page gives 20 videos per load: the first load and two scrolls are 60, plenty to pick the best few from
     )
     if not found["jingxuan"] and not any(found.values()):
-        raise Blocked("no videos returned")
+        raise NoVideos("no videos returned")
     for t in wanted:
         tag_topic(found["jingxuan_" + t], t)
     return found

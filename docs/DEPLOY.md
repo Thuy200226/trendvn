@@ -23,7 +23,7 @@ Trên máy nguồn, đóng gói bản sạch (không kèm bí mật, dữ liệu
 Chép sang máy mới (AirDrop, USB, scp), kiểm tra `shasum -a 256 -c trendvn-*.sha256` (Mac) / `sha256sum -c …` (Linux), giải nén rồi:
 
 ```bash
-tar xzf trendvn-1.4.tar.gz && cd trendvn-1.4
+tar xzf trendvn-1.5.tar.gz && cd trendvn-1.5
 ./trendvn install
 ```
 
@@ -139,7 +139,7 @@ rồi `./trendvn agent restart`. Agent kiểm tra quốc gia của IP thoát tr�
 ./trendvn backup --with-session
 ./trendvn uninstall
 # Máy MỚI
-tar xzf trendvn-1.4.tar.gz && cd trendvn-1.4
+tar xzf trendvn-1.5.tar.gz && cd trendvn-1.5
 ./trendvn install --no-activate
 ./trendvn restore <bản sao lưu>          # dữ liệu, n8n, phiên TikTok; lịch tự động được để TẮT
 ./trendvn doctor
@@ -190,7 +190,7 @@ nên bản 1.2 đang chạy và bản mới giải nén dùng **cùng tên**: `.
 (vừa giải nén, chưa cài):
 
 ```bash
-tar xzf trendvn-1.4.tar.gz && cd trendvn-1.4
+tar xzf trendvn-1.5.tar.gz && cd trendvn-1.5
 ./trendvn migrate <thư-mục-1.2>
 ```
 

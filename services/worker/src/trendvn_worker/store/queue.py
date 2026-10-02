@@ -110,12 +110,10 @@ class QueueMixin:
             self.event(db, jid, "operator_" + action)
 
     def housekeeping(self):
+        """Crash recovery and the disk: stuck work is freed, then the retention rules run (see store/retention.py)."""
         now = time.time()
+        processing = self._recover_processing(now - 1800)
         with self.transaction() as db:
-            processing = db.execute(
-                "UPDATE jobs SET state='needs_review',reason='Processing interrupted; inspect before retry',lease=NULL WHERE state='processing' AND updated<?",
-                (now - 1800,),
-            ).rowcount
             unknown = db.execute(
                 "UPDATE jobs SET state='publish_unknown',reason='Publishing confirmation missing; never retry automatically' WHERE state='publishing' AND updated<?",
                 (now - 2700,),
@@ -126,4 +124,25 @@ class QueueMixin:
                 "🚨 Có %d bài đăng chưa xác nhận. Hệ thống đã dừng đăng để tránh trùng; mở bảng điều khiển để xác nhận." % unknown,
                 "unknown",
             )
-        return {"interrupted_processing": processing, "uncertain_publishing": unknown}
+        return {"interrupted_processing": processing, "uncertain_publishing": unknown, "pruned": self.prune(now)}
+
+    def recover_after_restart(self):
+        """The worker process has just started, so nothing it had claimed is still running: put those videos back right away instead of
+        waiting half an hour for housekeeping."""
+        return self._recover_processing(time.time() + 1)
+
+    def _recover_processing(self, older_than):
+        """Videos claimed for processing and then abandoned (a crash, kill -9, a power cut). The first two times they go back in the queue,
+        untouched; after that something about the video itself is wrong, so it waits for the owner. Returns how many were found."""
+        with self.transaction() as db:
+            again = db.execute(
+                "UPDATE jobs SET state='queued',lease=NULL,reason='Xử lý bị ngắt; xếp lại hàng đợi',updated=? "
+                "WHERE state='processing' AND updated<? AND attempts<2",
+                (time.time(), older_than),
+            ).rowcount
+            parked = db.execute(
+                "UPDATE jobs SET state='needs_review',reason='Processing interrupted; inspect before retry',lease=NULL "
+                "WHERE state='processing' AND updated<?",
+                (older_than,),
+            ).rowcount
+        return again + parked

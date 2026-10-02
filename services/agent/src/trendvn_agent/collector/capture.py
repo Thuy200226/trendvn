@@ -11,6 +11,10 @@ class Blocked(Exception):
     pass
 
 
+class NoVideos(Blocked):
+    """The page loaded but returned no videos (throttled, slow, or the layout changed). Not a verification wall: say so, retry next scan."""
+
+
 class NotThere(Exception):
     """A category button the site no longer has: skipping it is right, retrying is a waste of minutes."""
 
@@ -46,7 +50,7 @@ def capture(ctx, url, match, parse, attempts=3, **kw):
             items = capture_once(ctx, url, match, parse, **kw)
             if items:
                 return items
-            last = Blocked("no videos returned") if n == attempts else None
+            last = NoVideos("no videos returned") if n == attempts else None
         except (Blocked, NotThere):
             raise
         except Exception as e:
@@ -176,7 +180,7 @@ def capture_streams(ctx, url, match, parse, streams, attempts=3, **kw):
             result = capture_once_streams(ctx, url, match, parse, streams, **kw)
             if any(result.values()):
                 return result
-            last = Blocked("no videos returned") if n == attempts else None
+            last = NoVideos("no videos returned") if n == attempts else None
         except (Blocked, NotThere):
             raise
         except Exception as e:

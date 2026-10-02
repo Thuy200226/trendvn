@@ -19,11 +19,11 @@ Mọi lời gọi `POST` (trừ các form của bảng điều khiển) dùng `A
 | Đường dẫn | Nội dung | Ghi chú |
 |---|---|---|
 | `POST /api/ingest` | `{platform, stream, observed_at, topic?, items:[{source_id, url, country, title, rank, views, evidence_url, meta}]}` | ≤ 100 mục; `topic` (không bắt buộc) là danh mục của chính luồng đó (tab Douyin, chip TikTok), một mã trong thực đơn chủ đề; từ đó và từ từ khóa trong tiêu đề worker suy ra gợi ý chủ đề của từng video. Lần đầu của mỗi luồng là baseline. Trả `{baseline, new, existing, candidates:[{id, source_id}]}` |
-| `POST /api/media/pending` | `{limit}` | Ứng viên chưa có video |
+| `POST /api/media/pending` | `{limit, platform?}` | Ứng viên chưa có video, điểm cao nhất trước (lọc theo nền tảng nếu có) |
 | `POST /api/attach` | `{id, filename}` | Gắn file đã tải trong `data/worker/inbox`; trả `queued` hoặc `duplicate` |
 | `POST /api/media/failed` | `{id, reason}` | Ghi tải lỗi (lần thứ 3 thành `failed`) |
 | `POST /api/process` | `{max}` (1–8) | Xử lý tối đa `max` video liên tiếp; dừng khi `disabled`, `blocked`, `idle`, `rate_limited` |
-| `POST /api/housekeeping` | `{}` | Dọn tác vụ treo |
+| `POST /api/housekeeping` | `{}` | Giải phóng việc treo (xử lý quá 30 phút xếp lại hàng đợi, đăng quá 45 phút chờ xác nhận) và dọn đĩa (`pruned`: hết hạn, tệp, lịch sử, tệp mồ côi; xem ARCHITECTURE mục 5) |
 | `POST /api/heartbeat` | `{component: discovery\|publisher, ok, detail}` | Cập nhật tình trạng; `detail` dạng object được **gộp** với lần trước |
 | `POST /api/publish/claim` | `{}` | `{status: claimed\|disabled\|blocked\|wait\|limit\|idle, ...}`; khi `claimed` kèm `id, lease, caption, output_file, output_hash, account` (mã tài khoản, agent dùng để mở đúng hồ sơ Chrome), `target` (tên TikTok), `visibility`. Lịch tự động thử lần lượt các tài khoản (tài khoản đăng lâu nhất trước), mỗi tài khoản theo giờ vàng, giới hạn ngày và giãn cách riêng, và chọn video điểm cao nhất thuộc chủ đề tài khoản đó nhận |
 | `POST /api/publish/finish` | `{id, lease, outcome: published\|failed\|unknown\|duplicate, url, reason}` | `lease` phải đúng; `url` phải là địa chỉ `*.tiktok.com` |
@@ -34,6 +34,7 @@ Mọi lời gọi `POST` (trừ các form của bảng điều khiển) dùng `A
 | `POST /api/accounts` | `{}` | `{accounts, wanted_topics}` |
 | `POST /api/accounts/add` | `{username, topics:[...], id?, label?, enabled?, daily_limit?, min_gap?, windows?, visibility?}` | Thêm tài khoản (tối đa 10). Giới hạn bỏ trống/`null` = dùng cài đặt chung |
 | `POST /api/accounts/update` | `{id, ...các trường như trên}` | Sửa; không cho tắt tài khoản cuối cùng đang bật |
+| `POST /api/accounts/login` | `{id, ok: bool}` | Agent báo trình duyệt có đang đăng nhập đúng tài khoản này không (lịch tự động bỏ qua tài khoản đã đăng xuất) |
 | `POST /api/accounts/delete` | `{id}` | Xóa; không xóa tài khoản cuối cùng hoặc tài khoản đang có bài chưa xác nhận |
 | `POST /api/settings` | Một phần của cài đặt (xem `validate_settings`) | Trả `{changed:[...]}` |
 | `POST /api/notify` | `{kind:"summary"}` hoặc `{kind:"text", text}` | Gửi qua các kênh đã cấu hình; trả kênh nào thành công |

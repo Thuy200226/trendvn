@@ -73,9 +73,20 @@ def health(view):
 
     window = chip("Đang mở" if d["in_window"] else "Mở lúc " + (d["next_window"] or "—"), "good" if d["in_window"] else "mute")
     rows = (
-        row("Thu thập video", component_chip(d["discovery"])) + row("Đăng TikTok", component_chip(d["publisher"])) + row("Giờ vàng", window)
+        row("Thu thập video", component_chip(d["discovery"]))
+        + row("Đăng TikTok", component_chip(d["publisher"]))
+        + row("Giờ vàng", window)
+        + row("Ổ đĩa", _disk_chip(d.get("disk_free_mb")))
     )
     return '<div class="card pills"><h3>Tình trạng</h3>%s</div>' % rows
+
+
+def _disk_chip(free_mb):
+    """Free disk space: a full disk stops everything, so it is on the front page. Under 1 GB downloads pause, under 512 MB so does rendering."""
+    if free_mb is None:
+        return chip("Không rõ", "mute")
+    text = "%.1f GB trống" % (free_mb / 1024) if free_mb >= 1024 else "%d MB trống" % free_mb
+    return chip(text, "good" if free_mb >= 2048 else ("warn" if free_mb >= 1024 else "bad"))
 
 
 def numbers(view):
@@ -84,10 +95,10 @@ def numbers(view):
     tiles = (
         ("Đăng hôm nay", "%d / %d" % (d["published_today"], d["daily_limit"])),
         ("Chờ xử lý", view.waiting),
-        ("Sẵn sàng đăng", len(view.ready)),
+        ("Sẵn sàng đăng", view.ready_total),
         ("Cần xem", view.attention),
         ("Tổng đã đăng", view.counts.get("published", 0)),
-        ("Lượt xem bài đã đăng", num(total_views)),
+        ("Lượt xem (30 bài gần nhất)", num(total_views)),
     )
     return '<div class="kpis">%s</div>' % "".join('<div class="kpi"><small>%s</small><b>%s</b></div>' % (E(a), E(str(b))) for a, b in tiles)
 

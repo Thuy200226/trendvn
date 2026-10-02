@@ -1,5 +1,8 @@
 """Read models for the dashboard, the API and the daily summary."""
 
+import shutil
+
+from ..domain import schedule
 from ..domain.accounts import effective
 
 # columns of a job shown in lists on the dashboard
@@ -67,7 +70,7 @@ class ReportingMixin:
             performance=self.performance(30),
             unresolved=self.unresolved(),
             events=self.recent_events(40),
-            weights=self.platform_weights(),
+            weights=status["weights"],  # already computed by status(): not a second pass over the published posts
             in_window=in_window,
             next_window=next_window,
             settings={key: cfg[key] for key in DASHBOARD_SETTINGS},
@@ -119,7 +122,8 @@ class ReportingMixin:
         cfg = self.settings()
         discovery_beat = cfg.get("hb_discovery") or {}
         publisher_beat = cfg.get("hb_publisher") or {}
-        accounts = self._account_overview(cfg, publisher_beat)
+        posted = self.posts_today(schedule.day_start(cfg["timezone"]))  # one pass: the total and every account's share
+        accounts = self._account_overview(cfg, publisher_beat, posted)
         wanted = self.wanted_topics()
         return {
             "project": "TrendVN",
@@ -130,7 +134,7 @@ class ReportingMixin:
             "processing_enabled": cfg["processing_enabled"],
             "publisher_enabled": cfg["publisher_enabled"],
             "daily_limit": sum(a["daily_limit"] for a in accounts if a["enabled"]) or cfg["daily_limit"],
-            "published_today": self.published_today(),
+            "published_today": sum(posted.values()),
             "accounts": accounts,
             "wanted_topics": wanted,
             "backlog": self._backlog(counts, wanted),
@@ -141,6 +145,7 @@ class ReportingMixin:
             "discovery_detail": discovery_beat.get("detail"),
             "publisher_detail": publisher_beat.get("detail"),
             "gemini_configured": (self.root / "gemini.key").exists(),
+            "disk_free_mb": shutil.disk_usage(self.root).free >> 20,
             "unresolved_publishes": len(self.unresolved()),
             "thresholds": {key: cfg[key] for key in THRESHOLD_SETTINGS},
             "weights": self.platform_weights(),
@@ -150,7 +155,7 @@ class ReportingMixin:
             "note": "Publishing stays off until the switch is turned on from the local dashboard.",
         }
 
-    def _account_overview(self, cfg, publisher_beat):
+    def _account_overview(self, cfg, publisher_beat, posted):
         """Each account with what it posted today, its effective daily limit and whether the browser is signed in to it."""
         logins = (publisher_beat.get("detail") or {}).get("login") if isinstance(publisher_beat.get("detail"), dict) else None
         overview = []
@@ -168,18 +173,21 @@ class ReportingMixin:
                     "windows": eff["windows"],
                     "visibility": eff["visibility"],
                     "own": {k: account[k] for k in ("daily_limit", "min_gap", "windows", "visibility")},
-                    "published_today": self.published_today(account=account),
+                    "published_today": posted.get(account["id"], 0),
                     "logged_in": logins.get(account["id"]) if isinstance(logins, dict) else None,
                 }
             )
         return overview
 
     def _backlog(self, counts, wanted):
-        """Videos that still have somewhere to go: waiting to be processed, or rendered and takeable by some account. A rendered video
-        whose topic no account takes does not count, or it would keep the collector from fetching anything new."""
+        """Videos that still have somewhere to go: waiting to be processed, rendered and waiting for the owner's approval, or rendered and
+        takeable by some account. A rendered video whose topic no account takes does not count, or it would keep the collector from
+        fetching anything new."""
         marks = ",".join("?" * len(wanted)) or "NULL"
         with self.connect() as db:
             stuck = db.execute(
-                "SELECT count(*) FROM jobs WHERE state='ready' AND topic IS NOT NULL AND topic NOT IN (%s)" % marks, tuple(wanted)
+                "SELECT count(*) FROM jobs WHERE state IN ('ready','awaiting_approval') AND topic IS NOT NULL AND topic NOT IN (%s)"
+                % marks,
+                tuple(wanted),
             ).fetchone()[0]
-        return max(0, sum(counts.get(k, 0) for k in ("queued", "processing", "ready")) - stuck)
+        return max(0, sum(counts.get(k, 0) for k in ("queued", "processing", "ready", "awaiting_approval")) - stuck)

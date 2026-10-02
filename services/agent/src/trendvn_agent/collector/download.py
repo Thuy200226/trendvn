@@ -12,25 +12,11 @@ from ..config import ENV, RUNTIME
 MAX_BYTES = 250 * 1024 * 1024
 
 
-CDN_SUFFIXES = (
-    "zjcdn.com",
-    "douyinvod.com",
-    "douyincdn.com",
-    "douyin.com",
-    "bytecdn.cn",
-    "bytedance.com",
-    "ibytedtos.com",
-    "tiktok.com",
-    "tiktokcdn.com",
-    "tiktokcdn-us.com",
-    "tiktokv.com",
-    "tiktokv.us",
-    "kwaicdn.com",
-    "yximgs.com",
-    "kuaishou.com",
-    "gifshow.com",
-    "ksapisrv.com",
-)
+def cdn_suffixes():
+    """Every platform's media hosts (each source module lists its own: collector/sources/<platform>.py CDN)."""
+    from .sources import SOURCES  # here, not at the top: the sources import this module
+
+    return tuple(host for source in SOURCES.values() for host in source["cdn"])
 
 
 # https, a plain DNS name (the last label starts with a letter: no IP literals, no 0x7f.1 tricks), no user-info, no port, and a path
@@ -43,7 +29,7 @@ def cdn_host(url):
     """The host of a media URL if it is a plain https URL on a known platform CDN; otherwise ValueError."""
     match = MEDIA_URL.fullmatch(url or "")
     host = match.group(1).lower() if match else ""
-    if not host or not any(host == d or host.endswith("." + d) for d in CDN_SUFFIXES):
+    if not host or not any(host == d or host.endswith("." + d) for d in cdn_suffixes()):
         raise ValueError("Media host is not a known platform CDN: " + (host or "unparseable URL")[:80])
     return host
 

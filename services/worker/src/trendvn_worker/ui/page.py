@@ -18,27 +18,27 @@ PAGE = Template("""<!doctype html><html lang="vi"><head><meta charset="utf-8">
 <header><div class="wrap head"><div class="brand"><h1>TrendVN</h1><p class="muted">TikTok <b>@$target</b> · $clock</p></div>
 <nav class="topnav">$top<a href="$n8n" target="_blank" rel="noopener">n8n ↗</a></nav><button class="refresh ghost" data-reload aria-label="Làm mới">↻</button></div></header>
 <main class="wrap">$flash
-<section data-tab="home" id="home" class="stack">$home</section>
-<section data-tab="queue" id="queue" class="stack">$queue</section>
-<section data-tab="publish" id="publish" class="stack">$publish</section>
-<section data-tab="attention" id="attention" class="stack">$attention</section>
-<section data-tab="posted" id="posted" class="stack">$posted</section>
-<section data-tab="more" id="more" class="stack">$more</section>
+$sections
 <footer class="muted">TrendVN $version</footer></main>
 <nav class="bottomnav" aria-label="Điều hướng">$bottom</nav>
 <script>$js</script></body></html>""")
 
 
+# THE list of tabs, in the order they appear: (id, navigation label, icon, render(view), badge(view) -> number to show or 0).
+# A new tab = a module in ui/tabs/ with `render(view)` plus one line here.
+TABS = (
+    ("home", "Tổng quan", "home", home.render, lambda view: 0),
+    ("queue", "Hàng đợi", "list", queue.render, lambda view: view.waiting),
+    ("publish", "Đăng bài", "send", publish.render, lambda view: view.ready_total),
+    ("attention", "Cần xem", "bell", attention.render, lambda view: view.attention),
+    ("posted", "Đã đăng", "chart", posted.render, lambda view: 0),
+    ("more", "Thêm", "menu", more.render, lambda view: 0),
+)
+
+
 def navigation(view):
     """(top bar, bottom bar) HTML. Blue badges count plain things; red only for what needs the owner."""
-    entries = [
-        ("home", "Tổng quan", "home", 0),
-        ("queue", "Hàng đợi", "list", view.waiting),
-        ("publish", "Đăng bài", "send", len(view.ready)),
-        ("attention", "Cần xem", "bell", view.attention),
-        ("posted", "Đã đăng", "chart", 0),
-        ("more", "Thêm", "menu", 0),
-    ]
+    entries = [(tab, label, icon, count_of(view)) for tab, label, icon, _, count_of in TABS]
 
     def badge(tab, count):
         return '<i class="%s">%d</i>' % ("" if tab == "attention" else "n", count)
@@ -70,11 +70,8 @@ def render(data, csrf, flash=None, now=None):
         bottom=bottom,
         n8n=E(view.n8n_url),
         flash=flash_html,
-        home=home.render(view),
-        queue=queue.render(view),
-        publish=publish.render(view),
-        attention=attention.render(view),
-        posted=posted.render(view),
-        more=more.render(view),
+        sections="\n".join(
+            '<section data-tab="%s" id="%s" class="stack">%s</section>' % (tab, tab, render(view)) for tab, _, _, render, _ in TABS
+        ),
         version=E(VERSION),
     )
