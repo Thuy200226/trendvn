@@ -246,6 +246,10 @@ class CopyPathTests(unittest.TestCase):
             "bigger than the canvas is scaled down": dict(width=2160, height=3840),
             "odd size is made even": dict(width=721, height=1281),
             "rotation flag is applied by re-encoding": dict(tags={"rotate": "90"}, width=1920, height=1080),
+            "a 180 degree tag is baked in too": dict(tags={"rotate": "180"}),
+            "a display matrix of any angle is baked in": dict(side_data_list=[{"side_data_type": "Display Matrix", "rotation": 180}]),
+            "a display matrix without an angle": dict(side_data_list=[{"side_data_type": "Display Matrix"}]),
+            "an unreadable rotation tag": dict(tags={"rotate": "sideways"}),
             "unknown bitrate": dict(bit_rate=None),
             "too high a bitrate is brought down to the cap": dict(bit_rate="9000000"),
         }

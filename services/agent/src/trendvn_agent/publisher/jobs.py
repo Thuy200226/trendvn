@@ -37,6 +37,8 @@ def run_publish(job_id=None):
         worker("/api/publisher/challenge", {"active": True})
     if outcome == "signed_out":
         report_login(claim.get("account"), False)  # the schedule leaves this account alone until it is signed in again
+    elif outcome in ("published", "duplicate", "unknown", "challenge", "deferred"):
+        report_login(claim.get("account"), True)  # it got past the sign-in check, so the account is signed in (heals an old "signed out")
     worker(
         "/api/publish/finish",
         {"id": claim["id"], "lease": claim["lease"], "outcome": finish, "url": url if url.startswith("https://") else "", "reason": reason},

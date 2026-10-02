@@ -1,5 +1,6 @@
 """Processing side of the queue: claim a job, finish it, human decisions, crash recovery."""
 
+import json
 import time
 import uuid
 from pathlib import Path
@@ -44,6 +45,24 @@ class QueueMixin:
             self.emit("approval", "🎬 Video đã dựng, chờ bạn duyệt đăng: %s" % title, jid)
         elif state == "failed":
             self.emit("error", "❌ Xử lý thất bại: %s\n%s" % (title, reason), jid)
+
+    def reserve_fingerprint(self, jid, lease, fingerprint, duration, similar, check=True):
+        """Look for an earlier video that looks the same and, in the same transaction, record this video's fingerprint so that one being
+        processed at the same moment sees it. Returns the id of the look-alike, or None. `similar(a, b)` compares two fingerprints."""
+        with self.transaction() as db:
+            twin = None
+            if check:
+                for row in db.execute("SELECT id,fingerprint,duration FROM jobs WHERE fingerprint IS NOT NULL AND id<>?", (jid,)):
+                    if abs(row["duration"] - duration) < 2 and similar(fingerprint, json.loads(row["fingerprint"])):
+                        twin = row["id"]
+                        break
+            changed = db.execute(
+                "UPDATE jobs SET fingerprint=?,duration=? WHERE id=? AND lease=? AND state='processing'",
+                (json.dumps(fingerprint), duration, jid, lease),
+            ).rowcount
+            if changed != 1:
+                raise ValueError("Stale lease")
+            return twin
 
     def release(self, jid, lease, reason):
         """Put a claimed job back in the queue untouched (e.g. rate limit); does not count as an attempt."""

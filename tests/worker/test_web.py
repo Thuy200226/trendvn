@@ -278,6 +278,12 @@ class AccountWebTests(unittest.TestCase):
         self.assertEqual(self.srv.req("POST", "/api/accounts/update", '{"id": "api_acct", "enabled": false}', auth)[0], 200)
         self.assertEqual(self.srv.req("POST", "/api/accounts/delete", '{"id": "api_acct"}', auth)[0], 200)
         self.assertEqual(self.srv.req("POST", "/api/accounts/delete", '{"id": "api_acct"}', auth)[0], 400)
+        self.assertEqual(
+            self.srv.req("POST", "/api/accounts/login", '{"id": "main", "ok": "false"}', auth)[0], 400
+        )  # a string is not a boolean
+        self.assertEqual(self.srv.req("POST", "/api/accounts/login", '{"id": "main"}', auth)[0], 400)
+        self.assertEqual(self.srv.req("POST", "/api/accounts/login", '{"id": "main", "ok": true}', auth)[0], 200)
+        self.assertEqual(self.srv.req("POST", "/api/accounts/update", "[1, 2]", auth)[0], 400)  # not an object: a 400, not a 500
 
 
 class RemoteAccessTests(unittest.TestCase):

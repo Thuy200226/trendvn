@@ -182,4 +182,4 @@ class ReportingMixin:
             stuck = db.execute(
                 "SELECT count(*) FROM jobs WHERE state='ready' AND topic IS NOT NULL AND topic NOT IN (%s)" % marks, tuple(wanted)
             ).fetchone()[0]
-        return sum(counts.get(k, 0) for k in ("queued", "processing", "ready")) - stuck
+        return max(0, sum(counts.get(k, 0) for k in ("queued", "processing", "ready")) - stuck)

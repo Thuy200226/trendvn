@@ -140,11 +140,13 @@ class PublishingMixin:
         ).fetchone()
 
     def _account_for_manual(self, db, row, accounts, now):
-        """The account a hand-picked video goes to: one that takes its topic (the one with the fewest posts today), else the default."""
+        """The account a hand-picked video goes to: one that takes its topic (not one known to be signed out, then the one with the fewest
+        posts today), else the default account."""
         fitting = [a for a in accounts if accepts(a, row["topic"])]
         if not fitting:
             return accounts[0]
-        return min(fitting, key=lambda a: self.published_today(db, now, a))
+        logins = self.login_map(self.settings())
+        return min(fitting, key=lambda a: (logins.get(a["id"]) is False, self.published_today(db, now, a)))
 
     def _reserve(self, db, row, account, cfg, now, manual):
         """Mark the video as being published (with a lease the agent must present when it reports back) and return the claim."""

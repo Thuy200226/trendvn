@@ -52,6 +52,14 @@ class SummaryTests(unittest.TestCase):
         self.assertIn("TẮT", tasks_mod.summarize_process([{"status": "disabled"}]))
         self.assertIn("Không có video", tasks_mod.summarize_process([{"status": "idle"}]))
         self.assertIn("2 sẵn sàng đăng", tasks_mod.summarize_process([{"status": "ready"}, {"status": "ready"}, {"status": "idle"}]))
+        # two runs at once finish in any order: an idle one first must not hide the video the other processed
+        self.assertIn("1 sẵn sàng đăng", tasks_mod.summarize_process([{"status": "idle"}, {"status": "ready"}]))
+        self.assertIn(
+            "Gemini",
+            tasks_mod.summarize_process(
+                [{"status": "blocked", "reason": "Gemini API key missing"}, {"status": "blocked", "reason": "Gemini API key missing"}]
+            ),
+        )
 
     def test_collect_summary_handles_skipped_and_first_scan(self):
         text = tasks_mod.summarize_collect(

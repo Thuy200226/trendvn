@@ -108,7 +108,7 @@ Douyin và Kuaishou chỉ phục vụ nội dung trong nước nên IP nào cũn
 - `data/agent/profiles/`: một hồ sơ Chrome cho mỗi tài khoản TikTok (`publisher` cho `main`, `publisher-<mã>` cho các tài khoản thêm), `collector-cn`, `collector-us`.
 - `data/worker/inbox/` video gốc tải về; `data/worker/jobs/<id>/` sản phẩm dựng (`final.mp4`, `vi.ass`, `manifest.json` ghi cả phiên bản prompt).
 - `data/worker/gemini.key`, `data/worker/notify.json`: bí mật, quyền 0600, không bao giờ trả về qua API.
-- `data/agent/profiles/collector-*`, `data/agent/profiles/publisher` (phiên TikTok), `data/agent/agent.log`, `data/agent/shots/` (ảnh chụp khi đăng lỗi; ảnh của lần chạy thử nằm ở `data/worker/exports/` để bảng điều khiển hiển thị).
+- `data/agent/agent.log`, `data/agent/shots/` (ảnh chụp khi đăng lỗi; ảnh của lần chạy thử nằm ở `data/worker/exports/` để bảng điều khiển hiển thị).
 
 ## 6. Mở rộng
 

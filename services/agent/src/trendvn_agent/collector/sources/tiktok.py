@@ -41,8 +41,12 @@ def parse_tiktok(payload):
 def click_chip(text):
     def go(page):
         chip = page.locator('[data-e2e="explore-category-chip"]', has_text=re.compile("^" + re.escape(text) + "$")).first
-        if not chip.count():
-            raise NotThere(text)
+        try:
+            chip.wait_for(
+                timeout=6000
+            )  # the chips appear a moment after the first answer; only a chip still missing after that is "not there"
+        except Exception:
+            raise NotThere(text) from None
         chip.click(timeout=8000)
 
     return go

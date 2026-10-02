@@ -62,13 +62,26 @@ def can_copy_video(stream, geo, route):
         return False
     if stream.get("codec_name") != "h264" or stream.get("pix_fmt") != "yuv420p":
         return False
-    if (stream["width"], stream["height"]) != (geo["w"], geo["h"]) or display_size(stream) != (stream["width"], stream["height"]):
+    if (stream["width"], stream["height"]) != (geo["w"], geo["h"]) or _has_rotation(stream):
         return False
     try:
         bit_rate = int(stream.get("bit_rate") or 0)
     except (TypeError, ValueError):
         return False
     return fps_of(stream) <= 30.5 and 0 < bit_rate <= COPY_MAX_BITRATE
+
+
+def _has_rotation(stream):
+    """Any rotation, flip or display matrix on the stream (even 0 or 180 degrees): such a picture is re-encoded, which bakes it in."""
+    try:
+        if float((stream.get("tags") or {}).get("rotate", 0)) % 360:
+            return True
+    except (TypeError, ValueError):
+        return True
+    return any(
+        isinstance(data, dict) and ("rotation" in data or "display" in str(data.get("side_data_type", "")).lower())
+        for data in stream.get("side_data_list") or []
+    )
 
 
 def covered_hard_subtitles(a, route):

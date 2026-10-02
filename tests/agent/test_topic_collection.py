@@ -138,9 +138,16 @@ class TikTokChipsTests(unittest.TestCase):
 
     def test_click_chip_raises_not_there_when_the_chip_is_missing(self):
         page = mock.MagicMock()
-        page.locator.return_value.first.count.return_value = 0
+        page.locator.return_value.first.wait_for.side_effect = RuntimeError("timeout")
         with self.assertRaises(capture.NotThere):
             tiktok.click_chip("Food")(page)
+
+    def test_click_chip_waits_for_the_chip_to_appear_before_clicking(self):
+        page = mock.MagicMock()
+        tiktok.click_chip("Food")(page)
+        chip = page.locator.return_value.first
+        chip.wait_for.assert_called_once()
+        chip.click.assert_called_once()
 
 
 class FakePage:
@@ -310,6 +317,15 @@ class ClockedPage:
         self.mouse = mock.MagicMock()
         self.mouse.wheel.side_effect = lambda *a: None
 
+    def close(self):
+        pass
+
+    def inner_text(self, *a, **k):
+        return ""
+
+    def goto(self, *a, **k):
+        pass
+
     def on(self, event, handler):
         self.handler = handler
 
@@ -372,9 +388,92 @@ class AdaptiveWaitTests(unittest.TestCase):
         feed.settle(floor_ms=2000, ceiling_ms=10000, quiet_ms=1500, since=clock.now)  # the click happens now; "old" was before it
         self.assertEqual(feed.count(), 2)
 
-    def test_scrolling_stops_when_nothing_new_comes(self):
+    def test_scrolling_stops_after_two_empty_scrolls_in_a_row(self):
         feed, page, clock = self.feed([(0.5, ["a"]), (3.0, ["b"])])
         page.wait_for_timeout(1000)
-        feed.scroll(5)
-        self.assertEqual(page.mouse.wheel.call_count, 2)  # the second scroll brought nothing, so the third never happened
+        feed.scroll(6)
+        # scroll 1 finds "b"; scrolls 2 and 3 find nothing: stop, the other three never happen
+        self.assertEqual(page.mouse.wheel.call_count, 3)
         self.assertEqual(feed.count(), 2)
+
+    def test_one_empty_scroll_is_not_the_end(self):
+        feed, page, clock = self.feed([(0.5, ["a"]), (5.5, ["b"])])  # the next page needs longer than the first scroll's wait
+        page.wait_for_timeout(1000)
+        feed.scroll(4)
+        self.assertEqual(feed.count(), 2)
+
+    def test_a_later_stream_without_a_click_is_filed_under_its_own_name(self):
+        clock = Clock()
+        page = ClockedPage(clock, [(clock.now + 1.0, ["x1"])])
+        ctx = mock.MagicMock()
+        ctx.new_page.return_value = page
+        with mock.patch.object(capture.time, "time", clock):
+            result = capture.capture_once_streams(
+                ctx, "https://x", lambda u: True, lambda d: [{"source_id": i} for i in d["ids"]], [("first", None), ("second", None)],
+                quiet_ms=0, scrolls=1,
+            )  # fmt: skip
+        self.assertEqual(sorted(result), ["first", "second"])
+        self.assertEqual([i["source_id"] for i in result["first"]] + [i["source_id"] for i in result["second"]], ["x1"])
+
+
+class BacklogTests(unittest.TestCase):
+    def run_fetch(self, status):
+        downloaded = []
+        pending = [{"id": "id1", "platform": "douyin", "source_id": "s1", "topic_hint": None}]
+        seen = {"s1": {"source_id": "s1", "score": 5}}
+
+        def worker(path, payload=None, **k):
+            return {"items": pending} if path == "/api/media/pending" else {"state": "queued"}
+
+        with mock.patch.multiple(
+            run,
+            worker=worker,
+            worker_get=lambda path, timeout=30: status,
+            download=lambda ctx, item, platform: downloaded.append(item["source_id"]) or "f.mp4",
+        ):
+            report = run.fetch_pending(None, "douyin", seen, 3, [])
+        return report, downloaded
+
+    def test_rendered_videos_nobody_takes_do_not_stop_the_collector(self):
+        status = {"counts": {"ready": 5}, "backlog": 0, "thresholds": {"max_backlog": 4}}
+        report, downloaded = self.run_fetch(status)
+        self.assertEqual((report["downloaded"], downloaded), (1, ["s1"]))
+
+    def test_a_full_backlog_still_stops_it_and_an_older_worker_falls_back_to_the_counts(self):
+        report, downloaded = self.run_fetch({"counts": {}, "backlog": 4, "thresholds": {"max_backlog": 4}})
+        self.assertEqual((report["downloaded"], downloaded), (0, []))
+        report, downloaded = self.run_fetch({"counts": {"ready": 4}, "thresholds": {"max_backlog": 4}})  # no "backlog" field
+        self.assertEqual(downloaded, [])
+
+
+class LoginWindowTests(unittest.TestCase):
+    """`tiktok login` only counts once the window is signed in as the right account."""
+
+    def test_a_wrong_sign_in_keeps_the_window_open_until_it_is_corrected(self):
+        from trendvn_agent.publisher import session
+
+        page = mock.MagicMock()
+        ctx = mock.MagicMock(pages=[page])
+        context = mock.MagicMock()
+        context.__enter__.return_value = ctx
+        context.__exit__.return_value = False
+        answers = iter(["Hồ sơ đang đăng nhập @khac", "Hồ sơ đang đăng nhập @khac", None])
+        reported = []
+        with mock.patch.multiple(
+            session,
+            chrome=lambda *a, **k: context,
+            logged_in=lambda c: True,
+            wrong_account=lambda c, expected: next(answers),
+            _report=lambda account, ok: reported.append((account, ok)),
+        ):
+            self.assertTrue(session.login(1, "pets", expected="meo"))
+        self.assertEqual(reported, [("pets", True)])  # reported once, after the third look found the right account
+
+    def test_without_an_expected_name_the_first_session_counts(self):
+        from trendvn_agent.publisher import session
+
+        context = mock.MagicMock()
+        context.__enter__.return_value = mock.MagicMock(pages=[mock.MagicMock()])
+        context.__exit__.return_value = False
+        with mock.patch.multiple(session, chrome=lambda *a, **k: context, logged_in=lambda c: True, _report=lambda a, ok: None):
+            self.assertTrue(session.login(1, None))

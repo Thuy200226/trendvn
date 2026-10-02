@@ -94,14 +94,16 @@ def summarize_collect(report):
 
 
 def summarize_process(results):
+    """One sentence for the dashboard. Results arrive in the order the runs finished, so look at all of them, not the first."""
     if not results:
         return "Không có video nào để xử lý."
-    first = results[0]
-    if first.get("status") == "disabled":
+    statuses = [r.get("status") for r in results]
+    if "disabled" in statuses:
         return 'Xử lý video đang TẮT. Bật công tắc "Xử lý video" rồi bấm lại.'
-    if first.get("status") == "blocked":
-        return first.get("reason", "Chưa xử lý được.")
-    if first.get("status") == "idle":
+    blocked = next((r for r in results if r.get("status") == "blocked"), None)
+    if blocked and all(s in ("blocked", "idle") for s in statuses):
+        return blocked.get("reason", "Chưa xử lý được.")
+    if all(s == "idle" for s in statuses):
         return "Không có video nào đang chờ xử lý."
     counts = {}
     for r in results:

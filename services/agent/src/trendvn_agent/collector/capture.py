@@ -107,12 +107,15 @@ class Feed:
             waited += 250
 
     def scroll(self, times):
-        """Scroll down for more; stop as soon as a scroll brings nothing new (the feed is exhausted)."""
+        """Scroll down for more; stop after two scrolls in a row that bring nothing new (the feed is exhausted; one empty scroll can just
+        be a slow answer or a page that needs a longer scroll)."""
+        empty = 0
         for _ in range(times):
             before, mark = self.count(), time.time()
             self.page.mouse.wheel(0, 1400)
             self.settle(750, 3000, 1000, mark)
-            if self.count() == before:
+            empty = empty + 1 if self.count() == before else 0
+            if empty == 2:
                 return
 
     def result(self):
@@ -159,7 +162,8 @@ def capture_streams(ctx, url, match, parse, streams, attempts=3, **kw):
         except Exception as e:
             last = e
         log("capture retry %d/%d for %s" % (n, attempts, url))
-        time.sleep(6 * n)
+        if n < attempts:
+            time.sleep(6 * n)
     if last:
         raise last
     return {name: [] for name, _ in streams}
@@ -183,9 +187,9 @@ def capture_once_streams(ctx, url, match, parse, streams, route=None, wait_ms=12
         for index, (name, enter) in enumerate(streams):
             started = time.time()
             try:
+                feed.current = name
                 if enter is not None:
                     feed.drain(quiet_ms)
-                    feed.current = name
                     mark = time.time()
                     enter(page)
                     feed.settle(2000, settle_ms, 1500, mark)

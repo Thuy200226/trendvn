@@ -20,19 +20,27 @@ def _account_flag(account):
     return "" if account in (None, "", "main") else " --account " + account
 
 
-def login(minutes=10, account=None):
-    """Open a visible window and wait (default 10 minutes) for you to finish signing in yourself."""
+def login(minutes=10, account=None, expected=None):
+    """Open a visible window and wait (default 10 minutes) for you to finish signing in yourself. With `expected` (the account's TikTok
+    name) it only counts once the window is signed in as that account, so a wrong sign-in can be corrected before the window closes."""
     with chrome(profile_name(account), headless=False, locale="vi-VN", viewport=(1280, 900)) as ctx:
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         page.goto(LOGIN_URL, wait_until="domcontentloaded")
         log("Đăng nhập TikTok trong cửa sổ vừa mở. Hệ thống không nhập mật khẩu thay bạn.")
         deadline = time.time() + 60 * minutes
+        told = False
         while time.time() < deadline:
             if logged_in(ctx):
                 page.wait_for_timeout(4000)
-                log("Đã có phiên đăng nhập; phiên chỉ lưu trong hồ sơ trình duyệt riêng.")
-                _report(account, True)
-                return True
+                mismatch = wrong_account(ctx, expected) if expected else None
+                if not mismatch:
+                    log("Đã có phiên đăng nhập; phiên chỉ lưu trong hồ sơ trình duyệt riêng.")
+                    _report(account, True)
+                    return True
+                if not told:
+                    log(mismatch + " Hãy đăng xuất và đăng nhập lại đúng tài khoản trong cửa sổ này.")
+                    told = True
+                page.wait_for_timeout(6000)
             page.wait_for_timeout(2000)
     return False
 

@@ -3,7 +3,7 @@
 import json
 import sys
 
-from .jobs import dry_run_next, run_stats, verify_unresolved
+from .jobs import dry_run_next, report_login, run_stats, verify_unresolved
 from .session import login, session_status, trust
 
 USAGE = "usage: publisher login|trust|status|dry-run|verify|stats [minutes] [--account ID]"
@@ -44,11 +44,14 @@ def main(argv=None):
     if not known:
         raise SystemExit("Không có tài khoản có mã %r. Thêm nó ở bảng điều khiển → Thêm → Tài khoản TikTok và chủ đề." % account)
     if command == "login":
-        print("OK" if login(_minutes(argv, 10), account) else "TIMEOUT")
+        print("OK" if login(_minutes(argv, 10), account, expected=username) else "TIMEOUT")
     elif command == "trust":
         print("OK" if trust(_minutes(argv, 15), account) else "TIMEOUT")
     elif command == "status":
-        print(json.dumps(session_status(deep=True, account=account, expected=username), ensure_ascii=False))
+        status = session_status(deep=True, account=account, expected=username)
+        print(json.dumps(status, ensure_ascii=False))
+        if username is not None:  # the worker is reachable: let it know, so the schedule stops or resumes using this account
+            report_login(account, bool(status.get("logged_in")))
     elif command == "dry-run":
         print(json.dumps(dry_run_next(), ensure_ascii=False))
     elif command == "stats":

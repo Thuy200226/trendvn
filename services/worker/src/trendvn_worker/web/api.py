@@ -151,7 +151,9 @@ def update_account(app, payload):
 
 @route("/api/accounts/login")
 def account_login(app, payload):
-    app.store.set_account_login(str(payload.get("id", "")), bool(payload.get("ok")))
+    if not isinstance(payload.get("ok"), bool):
+        raise ValueError("ok phải là true hoặc false")
+    app.store.set_account_login(str(payload.get("id", "")), payload["ok"])
     return OK
 
 

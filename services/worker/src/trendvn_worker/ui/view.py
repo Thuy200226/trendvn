@@ -39,7 +39,7 @@ class View:
         with the fewest posts today, and when none does, the default account (the first enabled one)."""
         takers = self.takers(topic)
         if takers:
-            return min(takers, key=lambda a: a["published_today"])
+            return min(takers, key=lambda a: (a["logged_in"] is False, a["published_today"]))
         enabled = [a for a in self.d.get("accounts", []) if a["enabled"]]
         return enabled[0] if enabled else None
 

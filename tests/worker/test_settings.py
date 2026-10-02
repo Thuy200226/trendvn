@@ -66,3 +66,23 @@ class PromptTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ParallelSettingTests(unittest.TestCase):
+    def test_a_typo_in_the_setting_never_stops_the_worker_starting(self):
+        from trendvn_worker import pipeline
+
+        for text, expected in (
+            ("2", 2),
+            ("1", 1),
+            ("4", 4),
+            ("99", 4),
+            ("0", 1),
+            ("-3", 1),
+            (" 3 ", 3),
+            ("abc", 2),
+            ("2.5", 2),
+            ("1e1", 2),
+            ("", 2),
+        ):
+            self.assertEqual(pipeline._parallel_setting(text), expected, repr(text))

@@ -58,5 +58,7 @@ class HealthMixin:
             login = dict(detail.get("login") or {})
             login[account_id] = bool(ok)
             detail["login"] = login
-            value.update(detail=detail, at=time.time(), ok=all(login.values()))
+            enabled = {r["id"] for r in db.execute("SELECT id FROM accounts WHERE enabled=1")}
+            # healthy unless an account that is switched on is known to be signed out (a disabled or deleted one's old flag is history)
+            value.update(detail=detail, at=time.time(), ok=all(state for key, state in login.items() if key in enabled))
             db.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", ("hb_publisher", json.dumps(value, ensure_ascii=False)))

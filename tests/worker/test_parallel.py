@@ -115,3 +115,54 @@ class RealJobsInParallelTests(StoreCase):
         with self.s.connect() as db:
             self.assertEqual(db.execute("SELECT count(*) FROM jobs WHERE state='ready'").fetchone()[0], 5)
             self.assertEqual(db.execute("SELECT count(DISTINCT output_hash) FROM jobs").fetchone()[0], 5)
+
+
+class LookAlikeUnderParallelismTests(StoreCase):
+    def test_two_look_alikes_processed_at_the_same_time_are_caught(self):
+        source = Path(self.tmp.name) / "source.mp4"
+        source.write_bytes(b"video")
+        (self.s.root / "gemini.key").write_text("key")
+        self.s.update_settings({"processing_enabled": True, "require_approval": False})
+        for i in range(4):
+            self.job("j%d" % i, "queued", source_file=str(source), content_hash=file_hash(source), first_seen=i)
+        fingerprints = {"j0": [1], "j1": [1], "j2": [2], "j3": [3]}  # j0 and j1 are the same video uploaded twice
+        folders = {}
+
+        def fingerprint(path, duration):
+            return fingerprints[folders[threading.get_ident()]]
+
+        def analyze(store, path, duration, cfg, folder, lenient=False):
+            time.sleep(0.2)  # long enough for the other thread to claim the twin meanwhile
+            return dict(ANALYSIS), "vietsub"
+
+        def render(path, folder, analysis, route, duration, voice=None):
+            out = folder / "final.mp4"
+            out.write_bytes(b"x" + folder.name.encode())
+            return out
+
+        real_claim = self.s.claim
+
+        def claim():
+            job = real_claim()
+            if job:
+                folders[threading.get_ident()] = job["id"]
+            return job
+
+        with (
+            mock.patch.object(self.s, "claim", claim),
+            mock.patch.multiple(
+                pipeline,
+                probe=lambda path: (30.0, {"streams": [{"codec_type": "video", "width": 720, "height": 1280}]}),
+                fingerprint=fingerprint,
+                similar=lambda a, b: a == b,
+                analyze=analyze,
+                render=render,
+                qc=lambda out, audio: ({"w": 720, "h": 1280, "duration": 30.0}, []),
+                make_poster=lambda out, poster, duration: None,
+            ),
+        ):
+            pipeline.process_many(self.s, 4, parallel=4)
+        with self.s.connect() as db:
+            states = {r["id"]: r["state"] for r in db.execute("SELECT id,state FROM jobs")}
+        self.assertEqual(sorted(states.values()), ["needs_review", "ready", "ready", "ready"])
+        self.assertIn(states["j0"] + states["j1"], ("readyneeds_review", "needs_reviewready"))  # one of the twins was held back

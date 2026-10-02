@@ -337,3 +337,34 @@ class DashboardAgreesWithTheWorkerTests(StoreCase):
         self.assertIn("chọn một trong", shared)
         self.assertIn("@meo", shared)
         del both
+
+
+class LoginFlagTests(StoreCase):
+    def test_a_disabled_or_deleted_accounts_old_flag_does_not_make_the_publisher_look_broken(self):
+        self.s.add_account({"username": "second", "id": "second", "topics": ["food"]})
+        self.s.set_account_login("main", True)
+        self.s.set_account_login("second", False)
+        self.assertEqual(self.s.status()["publisher"], "error")
+        self.s.update_account("second", {"enabled": False})
+        self.s.set_account_login("main", True)
+        self.assertEqual(self.s.status()["publisher"], "connected")
+        self.s.update_account("second", {"enabled": True})
+        self.s.delete_account("second")
+        self.s.set_account_login("main", True)
+        self.assertEqual(self.s.status()["publisher"], "connected")
+
+    def test_manual_posting_avoids_an_account_known_to_be_signed_out(self):
+        self.s.update_settings({"publisher_enabled": True})
+        self.s.update_account("main", {"topics": ["pets"]})
+        self.s.add_account({"username": "second", "id": "second", "topics": ["pets"]})
+        self.s.set_account_login("main", False)
+        self.ready("v", topic="pets", meta="{}")
+        self.assertEqual(self.s.publish_claim(job_id="v")["account"], "second")
+
+    def test_the_backlog_is_never_negative(self):
+        self.s.update_account("main", {"topics": ["pets"]})
+        self.ready("g1", topic="gaming")
+        self.ready("g2", topic="gaming")
+        self.assertEqual(self.s._backlog({"ready": 0}, ["pets"]), 0)  # counts read a moment earlier than the query can disagree
+        self.assertEqual(self.s._backlog({"ready": 2}, ["pets"]), 0)
+        self.assertEqual(self.s._backlog({"ready": 3, "queued": 1}, ["pets"]), 2)

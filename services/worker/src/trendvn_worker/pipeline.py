@@ -19,9 +19,19 @@ from .media.render import covered_hard_subtitles, make_poster, qc, render
 
 REASON_LIMIT = 700
 TERMINAL_STATUSES = ("disabled", "blocked", "idle", "rate_limited")  # after one of these there is nothing more to do right now
+
+
 # Videos processed at once. A video spends most of its time waiting for Gemini (about two thirds), so a second one in flight nearly doubles
 # throughput; more than a few would only fight over the CPU for ffmpeg. TRENDVN_PROCESS_PARALLEL=1 gives the old one-at-a-time behaviour.
-PARALLEL = max(1, min(4, int(os.environ.get("TRENDVN_PROCESS_PARALLEL", "2") or 2)))
+def _parallel_setting(text):
+    """TRENDVN_PROCESS_PARALLEL as a number from 1 to 4; anything unreadable means the default 2 (a typo must not stop the worker starting)."""
+    try:
+        return max(1, min(4, int(str(text).strip())))
+    except ValueError:
+        return 2
+
+
+PARALLEL = _parallel_setting(os.environ.get("TRENDVN_PROCESS_PARALLEL") or 2)
 
 
 def process_many(store, count, parallel=None, one=None):
@@ -84,7 +94,9 @@ def _process(store, cfg, job):
     folder.mkdir(exist_ok=True)
     path, duration = _source(job, cfg)
     fp = fingerprint(path, duration)
-    twin = None if approved else _look_alike(store, jid, fp, duration)  # the owner's approval overrides the look-alike warning
+    # the owner's approval overrides the look-alike warning; the fingerprint is recorded in the same step so a look-alike processed at the
+    # same moment (several videos run at once) cannot slip past
+    twin = store.reserve_fingerprint(jid, lease, fp, duration, similar, check=not approved)
     if twin:
         store.finish(
             jid, lease, "needs_review", reason="Possible visual duplicate of " + twin, fingerprint=json.dumps(fp), duration=duration
@@ -134,16 +146,6 @@ def _source(job, cfg):
     if not 1 <= duration <= cfg["max_duration"]:
         raise ValueError("Video duration outside configured limits")
     return path, duration
-
-
-def _look_alike(store, jid, fp, duration):
-    """Id of an earlier video that looks the same (similar length and picture), or None."""
-    with store.connect() as db:
-        others = db.execute("SELECT id,fingerprint,duration FROM jobs WHERE fingerprint IS NOT NULL AND id<>?", (jid,)).fetchall()
-    for row in others:
-        if abs(row["duration"] - duration) < 2 and similar(fp, json.loads(row["fingerprint"])):
-            return row["id"]
-    return None
 
 
 def _voice_or_subtitles(store, cfg, a, route, folder):

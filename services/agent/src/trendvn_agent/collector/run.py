@@ -111,8 +111,10 @@ def run_platform(ctx, platform, thresholds, download_media, ingest, limit, topic
 
 def fetch_pending(ctx, platform, seen_now, limit, wanted=()):
     status = worker_get("/api/status")
-    counts = status["counts"]
-    backlog = sum(counts.get(k, 0) for k in ("queued", "processing", "ready"))
+    # the worker's own figure leaves out rendered videos no account takes; the raw counts are the fallback for an older worker
+    backlog = status.get("backlog")
+    if backlog is None:
+        backlog = sum(status["counts"].get(k, 0) for k in ("queued", "processing", "ready"))
     room = max(0, status["thresholds"].get("max_backlog", 4) - backlog)
     limit = min(limit, room)
     if limit == 0:
