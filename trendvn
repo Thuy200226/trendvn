@@ -78,6 +78,8 @@ case "$cmd" in
     need_project
     say "Sinh lại workflow từ mã"; python3 n8n/build.py
     say "Build và khởi động lại container"; compose_up
+    # every rebuild leaves the previous image of THIS project untagged (~570 MB each): remove those, and only those (by label)
+    docker image prune -f --filter "label=org.opencontainers.image.title=trendvn-worker" >/dev/null 2>&1 || true
     say "Nạp workflow vào n8n"; python3 n8n/manage.py import
     say "Cập nhật gói Python của agent"; bash scripts/agent.sh venv
     say "Cài lại và khởi động lại agent"; bash scripts/agent.sh refresh || warn "agent chưa khởi động được (xem ./trendvn agent logs)"
