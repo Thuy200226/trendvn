@@ -95,7 +95,7 @@ TOPICS = (
         "news",
         "Tin nóng, xã hội, drama",
         "breaking news, current events, politics, social controversy, scandals, conflict and drama caught on camera",
-        r"新闻|热搜|吵架|冲突|事件|争议|突发|警方|通报|维权|news|scandal|tin nóng",
+        r"新闻|热搜|吵架|冲突|事件|争议|突发|警方|通报|维权|news|scandal|drama|tin nóng",
     ),
     Topic(
         "entertainment",

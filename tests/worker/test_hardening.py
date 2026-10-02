@@ -56,9 +56,36 @@ class LocalMeansThisMachineTests(unittest.TestCase):
         self.assertTrue(access.local_ui(host, "192.168.65.1"))
         self.assertFalse(access.local_ui(host, "172.20.0.1"))
 
-    def test_a_password_session_depends_on_the_password(self):
-        a, b = Access(config(TRENDVN_UI_PASSWORD="one")), Access(config(TRENDVN_UI_PASSWORD="two"))
-        self.assertNotEqual(a.session_value, b.session_value)  # changing the password signs everybody out
+    def test_a_session_lives_on_the_server_and_ends_when_it_should(self):
+        access = Access(config(TRENDVN_UI_PASSWORD="one"))
+        token = access.new_session(now=1000)
+        cookie = {"Cookie": "tv_session=" + token}
+        self.assertTrue(access.session_ok(cookie, now=1001))
+        self.assertFalse(access.session_ok({"Cookie": "tv_session=" + token + "x"}, now=1001))  # a forged value
+        self.assertFalse(access.session_ok({}, now=1001))
+        self.assertFalse(access.session_ok(cookie, now=1000 + 7 * 24 * 3600 + 1))  # expired on the SERVER, whatever the browser keeps
+        token2 = access.new_session(now=2000)
+        access.end_session({"Cookie": "tv_session=" + token2})
+        self.assertFalse(access.session_ok({"Cookie": "tv_session=" + token2}, now=2001))  # logout is real, not only a cleared cookie
+        self.assertFalse(Access(config(TRENDVN_UI_PASSWORD="one")).session_ok(cookie, now=1001))  # a restart signs everybody out
+        self.assertNotEqual(access.new_session(), access.new_session())
+
+    def test_sessions_are_bounded_and_the_oldest_goes_first(self):
+        access = Access(config(TRENDVN_UI_PASSWORD="one"))
+        first = access.new_session(now=1)
+        for n in range(80):
+            access.new_session(now=10 + n)
+        self.assertLessEqual(len(access.sessions), 64)
+        self.assertFalse(access.session_ok({"Cookie": "tv_session=" + first}, now=100))
+
+    def test_a_proxy_on_this_machine_does_not_make_everyone_local(self):
+        access = Access(config())
+        host = {"Host": "127.0.0.1:5681"}
+        self.assertTrue(access.local_ui(host, "127.0.0.1"))
+        for name in ("X-Forwarded-For", "X-Real-IP", "Forwarded", "X-Forwarded-Host", "X-Forwarded-Proto"):
+            self.assertFalse(
+                access.local_ui(dict(host, **{name: "203.0.113.9"}), "127.0.0.1"), name
+            )  # nginx proxy_pass from the same machine
 
     def test_failed_login_memory_is_bounded(self):
         access = Access(config())
@@ -120,6 +147,13 @@ class ServerLimitsTests(unittest.TestCase):
 
 
 class LogTests(unittest.TestCase):
+    def test_c1_control_characters_are_stripped_too(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            log("a\x9bb\x85c")  # 0x9b is CSI on a terminal that reads 8-bit controls
+        self.assertNotIn("\x9b", out.getvalue())
+        self.assertNotIn("\x85", out.getvalue())
+
     def test_control_characters_cannot_forge_or_hide_log_lines(self):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
@@ -208,6 +242,34 @@ class PasswordSessionTests(unittest.TestCase):
             self.assertIn("; Secure", good[1]["set-cookie"])
         finally:
             srv.stop()
+
+
+class LoginBodyTests(unittest.TestCase):
+    def test_a_negative_or_odd_content_length_cannot_make_the_server_read_forever(self):
+        srv = Server(lambda p: {"TRENDVN_UI_HOSTS": "box.test:%d" % p, "TRENDVN_UI_PASSWORD": "correct-horse-battery"})
+        try:
+            for length in ("-1", " 5", "1_0", "+4", "٣", "99999999999"):
+                with socket.create_connection(("127.0.0.1", srv.port), timeout=5) as conn:
+                    conn.sendall(
+                        ("POST /login HTTP/1.0\r\nHost: localhost:%d\r\nContent-Length: %s\r\n\r\npassword=x" % (srv.port, length)).encode()
+                    )
+                    conn.shutdown(socket.SHUT_WR)  # EOF: with the old code read(-1) returned only now; a streaming client would never end
+                    answer = b""
+                    while chunk := conn.recv(4096):
+                        answer += chunk
+                self.assertTrue(answer.startswith(b"HTTP/1.0 200") or answer.startswith(b"HTTP/1.0 4"), (length, answer[:40]))
+        finally:
+            srv.stop()
+
+    def test_body_length_parser(self):
+        handler = Handler.__new__(Handler)
+        for raw, expected in (("0", 0), ("12", 12), ("000007", 7)):
+            handler.headers = {"Content-Length": raw}
+            self.assertEqual(handler.body_length(), expected)
+        for bad in ("-1", "", " 5", "1_0", "+4", "5 ", "٣", "1e3", "9999999999"):
+            handler.headers = {"Content-Length": bad}
+            with self.assertRaises(ValueError, msg=repr(bad)):
+                handler.body_length()
 
 
 class StoredStateTests(StoreCase):
@@ -337,14 +399,14 @@ class ModelOutputGateTests(unittest.TestCase):
             segments=[
                 {"start": 0, "end": 3, "vi": "Xem tại https://evil.test/x hoặc nhắn @shop 0912 345 678 😂"},
                 {"start": 3, "end": 5, "vi": "😂😂"},  # only an emoji: dropped, the video is still fine
-                {"start": 5, "end": 8, "vi": "Giá 1.000.000 đồng {\\an8}thôi‮"},
+                {"start": 5, "end": 8, "vi": "Giá 1.000.000 đồng {\\an8}thôi\u202e"},
             ],
         )
         validate_analysis(a, 10, strict=True)
         texts = [s["vi"] for s in a["segments"]]
         self.assertEqual(len(texts), 2)
         joined = " ".join(texts)
-        for forbidden in ("http", "evil", "@", "0912", "😂", "{", "\\", "‮"):
+        for forbidden in ("http", "evil", "@", "0912", "😂", "{", "\\", "\u202e"):
             self.assertNotIn(forbidden, joined)
         self.assertIn("1.000.000", joined)  # real numbers survive
 
@@ -369,14 +431,14 @@ class TextCleaningTests(unittest.TestCase):
             ("zalo +84 912 345 678", "912"),
             ("nhắn @my_shop nhé", "@"),
             ("mail a.b@example.com nha", "example"),
-            ("ẩn​ chữ‮ xấu﻿", "​"),
+            ("ẩn\u200b chữ\u202e xấu\ufeff", "\u200b"),
             ("dòng 1\r\ndòng 2\x00", "\x00"),
         ):
             cleaned = clean_caption(dirty)
             self.assertNotIn(expected_absent, cleaned, dirty)
             self.assertNotIn("  ", cleaned)
         self.assertEqual(clean_caption("Hơn 1.000.000 lượt xem"), "Hơn 1.000.000 lượt xem")
-        self.assertEqual(clean_caption("Gia đình 👨‍👩‍👧"), "Gia đình 👨‍👩‍👧")  # emoji sequences keep their joiners
+        self.assertEqual(clean_caption("Gia đình 👨\u200d👩\u200d👧"), "Gia đình 👨\u200d👩\u200d👧")  # emoji sequences keep their joiners
 
     def test_subtitle_lines_get_no_emoji_and_no_ass_markup(self):
         self.assertEqual(clean_subtitle("Hay quá 😍 {\\an8}ơi <b>nè</b>"), "Hay quá (an8)ơi nè")
@@ -405,9 +467,86 @@ class TextCleaningTests(unittest.TestCase):
         self.assertEqual(re.findall(r"#(\w+)", c), ["xuhuong", "tinnong", "viral"])
 
     def test_a_cut_caption_does_not_end_in_half_an_emoji(self):
-        c = build_caption({"caption_vi": "a" * 108 + "👨‍👩‍👧", "hashtags": []}, "t")
+        c = build_caption({"caption_vi": "a" * 108 + "👨\u200d👩\u200d👧", "hashtags": []}, "t")
         text = c.split(" #")[0]
-        self.assertFalse(text.endswith("‍"))
+        self.assertFalse(text.endswith("\u200d"))
+
+
+class TextGateReviewTests(unittest.TestCase):
+    """Cases from the independent review: what the text gate must keep, what it must remove, and how fast."""
+
+    def test_ordinary_numbers_and_missing_spaces_are_not_mistaken_for_contacts(self):
+        for keep in (
+            "Ngày 01.10.2026",
+            "01-10-2026",
+            "Mở cửa 07.00-22.00",
+            "Điểm 09.5 10.0 08.5",
+            "05 06 07 08 09 10",
+            "Hay quá.Top 1",  # a missing space after a full stop is not a web address
+            "Mr.Co nói",
+            "Anh ấy nói.Co",
+            "Tập (1) 2.5",
+            "năm (2026) tháng 10",
+            "Giá 20.000.000đ",
+            "2 < 3 > 1",
+        ):
+            self.assertEqual(clean_caption(keep), keep, keep)
+        self.assertEqual(clean_subtitle("2 < 3 > 1"), "2 < 3 > 1")  # only real tags are markup
+
+    def test_phone_numbers_in_their_usual_shapes_go(self):
+        for number in (
+            "0912 345 678",
+            "0912.345.678",
+            "091-234-5678",
+            "+84 912 345 678",
+            "(028) 3822 1234",
+            "(028)38221234",
+            "1900 1234",
+            "+1 555 123 4567",
+        ):
+            self.assertEqual(clean_caption("gọi " + number + " nhé"), "gọi nhé", number)
+
+    def test_links_in_every_disguise_go_including_glued_and_split_ones(self):
+        for link in ("youtu.be/abc", "linktr.ee/x", "foo.dev", "foo.ai", "evil.com", "www.evil.com/x", "HTTPS://EVIL.TEST/x"):
+            self.assertEqual(clean_caption("xem " + link + " nha"), "xem nha", link)
+        self.assertNotIn("evil", clean_caption("Xem tại evil.comhttp://x hay"))  # glued: what is left of one link must not become another
+        self.assertNotIn("evil", clean_subtitle("xem evil.c\\om nha"))  # a backslash used to be removed only after the check
+
+    def test_filler_characters_do_not_make_an_empty_caption_look_filled(self):
+        for blank in ("\u3164", "\u2800", "\u034f", "\u115f\u1160", "\u200b\u200c\ufeff", "\x85\x9b"):
+            self.assertEqual(clean_caption(blank * 5), "", repr(blank))
+        self.assertEqual(clean_caption("a\ud800b"), "ab")  # a lone surrogate is invalid text: dropped, never a later UnicodeEncodeError
+        caption = build_caption({"kind": "dialogue", "caption_vi": "\u3164\u3164", "hashtags": []}, "Tiêu đề nguồn")
+        self.assertTrue(caption.startswith("Tiêu đề nguồn"))  # a "blank" caption falls back to the source title
+
+    def test_subtitles_lose_symbols_their_font_cannot_draw_and_never_end_in_a_space(self):
+        self.assertEqual(clean_subtitle("Hay (c) (r)\u00a9\u00ae\u2122 ▶ ◽ → 😂 quá {"), "Hay (c) (r) quá (")
+        self.assertEqual(clean_subtitle("quá 😂"), "quá")
+        self.assertEqual(clean_subtitle("Giá 1.000.000đ, 50%"), "Giá 1.000.000đ, 50%")  # ordinary characters are kept
+
+    def test_hostile_long_strings_are_cleaned_in_milliseconds(self):
+        for evil in (
+            "a" * 32000,
+            "a-" * 16000,
+            "a." * 16000,
+            "x@" * 16000,
+            "1 " * 16000,
+            "http://" * 8000,
+            "😂" * 30000,
+            "0" * 32000,
+            "(" * 30000,
+        ):
+            started = time.perf_counter()
+            clean_caption(evil)
+            clean_subtitle(evil)
+            self.assertLess(time.perf_counter() - started, 0.5, evil[:12])  # the first version took 19-31 s on some of these
+
+    def test_a_huge_subtitle_is_refused_without_running_the_cleaner_on_it(self):
+        a = dict(ANALYSIS, kind="dialogue", segments=[{"start": 0, "end": 3, "vi": "x" * 30000}])
+        started = time.perf_counter()
+        with self.assertRaises(ValueError):
+            validate_analysis(a, 10, strict=True)
+        self.assertLess(time.perf_counter() - started, 0.5)
 
 
 class NotifySafetyTests(unittest.TestCase):
@@ -430,6 +569,21 @@ class NotifySafetyTests(unittest.TestCase):
             with self.assertRaises(ValueError, msg=bad):
                 notify._safe_https(bad)
         self.assertEqual(notify._safe_https("https://discord.com/api/webhooks/1/a"), "https://discord.com/api/webhooks/1/a")
+
+    def test_odd_ports_and_odd_dns_answers_are_refused(self):
+        for bad in ("https://example.com:99999/x", "https://example.com:abc/x"):
+            with self.assertRaises(ValueError, msg=bad):
+                notify._safe_https(bad)
+        self.assertEqual(notify._safe_https("https://ntfy.example.com:8443/t"), "https://ntfy.example.com:8443/t")
+        with mock.patch.object(notify.socket, "getaddrinfo", return_value=[]):
+            with self.assertRaises(ValueError):
+                notify._public_only("https://example.com/hook")  # no answer at all is not "nothing internal"
+
+    def test_ipv6_forms_that_hide_an_internal_ipv4_are_internal(self):
+        for hidden in ("64:ff9b::7f00:1", "::127.0.0.1", "::ffff:10.0.0.1", "fec0::1", "64:ff9b::a9fe:a9fe", "::1", "fd00::1"):
+            self.assertFalse(notify._is_public(hidden), hidden)
+        for public in ("93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946", "64:ff9b::5db8:d822"):
+            self.assertTrue(notify._is_public(public), public)
 
     def test_a_name_that_resolves_to_an_internal_address_is_refused_at_send_time(self):
         for address in ("127.0.0.1", "169.254.169.254", "10.1.2.3", "::1", "fe80::1%eth0"):

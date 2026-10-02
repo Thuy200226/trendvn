@@ -1,6 +1,6 @@
 # The same gate as on the owner's machine: `./trendvn test` = lint (ruff, black, shellcheck, doc-lint, n8n build check) + unit tests.
-# NOT YET RUN on GitHub: this repository lives on one machine today. What was verified: the file parses, and `./trendvn test lint` plus the
-# 373 unit tests pass in a clean copy of the tracked files (no .env, no data/), which is all this job needs. The container and browser tiers (`./trendvn test container`, `./trendvn test e2e`) need Docker and Chrome and stay manual.
+# NOT YET RUN on GitHub: this repository lives on one machine today. What was verified: the file parses, and `./trendvn test lint` plus all the
+# unit tests pass in a clean copy of the tracked files (no .env, no data/), which is all this job needs. The container and browser tiers (`./trendvn test container`, `./trendvn test e2e`) need Docker and Chrome and stay manual.
 # Actions are pinned to full commit SHAs (taken with `git ls-remote --tags` on 2026-10-02); update them deliberately.
 name: ci
 on:

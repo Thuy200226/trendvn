@@ -44,6 +44,56 @@ class MediaUrlTests(unittest.TestCase):
                 download.cdn_host(bad)
 
 
+class FakeResponse:
+    def __init__(self, status, location=None):
+        self.status = status
+        self.headers = {"location": location} if location else {}
+        self.ok = 200 <= status < 300
+
+
+class RedirectTests(unittest.TestCase):
+    """Playwright follows 20 redirects on its own and the allowlist holds the platforms' main sites: every hop must be checked."""
+
+    def ctx(self, answers):
+        asked = []
+
+        def get(url, **kwargs):
+            asked.append((url, kwargs))
+            return answers[len(asked) - 1]
+
+        return mock.Mock(request=mock.Mock(get=get)), asked
+
+    def test_a_redirect_to_another_host_is_never_requested(self):
+        ctx, asked = self.ctx([FakeResponse(302, "https://evil.test/steal"), FakeResponse(200)])
+        with self.assertRaises(ValueError):
+            download.fetch_media(ctx, "https://v3.douyinvod.com/a.mp4", "https://www.douyin.com/")
+        self.assertEqual([url for url, _ in asked], ["https://v3.douyinvod.com/a.mp4"])  # the second request never went out
+        self.assertEqual(asked[0][1]["max_redirects"], 0)  # the browser stack is told not to follow by itself
+
+    def test_a_redirect_between_platform_hosts_is_followed_and_relative_ones_resolve(self):
+        ctx, asked = self.ctx([FakeResponse(302, "https://v26.douyinvod.com/b.mp4"), FakeResponse(301, "/c.mp4"), FakeResponse(200)])
+        response = download.fetch_media(ctx, "https://v3.douyinvod.com/a.mp4", "https://www.douyin.com/")
+        self.assertTrue(response.ok)
+        self.assertEqual([url for url, _ in asked][-1], "https://v26.douyinvod.com/c.mp4")
+
+    def test_loops_and_missing_destinations_stop(self):
+        ctx, _ = self.ctx([FakeResponse(302, "https://v3.douyinvod.com/a.mp4")] * 10)
+        with self.assertRaisesRegex(ValueError, "Too many"):
+            download.fetch_media(ctx, "https://v3.douyinvod.com/a.mp4", "https://www.douyin.com/")
+        ctx, _ = self.ctx([FakeResponse(302)])
+        with self.assertRaisesRegex(ValueError, "without a destination"):
+            download.fetch_media(ctx, "https://v3.douyinvod.com/a.mp4", "https://www.douyin.com/")
+
+    def test_yt_dlp_does_not_copy_the_servers_date_onto_the_file(self):
+        calls = []
+        with mock.patch.object(download.subprocess, "run", lambda argv, **k: calls.append(argv) or mock.Mock(returncode=1)):
+            with self.assertRaises(ValueError):
+                download.download(
+                    None, {"source_id": "x", "media": {"kind": "ytdlp", "url": "https://www.instagram.com/reel/x/"}}, "instagram"
+                )
+        self.assertIn("--no-mtime", calls[0])
+
+
 class YtDlpTests(StoreCase):
     def test_the_proxy_goes_in_the_environment_never_on_the_command_line(self):
         secret = "socks5://user:hunter2@proxy.example:1080"

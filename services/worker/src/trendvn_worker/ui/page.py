@@ -19,7 +19,7 @@ PAGE = Template("""<!doctype html><html lang="vi"><head><meta charset="utf-8">
 <nav class="topnav">$top<a href="$n8n" target="_blank" rel="noopener">n8n ↗</a></nav><button class="refresh ghost" data-reload aria-label="Làm mới">↻</button></div></header>
 <main class="wrap">$flash
 $sections
-<footer class="muted">TrendVN $version</footer></main>
+<footer class="muted">TrendVN $version$logout</footer></main>
 <nav class="bottomnav" aria-label="Điều hướng">$bottom</nav>
 <script>$js</script></body></html>""")
 
@@ -74,4 +74,9 @@ def render(data, csrf, flash=None, now=None):
             '<section data-tab="%s" id="%s" class="stack">%s</section>' % (tab, tab, render(view)) for tab, _, _, render, _ in TABS
         ),
         version=E(VERSION),
+        logout=(
+            ' · <form method="post" action="/logout" class="inline"><button class="ghost" type="submit">Đăng xuất</button></form>'
+            if data.get("remote")
+            else ""
+        ),
     )

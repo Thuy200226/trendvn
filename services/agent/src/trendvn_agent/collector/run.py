@@ -8,6 +8,7 @@ from ..config import RUNTIME
 from ..log import log
 from ..worker_client import worker, worker_get
 from .capture import Blocked, NoVideos, exit_country
+from .download import MAX_BYTES as MAX_DOWNLOAD_BYTES
 from .download import download
 from .rules import age_hours, choose_downloads, qualifies, score
 from .sources import SOURCES
@@ -150,6 +151,10 @@ def fetch_pending(ctx, platform, seen_now, limit, wanted=()):
     chosen = choose_downloads(pending, scores, wanted, limit)
     done = failed = 0
     for job in chosen:
+        free = free_bytes()  # again before every download: up to 10 videos of 250 MB each can follow one check
+        if free is not None and free - MAX_DOWNLOAD_BYTES < MIN_FREE_BYTES:
+            log("%s: only %d MB free, no more downloads this scan" % (platform, free >> 20))
+            break
         item = seen_now[job["source_id"]]
         try:
             name = download(ctx, item, platform)

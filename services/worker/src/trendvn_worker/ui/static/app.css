@@ -75,3 +75,4 @@ footer{margin-top:32px;text-align:center;font-size:13px}.bottomnav{display:none}
 .tg span{display:flex;align-items:center;padding:0 14px;border:1.5px solid var(--line);border-radius:22px;background:var(--card);font-size:14px}
 .tg input:checked+span{background:var(--accent2);border-color:var(--good);color:var(--good);font-weight:600}.tg input:focus-visible+span{outline:2px solid var(--info);outline-offset:2px}
 .acct h3{overflow-wrap:anywhere}
+form.inline{display:inline-block;margin:0}

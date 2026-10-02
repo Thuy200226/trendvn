@@ -5,15 +5,16 @@ import time
 
 from ..domain import topics as topic_menu
 from ..domain.accounts import MAX_ACCOUNTS, accepts, slug, validate_account
+from ..jsonsafe import loads
 
 COLUMNS = "id,username,label,topics,enabled,daily_limit,min_gap,windows,visibility,created"
 
 
 def _row(row):
     account = dict(row)
-    account["topics"] = json.loads(account["topics"])
+    account["topics"] = loads(account["topics"], [])  # unreadable: the account takes nothing until the owner picks topics again
     account["enabled"] = bool(account["enabled"])
-    account["windows"] = json.loads(account["windows"]) if account["windows"] else None
+    account["windows"] = loads(account["windows"], []) if account["windows"] else None
     return account
 
 

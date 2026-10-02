@@ -42,6 +42,10 @@ DNS_NAME = re.compile(r"(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]*")  # at least one dot a
 def _safe_https(url):
     """An https URL on a public DNS name: not an IP address (in any notation), not localhost or an internal suffix, no user-info."""
     u = urlsplit(url)
+    try:
+        u.port  # noqa: B018  (raises ValueError for ":abc" and ":99999")
+    except ValueError:
+        raise ValueError("Cần địa chỉ https hợp lệ") from None
     host = (u.hostname or "").lower()
     if u.scheme != "https" or not host or u.username or u.password or len(url) > 400 or any(c.isspace() or c == "\\" for c in url):
         raise ValueError("Cần địa chỉ https hợp lệ")
@@ -53,9 +57,29 @@ def _safe_https(url):
 def _public_only(url):
     """At send time: the name must resolve to public addresses only (a name pointing at 127.0.0.1 or 169.254.x.x is refused)."""
     host = urlsplit(url).hostname
-    for info in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM):
-        if not ipaddress.ip_address(info[4][0].split("%")[0]).is_global:
+    infos = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+    if not infos:
+        raise ValueError("Không phân giải được địa chỉ")
+    for info in infos:
+        if not _is_public(info[4][0]):
             raise ValueError("Địa chỉ nội bộ")
+
+
+NAT64 = ipaddress.ip_network("64:ff9b::/96")
+
+
+def _is_public(address):
+    """Is this a globally routable address? IPv6 forms that carry an IPv4 address (mapped ::ffff:a.b.c.d, NAT64 64:ff9b::a.b.c.d,
+    compatible ::a.b.c.d) are judged by the IPv4 address inside; site-local fec0::/10 is internal."""
+    ip = ipaddress.ip_address(address.split("%")[0])
+    if ip.version == 6:
+        if ip.ipv4_mapped:
+            ip = ip.ipv4_mapped
+        elif ip in NAT64 or int(ip) >> 32 == 0:
+            ip = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+        elif ip.is_site_local:
+            return False
+    return ip.is_global
 
 
 def validate(cfg):

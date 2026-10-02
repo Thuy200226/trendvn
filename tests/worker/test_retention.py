@@ -111,29 +111,104 @@ class RetentionTests(StoreCase):
         used = inbox / "douyin_used.mp4"
         used.write_bytes(b"u")
         self.job("used", "queued", source_file=str(used))
-        orphan, young, part = inbox / "orphan.mp4", inbox / "young.mp4", inbox / "x.part"
-        for path in (orphan, young, part):
+        orphan, part = inbox / "orphan.mp4", inbox / "x.part"
+        for path in (orphan, part):
             path.write_bytes(b"o" * 100)
-        os.utime(orphan, (self.old(3), self.old(3)))
         folder = self.s.root / "jobs" / "ghost"
         folder.mkdir()
         (folder / "final.mp4").write_bytes(b"g")
-        os.utime(folder, (self.old(3), self.old(3)))
         shots = self.s.root / "exports"
-        old_shot, new_shot, sample = shots / "shot_123456789.png", shots / "shot_987654321.png", shots / "voice_sample.wav"
-        for path in (old_shot, new_shot, sample):
+        old_shot, sample = shots / "shot_123456789.png", shots / "voice_sample.wav"
+        for path in (old_shot, sample):
             path.write_bytes(b"p")
-        os.utime(old_shot, (self.old(20), self.old(20)))
-        os.utime(sample, (self.old(90), self.old(90)))
-        result = self.s.prune()
-        self.assertFalse(orphan.exists())
-        self.assertFalse(folder.exists())
+        now = time.time()
+        self.assertEqual(self.s.prune(now)["orphans"], 0)  # everything is minutes old: it may be in the middle of being written
+        self.assertTrue(orphan.exists() and part.exists() and folder.exists())
+        self.assertEqual(self.s.prune(now + 3 * DAY)["orphans"], 3)  # three days later the three orphans go
+        self.assertFalse(orphan.exists() or part.exists() or folder.exists())
+        self.assertTrue(used.exists() and old_shot.exists() and sample.exists())
+        self.assertEqual(self.s.prune(now + 20 * DAY)["orphans"], 1)  # screenshots last two weeks
         self.assertFalse(old_shot.exists())
-        self.assertTrue(used.exists())
-        self.assertTrue(young.exists() and part.exists())  # maybe being written right now
-        self.assertTrue(new_shot.exists())
         self.assertTrue(sample.exists())  # not a screenshot: never pruned
-        self.assertEqual(result["orphans"], 3)
+        self.assertTrue(used.exists())
+
+    def test_a_download_with_an_old_modification_time_is_not_an_orphan(self):
+        """yt-dlp copies the server's Last-Modified into the file's mtime: a download that just finished can look a month old."""
+        fresh = self.s.root / "inbox" / "instagram_I1.mp4"
+        fresh.write_bytes(b"x" * 100)
+        os.utime(fresh, (self.old(30), self.old(30)))
+        self.s.prune()
+        self.assertTrue(fresh.exists())
+
+    def test_two_jobs_pointing_at_one_file_never_cost_the_live_one_its_source(self):
+        shared = self.s.root / "inbox" / "douyin_shared.mp4"
+        shared.write_bytes(b"s" * 100)
+        self.job("live", "queued", source_file=str(shared))
+        self.job("dup", "duplicate", source_file=str(shared), updated=self.old(10))  # the same name, attached twice through the API
+        self.s.prune()
+        self.assertTrue(shared.exists())
+        with self.s.connect() as db:
+            self.assertEqual(db.execute("SELECT pruned_at IS NOT NULL FROM jobs WHERE id='dup'").fetchone()[0], 1)
+
+    def test_a_malformed_source_file_never_turns_into_the_inbox_folder(self):
+        inbox = self.s.root / "inbox"
+        keep = inbox / "douyin_keep.mp4"
+        keep.write_bytes(b"k")
+        self.job("live", "queued", source_file=str(keep))
+        for n, bad in enumerate(
+            (str(inbox) + "/", str(inbox) + "/.", str(inbox) + "/..", "", ".", "..", "/", "a b/c\\d", str(inbox) + "/x\x00y")
+        ):
+            self.job("bad%d" % n, "rejected", updated=self.old(10), source_file=bad)
+        self.s.prune()
+        self.assertTrue(inbox.is_dir() and keep.exists())
+        self.assertTrue(self.s.prune()["files_removed"] == 0)  # and the next run raises nothing either
+
+    def test_a_removal_that_failed_is_retried_not_recorded_as_done(self):
+        folder = self.s.root / "jobs" / "stuck"
+        folder.mkdir()
+        (folder / "final.mp4").write_bytes(b"r" * 100)
+        self.job("stuck", "rejected", updated=self.old(10), output_file=str(folder / "final.mp4"))
+        for n in range(3):  # healthy jobs in the same batch
+            self.job("ok%d" % n, "rejected", updated=self.old(10), **self.media("ok%d" % n))
+        os.chmod(folder, 0o500)  # read-only: the render cannot be deleted
+        try:
+            if os.access(folder / "final.mp4", os.W_OK) and os.geteuid() == 0:
+                self.skipTest("root can delete anything")
+            first = self.s.prune()
+            self.assertEqual(first["failed"], 1)
+            self.assertTrue((folder / "final.mp4").exists())
+            with self.s.connect() as db:
+                stamps = {r["id"]: r["pruned_at"] for r in db.execute("SELECT id,pruned_at FROM jobs WHERE id LIKE 'ok%' OR id='stuck'")}
+            self.assertLess(stamps["stuck"], 0)  # failed: negative
+            self.assertTrue(all(stamps["ok%d" % n] > 0 for n in range(3)))  # the others were not held up
+            self.assertEqual(self.s.prune()["failed"], 0)  # not retried at once ...
+            os.chmod(folder, 0o700)
+            again = self.s.prune(time.time() + 2 * DAY)  # ... but a day later, and now it works
+            self.assertEqual(again["failed"], 0)
+            self.assertFalse((folder / "final.mp4").exists())
+        finally:
+            os.chmod(folder, 0o700)
+
+    def test_an_inbox_that_leads_outside_the_data_folder_is_reported_not_marked_done(self):
+        outside = Path(tempfile.mkdtemp(prefix="elsewhere"))
+        try:
+            (outside / "douyin_far.mp4").write_bytes(b"f")
+            real = self.s.root / "inbox"
+            real.rmdir()
+            os.symlink(outside, real)
+            self.job("far", "rejected", updated=self.old(10), source_file=str(real / "douyin_far.mp4"))
+            result = self.s.prune()
+            self.assertEqual(result["failed"], 1)
+            self.assertTrue((outside / "douyin_far.mp4").exists())
+            with self.s.connect() as db:
+                self.assertLess(db.execute("SELECT pruned_at FROM jobs WHERE id='far'").fetchone()[0], 0)
+        finally:
+            import shutil
+
+            real = self.s.root / "inbox"
+            if real.is_symlink():
+                real.unlink()
+            shutil.rmtree(outside)
 
     def test_nothing_outside_the_data_folder_is_ever_deleted(self):
         outside = Path(self.tmp.name).parent / ("keep-%d.mp4" % os.getpid())
@@ -159,6 +234,21 @@ class RetentionTests(StoreCase):
         result = self.s.prune()
         self.assertEqual(result["expired"], 1)
         self.assertIn("disk error", result["errors"][0])
+
+    def test_a_nearly_full_disk_sends_one_phone_message_not_one_per_run(self):
+        from unittest import mock
+
+        sent = []
+        self.s.notifier = lambda kind, text, key="": sent.append((kind, key, text))
+        with mock.patch("trendvn_worker.store.queue.free_bytes", return_value=300 << 20):
+            out = self.s.housekeeping()
+        self.assertEqual(out["disk_free_mb"], 300)
+        self.assertEqual([(kind, key) for kind, key, _ in sent], [("urgent", "disk")])
+        self.assertIn("300 MB", sent[0][2])
+        sent.clear()
+        with mock.patch("trendvn_worker.store.queue.free_bytes", return_value=50 << 30):
+            self.s.housekeeping()
+        self.assertEqual(sent, [])
 
     def test_housekeeping_reports_what_it_pruned(self):
         self.job("c", "candidate", first_seen=self.old(10), updated=time.time())
@@ -211,6 +301,59 @@ class MigrationTests(unittest.TestCase):
             with store.connect() as db:
                 self.assertIn("pruned_at", {r[1] for r in db.execute("PRAGMA table_info(jobs)")})
                 self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], len(schema.MIGRATIONS))
+
+
+class DamagedRowsTests(unittest.TestCase):
+    """A row damaged by hand or by a half-written restore must not make the worker crash-loop or every page answer 500."""
+
+    def damaged(self, folder):
+        store = Store(folder)
+        with store.transaction() as db:
+            db.execute("UPDATE accounts SET topics='entertainment,music' WHERE id='main'")  # not JSON
+            db.execute("UPDATE settings SET value=NULL WHERE key='daily_limit'")  # NULL
+            db.execute("UPDATE settings SET value='[\"a\"]' WHERE key='model'")  # a list where a name belongs
+            db.execute("UPDATE settings SET value='{oops' WHERE key='tts_model'")
+            db.execute("DELETE FROM settings WHERE key='target'")
+            db.execute("INSERT INTO settings VALUES ('target', NULL)")
+            db.execute("PRAGMA user_version = 2")  # so that migrations 3, 4 and 5 run over the damaged rows
+        return store
+
+    def test_start_up_survives_unreadable_rows_and_every_page_still_renders(self):
+        from trendvn_worker import ui
+
+        with tempfile.TemporaryDirectory() as folder:
+            self.damaged(folder)
+            store = Store(folder)  # used to raise from the migration or from seeding the settings
+            cfg = store.settings()
+            self.assertEqual(cfg["daily_limit"], 2)  # a damaged row falls back to its default
+            data = store.dashboard_data()
+            data.update(notify_channels=[], voice_sample=False, ready=store.ready_list(), tasks=store.tasks_recent(6))
+            self.assertIn("TrendVN", ui.render(data, "CSRF"))
+            self.assertEqual(store.account("main")["topics"], [])  # unreadable: it takes nothing until the owner chooses again
+
+    def test_damaged_job_columns_never_stop_publishing_or_the_lists(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = Store(folder)
+            for jid, fields in (
+                ("a", {"analysis": "{broken", "output_file": "/d/a.mp4"}),
+                ("b", {"analysis": "[1,2]", "output_file": "/d/b.mp4"}),
+                ("c", {"fingerprint": "{x", "duration": 5.0}),
+            ):
+                columns = dict(
+                    id=jid, platform="douyin", source_id=jid, url="https://www.douyin.com/video/" + jid, country="CN", title="T" + jid,
+                    first_seen=1, last_seen=1, state="ready" if "analysis" in fields else "queued", updated=time.time(), **fields,
+                )  # fmt: skip
+                with store.transaction() as db:
+                    db.execute(
+                        "INSERT INTO jobs(%s) VALUES (%s)" % (",".join(columns), ",".join("?" * len(columns))), list(columns.values())
+                    )
+            with store.transaction() as db:
+                db.execute("INSERT INTO tasks(id,kind,state,started,steps) VALUES ('t','process','done',1,'{x')")
+            self.assertEqual(len(store.ready_list()), 2)
+            self.assertEqual(store.tasks_recent(5)[0]["steps"], [])
+            store.update_settings({"publisher_enabled": True})
+            store.update_settings({"post_windows": []})
+            self.assertEqual(store.publish_peek()["status"], "ready")  # a caption is built from the title when the analysis is unreadable
 
 
 class CandidateAndCountTests(StoreCase):

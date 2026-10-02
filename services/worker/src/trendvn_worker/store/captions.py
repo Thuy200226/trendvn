@@ -1,11 +1,11 @@
 """The caption the owner will post: edit, reset, and the list of videos ready to post."""
 
-import json
 import re
 import time
 import unicodedata
 
 from ..domain.captions import build_caption, lint_caption
+from ..jsonsafe import loads
 
 
 class CaptionMixin:
@@ -24,7 +24,7 @@ class CaptionMixin:
             if not row or row["state"] not in ("ready", "awaiting_approval"):
                 raise ValueError("Chỉ sửa được mô tả của video sẵn sàng đăng")
             cur = db.execute("SELECT caption_user,analysis,title FROM jobs WHERE id=?", (jid,)).fetchone()
-            effective = cur["caption_user"] or build_caption(json.loads(cur["analysis"] or "{}"), cur["title"])
+            effective = cur["caption_user"] or build_caption(loads(cur["analysis"], {}), cur["title"])
             if caption == effective:
                 return  # nothing changed: no event, no churn
             db.execute("UPDATE jobs SET caption_user=?,updated=? WHERE id=?", (caption, time.time(), jid))
@@ -48,10 +48,7 @@ class CaptionMixin:
         out = []
         for r in rows:
             d = dict(r)
-            try:
-                a = json.loads(d.pop("analysis") or "{}")
-            except ValueError:
-                a = {}
+            a = loads(d.pop("analysis"), {})  # damaged, or JSON of the wrong kind: no analysis
             try:
                 d["caption"] = d["caption_user"] or build_caption(a, d["title"])
             except Exception:
@@ -59,6 +56,6 @@ class CaptionMixin:
             d["caption_edited"] = bool(d["caption_user"])
             d["lint"] = lint_caption(d["caption"])
             d["kind"] = a.get("kind")
-            d["info"] = json.loads(d["output_info"] or "{}")
+            d["info"] = loads(d["output_info"], {})
             out.append(d)
         return out

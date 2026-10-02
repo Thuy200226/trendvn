@@ -7,6 +7,7 @@ import uuid
 from ..domain.accounts import accepts, effective
 from ..domain.captions import build_caption
 from ..domain.platforms import valid_post_url
+from ..jsonsafe import loads
 
 
 class PublishingMixin:
@@ -166,7 +167,7 @@ class PublishingMixin:
             (token, row["state"], account["id"], account["username"], now, row["id"]),
         )
         self.event(db, row["id"], "publishing", ("thủ công " if manual else "") + "@" + account["username"])
-        analysis = json.loads(row["analysis"]) if row["analysis"] else {}
+        analysis = loads(row["analysis"], {})
         caption = row["caption_user"] or build_caption(analysis, row["title"])
         db.execute("UPDATE jobs SET caption=? WHERE id=?", (caption, row["id"]))
         return {
@@ -197,7 +198,7 @@ class PublishingMixin:
             if not row or not accounts:
                 return {"status": "idle", "reason": "No rendered video is waiting"}
             account = self._account_for_manual(db, row, accounts, time.time())
-        a = json.loads(row["analysis"]) if row["analysis"] else {}
+        a = loads(row["analysis"], {})
         return {
             "status": "ready",
             "id": row["id"],

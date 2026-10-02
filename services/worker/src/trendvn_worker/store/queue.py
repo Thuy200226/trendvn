@@ -5,6 +5,11 @@ import time
 import uuid
 from pathlib import Path
 
+from ..files import free_bytes
+
+LOW_DISK_BYTES = 1 << 30  # the same line the collector stops downloading at
+from ..jsonsafe import loads
+
 
 class QueueMixin:
     """The processing queue and the human decisions on its results."""
@@ -53,7 +58,7 @@ class QueueMixin:
             twin = None
             if check:
                 for row in db.execute("SELECT id,fingerprint,duration FROM jobs WHERE fingerprint IS NOT NULL AND id<>?", (jid,)):
-                    if abs(row["duration"] - duration) < 2 and similar(fingerprint, json.loads(row["fingerprint"])):
+                    if abs(row["duration"] - duration) < 2 and similar(fingerprint, loads(row["fingerprint"], [])):
                         twin = row["id"]
                         break
             changed = db.execute(
@@ -124,7 +129,18 @@ class QueueMixin:
                 "🚨 Có %d bài đăng chưa xác nhận. Hệ thống đã dừng đăng để tránh trùng; mở bảng điều khiển để xác nhận." % unknown,
                 "unknown",
             )
-        return {"interrupted_processing": processing, "uncertain_publishing": unknown, "pruned": self.prune(now)}
+        pruned = self.prune(now)
+        free = free_bytes(self.root)
+        if (
+            free < LOW_DISK_BYTES
+        ):  # the dashboard shows it too, but a phone message is what gets the disk cleaned before it stops everything
+            self.emit(
+                "urgent",
+                "💾 Ổ đĩa chỉ còn %d MB trống: hệ thống đã ngừng tải và dựng thêm video. Hãy dọn ổ đĩa (xem ./trendvn doctor)."
+                % (free >> 20),
+                "disk",
+            )
+        return {"interrupted_processing": processing, "uncertain_publishing": unknown, "pruned": pruned, "disk_free_mb": free >> 20}
 
     def recover_after_restart(self):
         """The worker process has just started, so nothing it had claimed is still running: put those videos back right away instead of
@@ -132,8 +148,9 @@ class QueueMixin:
         return self._recover_processing(time.time() + 1)
 
     def _recover_processing(self, older_than):
-        """Videos claimed for processing and then abandoned (a crash, kill -9, a power cut). The first two times they go back in the queue,
-        untouched; after that something about the video itself is wrong, so it waits for the owner. Returns how many were found."""
+        """Videos claimed for processing and then abandoned (a crash, kill -9, a power cut). One that has been tried once goes back in the
+        queue untouched; one that has been tried twice is the problem, not the crash, so it waits for the owner. Returns how many were found.
+        """
         with self.transaction() as db:
             again = db.execute(
                 "UPDATE jobs SET state='queued',lease=NULL,reason='Xử lý bị ngắt; xếp lại hàng đợi',updated=? "

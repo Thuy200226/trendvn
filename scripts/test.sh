@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Kiểm thử:  ./trendvn test [lint|unit|container|e2e|all]      (mặc định: lint + unit)
-#   lint       workflow khớp mã sinh, mọi file Python/shell đúng cú pháp, compose hợp lệ, script shell chạy được trên bash 3.2 của macOS
+#   lint       workflow khớp mã sinh, mọi file Python/shell đúng cú pháp, không ký tự ẩn/đảo chiều trong mã, compose hợp lệ, script shell chạy được trên bash 3.2 của macOS
 #   unit       bộ test đơn vị/tích hợp trên máy này (một số test media tự bỏ qua nếu máy không có ffmpeg)
 #   container  chạy lại toàn bộ bộ test TRONG image Docker của worker (có ffmpeg) + kiểm tra dựng video thật
 #   e2e        mở Chrome thật, kiểm tra giao diện ở 7 kích thước và mọi luồng bấm nút (cần .venv của agent; TRENDVN_SAMPLE=<video.mp4> để có video thật)
@@ -26,6 +26,26 @@ for d in ('services', 'n8n', 'scripts', 'tests'):
                 ast.parse(text, filename=str(f), feature_version=(3, 9))
         except SyntaxError as e:
             bad += 1; print('%s:%s %s' % (f, e.lineno, e.msg))
+sys.exit(1 if bad else 0)
+PY
+  say "lint: không có ký tự ẩn hoặc đảo chiều trong mã (kiểu tấn công Trojan Source)"
+  python3 - <<'PY'
+import subprocess, sys, unicodedata
+from pathlib import Path
+bad = 0
+names = subprocess.run(['git', 'ls-files'], capture_output=True, text=True).stdout.split() if Path('.git').exists() else [str(f) for f in Path('.').rglob('*') if f.is_file()]
+for name in names:
+    path = Path(name)
+    if path.suffix in ('.png', '.jpg', '.gz', '.sha256', '.skill', '.ico', '.wav', '.mp4', '.sqlite3', '.pyc') or '.venv' in path.parts or not path.is_file():
+        continue
+    try:
+        text = path.read_text(encoding='utf-8')
+    except Exception:
+        continue
+    for number, line in enumerate(text.splitlines(), 1):
+        hidden = sorted({'U+%04X' % ord(c) for c in line if unicodedata.category(c) in ('Cf', 'Cc', 'Zl', 'Zp') and c not in '\t\r' or c in '\u3164\u2800\u115f\u1160\u034f'})
+        if hidden:
+            bad += 1; print('%s:%d ký tự ẩn %s (viết bằng \\uXXXX thay vì dán trực tiếp)' % (name, number, ' '.join(hidden)))
 sys.exit(1 if bad else 0)
 PY
   say "lint: định dạng và lỗi Python (ruff, black)"

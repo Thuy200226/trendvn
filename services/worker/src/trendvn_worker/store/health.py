@@ -2,6 +2,7 @@
 
 import json
 import time
+from ..jsonsafe import loads
 
 HEARTBEAT_MAX_AGE = 30 * 3600
 HEARTBEAT_MAX_CHARS = 6000  # a heartbeat is a status line, not a log; the agent's detail is cut to this before it is stored
@@ -45,10 +46,7 @@ class HealthMixin:
 
     @staticmethod
     def _stored_detail(raw):
-        try:
-            value = json.loads(raw)
-        except ValueError:
-            return None
+        value = loads(raw)
         return value.get("detail") if isinstance(value, dict) else None
 
     def component_state(self, component, cfg=None):

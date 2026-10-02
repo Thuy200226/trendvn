@@ -6,6 +6,7 @@ Only the files (and rows of pure history: observations, events, tasks, API calls
 changed in one place; the defaults keep a week of files, which is enough to look at what was posted and to re-approve a mistake.
 """
 
+import re
 import shutil
 import time
 
@@ -21,6 +22,8 @@ KEEP_TASKS_DAYS = 14
 KEEP_SCREENSHOTS_DAYS = 14
 ORPHAN_GRACE_HOURS = 24  # a file no job knows about is only removed after this, so one being written right now is never touched
 BATCH = 200  # most jobs whose files are removed per call; the rest wait for the next call
+RETRY_AFTER_FAILURE_HOURS = 24  # a job whose files could not be removed (read-only folder, odd path) is tried again after this long
+INBOX_NAME = re.compile(r"[A-Za-z0-9_.-]{1,150}")  # what attach() accepts as a file name: anything else is never turned into a path
 FINISHED = ("published", "rejected", "duplicate", "failed")
 KEEP_IN_JOB_FOLDER = ("manifest.json", "poster.jpg")  # a few KB: the record of how a video was made, and its thumbnail
 DAY = 86400
@@ -32,7 +35,7 @@ class RetentionMixin:
     def prune(self, now=None):
         """Apply every retention rule. Returns what was done; a rule that fails is skipped, never fatal."""
         now = now or time.time()
-        result = {"expired": 0, "files_removed": 0, "freed_mb": 0.0, "rows_trimmed": 0, "orphans": 0}
+        result = {"expired": 0, "files_removed": 0, "freed_mb": 0.0, "rows_trimmed": 0, "orphans": 0, "failed": 0}
         for step in (self._expire, self._remove_finished_files, self._trim_history, self._remove_orphans):
             try:
                 for key, value in step(now).items():
@@ -65,55 +68,89 @@ class RetentionMixin:
 
     # ------------------------------------------------------------------ files of finished videos
     def _remove_finished_files(self, now):
+        """pruned_at: NULL = files not removed yet; a positive time = removed then; a negative time = a removal failed then (retried after
+        RETRY_AFTER_FAILURE_HOURS, so one stubborn job cannot starve the rest of the batch)."""
         with self.connect() as db:
             rows = db.execute(
-                "SELECT id,source_file FROM jobs WHERE pruned_at IS NULL AND (source_file IS NOT NULL OR output_file IS NOT NULL) "
+                "SELECT id,source_file FROM jobs WHERE (pruned_at IS NULL OR (pruned_at<0 AND -pruned_at<?)) "
+                "AND (source_file IS NOT NULL OR output_file IS NOT NULL) "
                 "AND state IN (%s) AND COALESCE(published_at,updated)<? LIMIT ?" % ",".join("?" * len(FINISHED)),
-                (*FINISHED, now - KEEP_FILES_DAYS * DAY, BATCH),
+                (now - RETRY_AFTER_FAILURE_HOURS * 3600, *FINISHED, now - KEEP_FILES_DAYS * DAY, BATCH),
             ).fetchall()
-        removed, freed = 0, 0
+            # a name another job that is still alive points at must survive (two jobs can only share a file through API misuse, but a
+            # live video's source is not worth guessing about)
+            live = {
+                name
+                for (path,) in db.execute(
+                    "SELECT source_file FROM jobs WHERE source_file IS NOT NULL AND state NOT IN (%s)" % ",".join("?" * len(FINISHED)),
+                    FINISHED,
+                )
+                if (name := self._inbox_name(path))
+            }
+        removed, freed, failed, outcome = 0, 0, 0, []
         for row in rows:
-            count, size = self._remove_job_files(row["id"], row["source_file"])
+            count, size, ok = self._remove_job_files(row["id"], row["source_file"], live)
             removed, freed = removed + count, freed + size
+            failed += 0 if ok else 1
+            outcome.append((now if ok else -now, row["id"], ok))
         if rows:
             with self.transaction() as db:
-                db.executemany("UPDATE jobs SET source_file=NULL,pruned_at=? WHERE id=?", [(now, row["id"]) for row in rows])
-        return {"files_removed": removed, "freed_mb": freed / 1048576}
+                db.executemany(
+                    "UPDATE jobs SET source_file=CASE WHEN ? THEN NULL ELSE source_file END,pruned_at=? WHERE id=?",
+                    [(1 if ok else 0, stamp, jid) for stamp, jid, ok in outcome],
+                )
+        return {"files_removed": removed, "freed_mb": freed / 1048576, "failed": failed}
 
-    def _remove_job_files(self, jid, source_file):
+    @staticmethod
+    def _inbox_name(source_file):
+        """The file name a job's source_file stands for, or None when it is not a plain name (empty, '.', '..', odd characters)."""
+        name = str(source_file or "").replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+        return name if INBOX_NAME.fullmatch(name) and name not in (".", "..") else None
+
+    def _remove_job_files(self, jid, source_file, live=frozenset()):
         """Delete one job's source and render files, keeping manifest.json and the poster. Only paths inside the data folder are touched.
-        Returns (files removed, bytes freed)."""
+        Returns (files removed, bytes freed, ok): ok is False when something that should go could not be removed."""
         count = size = 0
+        ok = True
         targets = []
-        if source_file:
-            targets.append(self.root / "inbox" / (source_file.rsplit("/", 1)[-1]))
+        name = self._inbox_name(source_file)
+        if name and name not in live:
+            targets.append(self.root / "inbox" / name)
         folder = self.root / "jobs" / jid
-        if folder.is_dir() and not folder.is_symlink():
-            targets += [path for path in folder.iterdir() if path.name not in KEEP_IN_JOB_FOLDER]
+        try:
+            if folder.is_dir() and not folder.is_symlink():
+                targets += [path for path in folder.iterdir() if path.name not in KEEP_IN_JOB_FOLDER]
+        except OSError:
+            ok = False
         for path in targets:
             gone = self._delete_inside_root(path)
-            count, size = count + (1 if gone is not None else 0), size + (gone or 0)
-        return count, size
+            if gone is False:
+                ok = False
+            elif gone is not None:
+                count, size = count + 1, size + gone
+        return count, size, ok
 
     def _delete_inside_root(self, path):
-        """Remove a file or folder if it really lives under the data folder (never follows a symlink out of it). Returns bytes freed, or
-        None when there was nothing to remove."""
+        """Remove a file or folder if it really lives under the data folder (never follows a symlink out of it). Returns the bytes freed,
+        None when there was nothing to remove, False when it should have been removed and could not be."""
         try:
             if path.is_symlink():
                 path.unlink()
                 return 0
-            resolved = path.resolve()
-            if self.root not in resolved.parents or not resolved.exists():
+            if not path.exists():
                 return None
+            resolved = path.resolve()
+            if self.root not in resolved.parents:
+                return False  # a path that leads out of the data folder (a symlinked inbox, say): never touched, never "done"
             if resolved.is_dir():
                 size = sum(f.stat().st_size for f in resolved.rglob("*") if f.is_file() and not f.is_symlink())
-                shutil.rmtree(resolved, ignore_errors=True)
+                shutil.rmtree(resolved)
             else:
                 size = resolved.stat().st_size
                 resolved.unlink()
             return size
         except OSError:
-            return None
+            return False
 
     # ------------------------------------------------------------------ history tables
     def _trim_history(self, now):
@@ -132,22 +169,39 @@ class RetentionMixin:
     # ------------------------------------------------------------------ files nothing refers to
     def _remove_orphans(self, now):
         """Source files in inbox/ that no job points at (a download whose attach failed), job folders of jobs that do not exist, and old
-        screenshots. Anything newer than the grace period is left alone: it may be in the middle of being written."""
+        screenshots. Anything younger than the grace period is left alone: it may be in the middle of being written. Age is the inode
+        change time, which a downloader cannot set (yt-dlp copies the server's Last-Modified into the modification time, so a fresh
+        download can look weeks old by mtime)."""
         cutoff = now - ORPHAN_GRACE_HOURS * 3600
         with self.connect() as db:
-            used = {row[0].rsplit("/", 1)[-1] for row in db.execute("SELECT source_file FROM jobs WHERE source_file IS NOT NULL")}
+            used = {
+                name
+                for (path,) in db.execute("SELECT source_file FROM jobs WHERE source_file IS NOT NULL")
+                if (name := self._inbox_name(path))
+            }
             known = {row[0] for row in db.execute("SELECT id FROM jobs")}
-        removed, freed = 0, 0
-        candidates = [p for p in (self.root / "inbox").iterdir() if p.name not in used]
-        candidates += [p for p in (self.root / "jobs").iterdir() if p.name not in known]
-        candidates += [p for p in (self.root / "exports").glob("shot_*.png") if p.stat().st_mtime < now - KEEP_SCREENSHOTS_DAYS * DAY]
-        for path in candidates:
+        removed, freed, failed = 0, 0, 0
+        candidates = [(p, cutoff) for p in self._listing(self.root / "inbox") if p.name not in used]
+        candidates += [(p, cutoff) for p in self._listing(self.root / "jobs") if p.name not in known]
+        candidates += [
+            (p, now - KEEP_SCREENSHOTS_DAYS * DAY) for p in self._listing(self.root / "exports") if re.fullmatch(r"shot_\d+\.png", p.name)
+        ]
+        for path, limit in candidates:
             try:
-                if path.stat().st_mtime >= cutoff and path.parent.name != "exports":
+                if path.lstat().st_ctime >= limit:
                     continue
             except OSError:
                 continue
             gone = self._delete_inside_root(path)
-            if gone is not None:
+            if gone is False:
+                failed += 1
+            elif gone is not None:
                 removed, freed = removed + 1, freed + gone
-        return {"orphans": removed, "freed_mb": freed / 1048576}
+        return {"orphans": removed, "freed_mb": freed / 1048576, "failed": failed}
+
+    @staticmethod
+    def _listing(folder):
+        try:
+            return list(folder.iterdir())
+        except OSError:
+            return []

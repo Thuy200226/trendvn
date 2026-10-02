@@ -515,7 +515,9 @@ def main():
                 ),
             )
             pill_rows = pg.evaluate("() => [...document.querySelectorAll('.pill')].map(e => e.innerText.replace(/\\s+/g, ' '))")
-            check("Every status row is fully readable", all(len(x) > 8 for x in pill_rows) and len(pill_rows) == 3, str(pill_rows))
+            check(
+                "Every status row is fully readable", all(len(x) > 8 for x in pill_rows) and len(pill_rows) == 4, str(pill_rows)
+            )  # collector, publisher, golden hour, disk
 
             # processing switched off: the tab says so and one tap turns it on
             go(pg, base + "/#home")

@@ -3,7 +3,7 @@
 import re
 
 from ...log import log
-from ..capture import Blocked, NotThere, capture
+from ..capture import Blocked, NoVideos, NotThere, capture
 from ..normalize import to_int
 from ..rules import rotate
 
@@ -90,6 +90,9 @@ def scan_tiktok(ctx, topics=()):
                 before_scroll=click_chip(CHIPS[topic]),
             )
             out["explore_" + topic] = [dict(item, topic=topic) for item in items]
+        except NoVideos:  # an empty chip (slow page, throttling): the other chips still count
+            log("tiktok chip %s returned no videos" % CHIPS[topic])
+            out["explore_" + topic] = []
         except Blocked:
             raise
         except NotThere as e:

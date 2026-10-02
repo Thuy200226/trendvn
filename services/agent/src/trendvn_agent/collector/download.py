@@ -5,11 +5,14 @@ import os
 import re
 import subprocess
 import sys
+from urllib.parse import urljoin
 
 from ..browser import proxy_for
 from ..config import ENV, RUNTIME
 
 MAX_BYTES = 250 * 1024 * 1024
+MAX_HOPS = 4  # redirects followed by hand: each hop must be on a platform CDN too
+REDIRECTS = (301, 302, 303, 307, 308)
 
 
 def cdn_suffixes():
@@ -32,6 +35,21 @@ def cdn_host(url):
     if not host or not any(host == d or host.endswith("." + d) for d in cdn_suffixes()):
         raise ValueError("Media host is not a known platform CDN: " + (host or "unparseable URL")[:80])
     return host
+
+
+def fetch_media(ctx, url, referer):
+    """GET a media URL following redirects ourselves: every hop is checked against the CDN allowlist before it is requested (Playwright's
+    own following would check only the first host, and the allowlist contains the platforms' main sites)."""
+    for _ in range(MAX_HOPS + 1):
+        cdn_host(url)
+        r = ctx.request.get(url, headers={"Referer": referer}, timeout=120000, max_redirects=0)
+        if r.status not in REDIRECTS:
+            return r
+        location = r.headers.get("location")
+        if not location:
+            raise ValueError("Media redirect without a destination")
+        url = urljoin(url, location)
+    raise ValueError("Too many media redirects")
 
 
 def ytdlp_env():
@@ -71,6 +89,7 @@ def download(ctx, item, platform):
                 "yt_dlp",
                 "--no-warnings",
                 "--no-playlist",
+                "--no-mtime",  # the file is as new as the download, not as old as the server's Last-Modified
                 "-f",
                 "mp4/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
                 "--merge-output-format",
@@ -90,8 +109,7 @@ def download(ctx, item, platform):
             raise ValueError("yt-dlp could not download this reel")
         produced[0].rename(tmp)
     else:
-        cdn_host(m["url"])
-        r = ctx.request.get(m["url"], headers={"Referer": m["referer"]}, timeout=120000)
+        r = fetch_media(ctx, m["url"], m["referer"])
         if not r.ok:
             raise ValueError("Media HTTP %s" % r.status)
         body = r.body()

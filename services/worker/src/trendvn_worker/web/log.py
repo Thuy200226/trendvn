@@ -3,9 +3,8 @@
 import re
 import time
 
-CONTROL = re.compile(
-    r"[\x00-\x08\x0b-\x1f\x7f]"
-)  # keeps tab and newline (tracebacks); drops what could forge a log line or move a terminal
+# keeps tab and newline (tracebacks); drops what could forge a log line or move a terminal, C1 controls (0x80-0x9f) included
+CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 
 
 def log(message):

@@ -102,7 +102,20 @@ TRENDVN_N8N_PROTOCOL=https
 TRENDVN_N8N_SECURE_COOKIE=true
 TRENDVN_UI_HOSTS=dieukhien.ten-mien.com
 TRENDVN_UI_PASSWORD=<mật-khẩu-dài-ít-nhất-12-ký-tự>
+TRENDVN_UI_HTTPS=1                          # cookie đăng nhập có cờ Secure
 ```
+
+Với **nginx**, phải chuyển đúng tên miền và địa chỉ khách, nếu không bảng điều khiển không biết khách là ai:
+
+```
+location / {
+    proxy_pass http://127.0.0.1:5681;
+    proxy_set_header Host $host;               # bắt buộc: tên miền trong TRENDVN_UI_HOSTS, KHÔNG phải 127.0.0.1
+    proxy_set_header X-Forwarded-For $remote_addr;
+}
+```
+
+(Caddy làm cả hai việc mặc định.) Bảng điều khiển coi mọi yêu cầu có tiêu đề `X-Forwarded-For`, `X-Real-IP`, `Forwarded`, `X-Forwarded-Host` hoặc `X-Forwarded-Proto` là **không** phải từ chính máy, nên một proxy cấu hình thiếu `Host` cũng không thể mở bảng điều khiển không mật khẩu. Đổi mật khẩu = khởi động lại worker = mọi người phải đăng nhập lại; nút "Đăng xuất" ở chân trang kết thúc phiên ngay trên máy chủ.
 
 **Không** đặt `TRENDVN_BIND=0.0.0.0` rồi mở thẳng ra Internet. Bảng điều khiển chỉ mở không cần mật khẩu trên chính máy này; với bất kỳ `Host` nào khác trong `TRENDVN_UI_HOSTS` nó **bắt buộc** `TRENDVN_UI_PASSWORD` (trang đăng nhập, chặn đoán sai sau 5 lần). Không đặt mật khẩu thì các Host đó bị từ chối. Đường hầm SSH (cách A) không cần mật khẩu vì bạn vào bằng `localhost`.
 

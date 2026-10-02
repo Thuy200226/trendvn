@@ -2,7 +2,6 @@
 
 import json
 import os
-import shutil
 import threading
 from pathlib import Path
 
@@ -12,7 +11,7 @@ from .ai.prompts import PROMPT_VERSION
 from .ai.tts import make_voice
 from .domain.readability import TOO_FAST, fit_reading_speed
 from .domain.route import REASONS
-from .files import file_hash
+from .files import file_hash, free_bytes
 from .media.ffmpeg import probe
 from .media.fingerprint import fingerprint, similar
 from .media.geometry import display_size, layout
@@ -35,11 +34,6 @@ def _parallel_setting(text):
 
 
 PARALLEL = _parallel_setting(os.environ.get("TRENDVN_PROCESS_PARALLEL") or 2)
-
-
-def free_bytes(path):
-    """Free space on the disk holding `path` (a function of its own so tests need not depend on the real disk)."""
-    return shutil.disk_usage(path).free
 
 
 def process_many(store, count, parallel=None, one=None):

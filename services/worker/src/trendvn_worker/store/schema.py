@@ -10,6 +10,7 @@ import json
 import time
 
 from ..domain.settings import DEFAULT_TARGET, DEFAULTS, RETIRED_MODELS, RETIRED_TTS
+from ..jsonsafe import loads
 
 BASELINE_TABLES = """
 CREATE TABLE IF NOT EXISTS streams (name TEXT PRIMARY KEY, last_scan REAL);
@@ -80,7 +81,7 @@ def _accounts(db):
     """Version 2: several TikTok accounts, each with its topics, and a topic on every video. The account of 1.0 - 1.3 becomes `main`."""
     db.execute(ACCOUNTS_TABLE)
     row = db.execute("SELECT value FROM settings WHERE key='target'").fetchone()
-    target = json.loads(row[0]) if row else DEFAULT_TARGET
+    target = loads(row[0] if row else None, "") or DEFAULT_TARGET
     db.execute(
         "INSERT OR IGNORE INTO accounts(id,username,label,topics,enabled,created) VALUES ('main',?,?,?,1,?)",
         (target, target, json.dumps(list(V2_MAIN_TOPICS)), time.time()),
@@ -108,7 +109,7 @@ def _news_topic(db):
     """Version 4: hot news and drama are wanted (owner's brief, October 2026). `main` takes them too, but only while it still has exactly
     the topics it was created with: an account the owner has edited is never touched."""
     row = db.execute("SELECT topics FROM accounts WHERE id='main'").fetchone()
-    if row and json.loads(row[0]) == list(V2_MAIN_TOPICS):
+    if row and loads(row[0], []) == list(V2_MAIN_TOPICS):  # an unreadable or edited list is left exactly as it is
         db.execute("UPDATE accounts SET topics=? WHERE id='main'", (json.dumps([*V2_MAIN_TOPICS, "news"]),))
 
 
@@ -144,7 +145,7 @@ def seed_settings(db):
         db.execute("INSERT OR IGNORE INTO settings VALUES (?, ?)", (key, json.dumps(value)))
     for key, retired in (("model", RETIRED_MODELS), ("tts_model", RETIRED_TTS)):
         row = db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
-        if row and json.loads(row[0]) in retired:
+        if row and loads(row[0], "") in retired:  # (a list or number in that row is simply not a retired name)
             db.execute("UPDATE settings SET value=? WHERE key=?", (json.dumps(DEFAULTS[key]), key))
 
 

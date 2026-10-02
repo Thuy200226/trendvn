@@ -15,6 +15,7 @@ def dashboard_html(app, flash=None, host=""):
     data["n8n_url"] = "http://%s:%s" % (visitor_host, app.config.n8n_port)
     data["notify_channels"] = notify.channels(notify.load_config(store.root))
     data["voice_sample"] = (store.root / "exports" / "voice_sample.wav").exists()
+    data["remote"] = host not in app.config.loopback_hosts  # seen through the password gate: offer "Đăng xuất"
     for job in data["review"]:
         job["has_source"] = True
     return ui.render(data, app.csrf, flash)

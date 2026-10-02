@@ -462,6 +462,45 @@ class BacklogTests(unittest.TestCase):
         self.assertEqual(asked[0]["platform"], "douyin")  # so another platform's newest rows cannot push the best ones out of the list
 
 
+class DownloadBudgetTests(unittest.TestCase):
+    def test_free_space_is_checked_again_before_every_download(self):
+        pending = [{"id": "id%d" % n, "platform": "douyin", "source_id": "s%d" % n, "topic_hint": None} for n in range(4)]
+        seen = {job["source_id"]: {"source_id": job["source_id"], "score": 10 - n} for n, job in enumerate(pending)}
+        downloaded, space = [], iter(
+            [50 << 30, 50 << 30, 50 << 30, 1200 << 20, 1200 << 20]
+        )  # first check, two downloads, then too little for 250 MB more
+
+        def worker(path, payload=None, **k):
+            return {"items": pending} if path == "/api/media/pending" else {"state": "queued"}
+
+        status = {"counts": {}, "backlog": 0, "thresholds": {"max_backlog": 20}}
+        with mock.patch.multiple(
+            run,
+            worker=worker,
+            worker_get=lambda path, timeout=30: status,
+            download=lambda ctx, item, platform: downloaded.append(item["source_id"]) or "f.mp4",
+            free_bytes=lambda: next(space),
+        ):
+            report = run.fetch_pending(None, "douyin", seen, 4, [])
+        self.assertEqual(len(downloaded), 2)  # stopped before the third: ten 250 MB videos could otherwise follow one check
+        self.assertEqual(report["downloaded"], 2)
+
+
+class TikTokChipTests(unittest.TestCase):
+    def test_one_empty_chip_does_not_cost_the_others_their_results(self):
+        answers = iter([[{"source_id": "1"}], capture.NoVideos("empty"), [{"source_id": "3"}]])
+
+        def fake_capture(*a, **k):
+            answer = next(answers)
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        with mock.patch.object(tiktok, "capture", fake_capture), mock.patch.object(tiktok, "rotate", lambda available, limit: available):
+            found = tiktok.scan_tiktok(None, ["music", "comedy", "pets"])
+        self.assertEqual({k: len(v) for k, v in found.items()}, {"explore_music": 1, "explore_comedy": 0, "explore_pets": 1})
+
+
 class NothingReturnedTests(unittest.TestCase):
     def test_an_empty_page_is_not_reported_as_a_verification_wall(self):
         with mock.patch.object(run, "SOURCES", {"douyin": {"scan": lambda ctx, topics: (_ for _ in ()).throw(capture.NoVideos("x"))}}):

@@ -11,7 +11,7 @@ Cột phải là lệnh Docker/hệ thống tương đương, để bạn biết
 | `./trendvn up` | Build image nếu đổi, chạy n8n + worker, **chờ tới khi cả hai khỏe** | `docker compose up -d --build --wait` |
 | `./trendvn down` | Dừng container, giữ dữ liệu | `docker compose down` |
 | `./trendvn restart [worker\|n8n\|agent]` | Khởi động lại một thành phần (bỏ trống = cả ba) | `docker compose restart …` / `systemctl --user restart trendvn-agent` / `launchctl kickstart -k …` |
-| `./trendvn update` | Áp dụng bản mới sau khi thay mã: sinh lại workflow → build + chạy lại container (rồi xóa image cũ của chính dự án này, ~570 MB mỗi bản) → nạp workflow (lịch đang bật vẫn bật) → cập nhật gói Python của agent → khởi động lại agent → `doctor` | `n8n build` + `up` + `n8n import` + `agent venv` + `agent restart` |
+| `./trendvn update` | Áp dụng bản mới sau khi thay mã: sinh lại workflow → build + chạy lại container (rồi xóa image cũ của chính dự án này, kể cả bản phát hành trước, ~570 MB mỗi bản; docker từ chối xóa image đang dùng) → nạp workflow (lịch đang bật vẫn bật) → cập nhật gói Python của agent → khởi động lại agent → `doctor` | `n8n build` + `up` + `n8n import` + `agent venv` + `agent restart` |
 | `./trendvn status` | Container, agent, workflow đang bật, địa chỉ | `docker compose ps` + kiểm tra agent + `docker compose exec -e N8N_RUNNERS_BROKER_PORT=5690 n8n n8n list:workflow` |
 | `./trendvn doctor` | Chẩn đoán đầy đủ; mỗi dòng lỗi có cách sửa; thoát mã 1 nếu có mục bắt buộc lỗi | `scripts/doctor.py` |
 | `./trendvn open` | Mở bảng điều khiển trong trình duyệt | `open` (Mac) / `xdg-open` (Linux) |

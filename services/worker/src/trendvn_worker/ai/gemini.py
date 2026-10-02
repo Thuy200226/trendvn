@@ -92,7 +92,8 @@ def call_with_fallback(store, cfg, key, chain_default, fn, rounds=4, waits=(10, 
 
 def generate(store, cfg, parts, schema=None):
     """One structured Gemini call. If the API rejects the schema (HTTP 400) retry once without it; the strict local validator still applies."""
-    gen = {"responseMimeType": "application/json", "temperature": 0.1}
+    # maxOutputTokens: a model stuck repeating itself would otherwise write until the API's own limit (hundreds of KB) into our validators
+    gen = {"responseMimeType": "application/json", "temperature": 0.1, "maxOutputTokens": 16384}
     if schema:
         gen["responseSchema"] = schema
     body = {"contents": [{"parts": parts}], "generationConfig": gen}

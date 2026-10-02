@@ -6,14 +6,16 @@ from .route import choose_route
 from .text import clean_subtitle
 from .topics import OTHER, TOPIC_IDS, label
 
+MAX_LINE_CHARS = 350  # a subtitle line above this is refused outright (see validate_analysis)
+
 
 def clean_segments(segments):
     """Subtitle lines as they may be burned in: no links, handles, contacts, emoji or markup. A line that was only such things is
     dropped (an emoji alone is not worth rejecting the video); an originally empty line is left for the structural check to reject."""
     out = []
     for s in segments:
-        if isinstance(s, dict) and isinstance(s.get("vi"), str) and s["vi"].strip():
-            s = dict(s, vi=clean_subtitle(s["vi"]))
+        if isinstance(s, dict) and isinstance(s.get("vi"), str) and 0 < len(s["vi"].strip()) <= MAX_LINE_CHARS:
+            s = dict(s, vi=clean_subtitle(s["vi"]))  # (a longer line is left as it is: the length check below refuses it)
             if not s["vi"]:
                 continue
         out.append(s)

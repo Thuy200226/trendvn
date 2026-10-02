@@ -1,6 +1,7 @@
 """The HTTP request handler: routing, access rules, and turning errors into responses."""
 
 import json
+import re
 import time
 import traceback
 from http.server import BaseHTTPRequestHandler
@@ -53,6 +54,13 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
     @property
     def access(self):
         return self.app.access
+
+    def body_length(self):
+        """Content-Length as a number from 0 up; anything else (negative, signs, spaces, Unicode digits) is a ValueError."""
+        raw = self.headers.get("Content-Length", "0")
+        if not re.fullmatch(r"[0-9]{1,9}", raw):
+            raise ValueError("Bad Content-Length")
+        return int(raw)
 
     def host_ok(self):
         return self.access.host_ok(self.headers)
@@ -131,7 +139,7 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
         if path == "/logout":
             return self.logout()
         try:
-            length = int(self.headers.get("Content-Length", "0"))
+            length = self.body_length()
             if not 0 < length <= MAX_BODY:
                 return self.send(413, {"error": "Request too large or empty"})
             if path in forms.FORMS:
@@ -175,6 +183,7 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
         """Ends the password session in this browser (a form post from the dashboard itself)."""
         if not self.access.form_origin_ok(self.headers):
             return self.send(403, {"error": "Local form only"})
+        self.access.end_session(self.headers)  # the cookie value stops working on the server too, not only in this browser
         return self.redirect_to("/login", self.session_cookie("", 0))
 
     def login_page(self, message=""):
@@ -187,13 +196,13 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
         if self.access.login_locked(ip):
             return self.login_page("Thử sai quá nhiều lần. Đợi một phút rồi thử lại.")
         try:
-            body = self.rfile.read(min(int(self.headers.get("Content-Length", "0")), LOGIN_FORM_MAX)).decode()
+            body = self.rfile.read(min(self.body_length(), LOGIN_FORM_MAX)).decode()
             form = parse_qs(body, keep_blank_values=True)
-        except Exception:
+        except Exception:  # a garbled length or body is just a wrong password
             form = {}
         if same(form.get("password", [""])[0], self.app.config.ui_password):
             self.access.login_succeeded(ip)
-            return self.redirect_to("/", self.session_cookie(self.access.session_value, SESSION_SECONDS))
+            return self.redirect_to("/", self.session_cookie(self.access.new_session(), SESSION_SECONDS))
         self.access.login_failed(ip)
         time.sleep(1)  # slow down guessing
         return self.login_page("Mật khẩu chưa đúng.")

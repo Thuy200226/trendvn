@@ -3,6 +3,7 @@
 import json
 import time
 import uuid
+from ..jsonsafe import loads
 
 
 class TaskLogMixin:
@@ -39,7 +40,7 @@ class TaskLogMixin:
         with self.connect() as db:
             rows = [dict(r) for r in db.execute("SELECT * FROM tasks ORDER BY started DESC LIMIT ?", (limit,))]
         for r in rows:
-            r["steps"] = json.loads(r["steps"] or "[]")
+            r["steps"] = loads(r["steps"], [])
         return rows
 
     def tasks_running(self):
