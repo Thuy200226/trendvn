@@ -4,7 +4,7 @@ import unittest
 
 from tests.support import StoreCase  # noqa: F401  (also puts the source folders on sys.path)
 from trendvn_worker.domain import route
-from trendvn_worker.domain.hardsubs import MARGIN, hard_subtitle_band
+from trendvn_worker.domain.hardsubs import MARGIN, MERGE_GAP, PAD_AFTER, PAD_BEFORE, covered_spans, hard_subtitle_band
 from trendvn_worker.domain.readability import MAX_CPS, MAX_EXTENSION, chars_per_second, fit_reading_speed
 
 
@@ -96,3 +96,46 @@ class HardSubtitleTests(unittest.TestCase):
             self.assertIsNone(self.band(**found), found)
         self.assertIsNone(hard_subtitle_band({}))
         self.assertIsNone(hard_subtitle_band({"hard_subtitles": "none"}))
+
+
+class CoveredSpansTests(unittest.TestCase):
+    """When the strip over the source's burned-in subtitles is blurred: only while our own lines are on screen."""
+
+    def test_each_line_gets_its_time_plus_padding_clipped_to_the_video(self):
+        spans = covered_spans([{"start": 10.0, "end": 12.0}], 60.0)
+        self.assertEqual(spans, [(10.0 - PAD_BEFORE, 12.0 + PAD_AFTER)])
+        self.assertEqual(covered_spans([{"start": 0.2, "end": 1.0}], 1.3), [(0.0, 1.3)])  # not before 0, not past the end
+
+    def test_close_lines_share_one_patch_and_far_ones_do_not(self):
+        near = covered_spans([{"start": 1, "end": 2}, {"start": 2 + MERGE_GAP / 2, "end": 5}], 60)
+        self.assertEqual(len(near), 1)
+        far = covered_spans([{"start": 1, "end": 2}, {"start": 30, "end": 32}], 60)
+        self.assertEqual(len(far), 2)
+
+    def test_unsorted_nested_empty_and_degenerate_input(self):
+        self.assertEqual(covered_spans([], 10), [])
+        nested = covered_spans([{"start": 5, "end": 6}, {"start": 1, "end": 20}], 30)
+        self.assertEqual(nested, [(0.5, 20.6)])  # the long line swallows the short one; order of the input does not matter
+        self.assertEqual(covered_spans([{"start": 50, "end": 51}], 10), [])  # a line beyond the end of the video covers nothing
+
+    def test_the_filter_names_the_seconds_and_nothing_is_blurred_without_lines(self):
+        import tempfile
+        from pathlib import Path
+
+        from trendvn_worker.media import render as render_mod
+
+        folder = Path(tempfile.mkdtemp())
+        self.addCleanup(__import__("shutil").rmtree, folder, True)
+        geo = {"w": 1080, "h": 1920, "fg_h": 1920, "reframe": False}
+        chain, last = render_mod._picture_chain(
+            geo, 30, {"hard_subtitles": {"present": True, "top": 0.7, "bottom": 0.76}, "segments": [{"start": 1.0, "end": 2.0, "vi": "x"}]}, "vietsub",
+            folder, 10.0,
+        )  # fmt: skip
+        blur = [step for step in chain if "boxblur" in step and "enable=" in step]
+        self.assertEqual(len(blur), 1)
+        self.assertIn("enable='between(t,0.50,2.60)'", blur[0])
+        chain, _ = render_mod._picture_chain(
+            geo, 30, {"hard_subtitles": {"present": True, "top": 0.7, "bottom": 0.76}, "segments": []}, "vietsub",
+            folder, 10.0,
+        )  # fmt: skip
+        self.assertFalse([step for step in chain if "boxblur" in step and "hsb" in step])  # no lines: nothing to hide the source's text for

@@ -119,21 +119,23 @@ class HardSubtitleRenderTests(unittest.TestCase):
         subprocess.run(cmd, check=True)
         return out
 
-    def render(self, src, tag, route="vietsub", band=None):
+    def render(self, src, tag, route="vietsub", band=None, segments=((0.0, 3.0),)):
         folder = self.dir / tag
         folder.mkdir()
-        analysis = {"kind": "dialogue", "segments": []}
+        analysis = {"kind": "dialogue", "segments": [{"start": a, "end": b, "vi": "Xin chào"} for a, b in segments]}
         if band:
             analysis["hard_subtitles"] = {"present": True, "top": band[0], "bottom": band[1]}
         return render_mod.render(src, folder, analysis, route, ffmpeg_mod.probe(src)[0])
 
-    def sharpness(self, video, width, y, height):
-        """Mean absolute horizontal gradient of a strip of the first frame: high for detail, low once blurred."""
+    def sharpness(self, video, width, y, height, second=0.0):
+        """Mean absolute horizontal gradient of a strip of the frame at `second`: high for detail, low once blurred."""
         raw = subprocess.run(
             [
                 "ffmpeg",
                 "-v",
                 "error",
+                "-ss",
+                str(second),
                 "-i",
                 str(video),
                 "-frames:v",
@@ -159,6 +161,20 @@ class HardSubtitleRenderTests(unittest.TestCase):
         self.assertLess(self.sharpness(covered, 720, *in_band), 0.5 * self.sharpness(plain, 720, *in_band))
         above = (200, 80)
         self.assertAlmostEqual(self.sharpness(covered, 720, *above), self.sharpness(plain, 720, *above), delta=2.0)
+
+    def test_the_strip_is_blurred_only_while_our_own_line_is_on_screen(self):
+        """A permanent grey band across the whole video covered the people and the scene (the owner's complaint)."""
+        src = self.source("p.mp4", "720x1280")
+        plain = self.render(src, "plain", segments=((1.0, 1.5),))
+        gated = self.render(src, "gated", band=(0.70, 0.78), segments=((1.0, 1.5),))
+        in_band = (int(0.72 * 1280), 60)
+        self.assertLess(
+            self.sharpness(gated, 720, *in_band, second=1.2), 0.5 * self.sharpness(plain, 720, *in_band, second=1.2)
+        )  # line showing: blurred
+        for later in (0.1, 2.8):  # before and after the line: the picture is untouched
+            self.assertAlmostEqual(
+                self.sharpness(gated, 720, *in_band, second=later), self.sharpness(plain, 720, *in_band, second=later), delta=2.0
+            )
 
     def test_music_that_stays_as_it_is_keeps_the_lyrics_burned_into_it(self):
         src = self.source("p.mp4", "720x1280")

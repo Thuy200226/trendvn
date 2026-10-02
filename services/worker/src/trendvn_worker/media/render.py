@@ -1,6 +1,6 @@
 """One-pass render to a TikTok-ready MP4, its quality check and the dashboard poster."""
 
-from ..domain.hardsubs import hard_subtitle_band
+from ..domain.hardsubs import covered_spans, hard_subtitle_band
 from .ffmpeg import decode_check, ffmpeg, probe
 from .geometry import caption_zone, display_size, fps_of, layout
 from .subtitles import ass_subtitles, subtitles
@@ -30,7 +30,7 @@ def render(path, folder, a, route, duration, voice=None):
     if can_copy_video(vs, geo, route):
         chain, picture = [], ["-map", "0:v:0", "-c:v", "copy"]  # the picture is already what we would make: keep it bit for bit
     else:
-        chain, last = _picture_chain(geo, fps_of(vs), a, route, folder)
+        chain, last = _picture_chain(geo, fps_of(vs), a, route, folder, duration)
         picture = ["-map", "[%s]" % last, *VIDEO_ENCODER]
     inputs = ["-i", str(path)]
     if voice:
@@ -90,7 +90,7 @@ def covered_hard_subtitles(a, route):
     return hard_subtitle_band(a) if route != "original" else None
 
 
-def _picture_chain(geo, fps, a, route, folder):
+def _picture_chain(geo, fps, a, route, folder, duration):
     """The video part of the filter graph. Returns (filters, label of the final video stream)."""
     if geo["reframe"]:
         chain = [
@@ -101,8 +101,9 @@ def _picture_chain(geo, fps, a, route, folder):
         chain = ["[0:v]scale=%d:%d[v0]" % (geo["w"], geo["h"])]
     last = "v0"
     band = covered_hard_subtitles(a, route)
-    if band:
-        chain.append(_blur_band(geo, band, last, "v1"))
+    spans = covered_spans(a.get("segments") or [], duration) if band else []
+    if band and spans:
+        chain.append(_blur_band(geo, band, last, "v1", spans))
         last = "v1"
     if route != "original":
         subtitles(a["segments"], folder / "vi.srt")
@@ -118,8 +119,9 @@ def _picture_chain(geo, fps, a, route, folder):
     return chain, last
 
 
-def _blur_band(geo, band, source, label):
-    """Blur the strip of the picture where the source carries its own subtitles, so they do not show through ours."""
+def _blur_band(geo, band, source, label, spans):
+    """Blur the strip of the picture where the source carries its own subtitles, so they do not show through ours; only during `spans`
+    (the seconds our own lines are on screen), the rest of the time the picture is left alone."""
     top, bottom = band
     if geo["reframe"]:  # the picture is the middle of the canvas, the rest is blurred backdrop
         picture_top, picture_height = (geo["h"] - geo["fg_h"]) // 2, geo["fg_h"]
@@ -128,13 +130,15 @@ def _blur_band(geo, band, source, label):
     height = min(max(8, int((bottom - top) * picture_height) // 2 * 2), geo["h"])
     y = min(picture_top + int(top * picture_height) // 2 * 2, geo["h"] - height)  # a band at the very edge still gets its full height
     radius = max(1, min(BLUR_MAX_RADIUS, height // 4 - 1))  # the chroma planes are half as tall and cap the radius
-    return "[%s]split=2[hsa][hsb];[hsb]crop=%d:%d:0:%d,boxblur=%d:3,eq=brightness=-0.12[hsc];[hsa][hsc]overlay=0:%d[%s]" % (
+    when = "+".join("between(t,%.2f,%.2f)" % span for span in spans)  # quoted below: the commas belong to the expression
+    return "[%s]split=2[hsa][hsb];[hsb]crop=%d:%d:0:%d,boxblur=%d:3,eq=brightness=-0.12[hsc];[hsa][hsc]overlay=0:%d:enable='%s'[%s]" % (
         source,
         geo["w"],
         height,
         y,
         radius,
         y,
+        when,
         label,
     )
 

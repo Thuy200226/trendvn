@@ -15,6 +15,8 @@
 
 **Sửa sau khi dùng thật.** Một video Douyin vào "Cần duyệt" với lý do "Gemini trả dữ liệu không đọc được": mô hình `gemini-3.5-flash` đã viết đúng phân tích rồi sa vào vòng lặp ở trường phụ `sensitive_reason` (một chuỗi vô tận 13.455 token tới giới hạn đầu ra, JSON bị cắt dở). Trường đó không dùng ở đâu nên đã bỏ khỏi schema và prompt (`PROMPT_VERSION` 2026-10-02.2); các trường văn bản còn lại có trần độ dài (`maxLength`, `maxItems`), đã thử thật: cùng video giờ ra 2.528 token, kết thúc `STOP`, kèm vị trí phụ đề cứng; câu trả lời bị cắt ở `MAX_TOKENS` được báo đúng nguyên nhân bằng tiếng Việt.
 
+**Dải làm mờ phụ đề gốc không còn che cả video.** Dải mờ che chữ Trung burned-in từng phủ suốt cả video và cả bề ngang, nên che người và cảnh ngay cả khi không ai nói; nay chỉ mờ trong lúc phụ đề Việt đang hiện (cộng đệm, gộp các dòng gần nhau). Video đã dựng sẵn bị ảnh hưởng (một video) được dựng lại từ nguồn và phân tích đã lưu (không gọi Gemini).
+
 **Logic và hiệu năng.**
 - Dọn đĩa (nguy cơ lặp lại của dự án này): hết hạn ứng viên/video không ai quyết định, xóa tệp của video đã xong sau 7 ngày, cắt lịch sử, xóa tệp mồ côi; ngừng tải dưới 1 GB trống và ngừng dựng dưới 512 MB; Chrome giới hạn bộ nhớ đệm 64 MB; `agent.log` xoay vòng; trang Tổng quan hiển thị ổ đĩa.
 - Chọn ứng viên theo điểm (không còn "100 video mới nhất"), lọc theo nền tảng; Douyin không có lượt xem được xét theo tim; giới hạn độ dài theo đúng cài đặt (không bị chặn cứng 180 giây); "Kuaishou không trả video" không còn bị báo là CAPTCHA.
