@@ -383,6 +383,40 @@ class ModelOutputGateTests(unittest.TestCase):
                 analyzer.analyze(mock.Mock(), Path(folder) / "v.mp4", 10.0, {"audio_confidence": 0.9}, Path(folder))
         self.assertIn("SAFETY", str(caught.exception))
 
+    def test_a_model_that_runs_on_until_the_output_limit_is_named_as_such(self):
+        """Seen live: a valid analysis followed by a never-ending free-text string until MAX_TOKENS; the JSON was cut in half."""
+        runaway = json.dumps(ANALYSIS)[:-1] + ',"sensitive_reason":"' + "x_or_" * 500
+
+        def truncated(store, cfg, parts, schema):
+            return {"candidates": [{"finishReason": "MAX_TOKENS", "content": {"parts": [{"text": runaway}]}}]}
+
+        def fake_ffmpeg(*args):
+            Path(args[-1]).write_bytes(b"x" * 100)
+
+        import tempfile
+
+        with mock.patch.object(analyzer, "generate", truncated), mock.patch.object(analyzer, "ffmpeg", fake_ffmpeg):
+            with tempfile.TemporaryDirectory() as folder, self.assertRaises(ValueError) as caught:
+                analyzer.analyze(mock.Mock(), Path(folder) / "v.mp4", 10.0, {"audio_confidence": 0.9}, Path(folder))
+        self.assertIn("MAX_TOKENS", str(caught.exception))
+        from trendvn_worker.ui.labels import vi_reason
+
+        self.assertIn("quá dài", vi_reason(str(caught.exception)))  # and the owner is told in plain words
+
+    def test_the_schema_caps_free_text_and_has_no_unused_free_text_field(self):
+        from trendvn_worker.ai.prompts import ANALYSIS_SCHEMA, analysis_prompt
+
+        props = ANALYSIS_SCHEMA["properties"]
+        self.assertNotIn("sensitive_reason", props)  # nothing read it, and it was the field the model ran away in
+        self.assertNotIn("sensitive_reason", analysis_prompt())
+        self.assertEqual(props["caption_vi"]["maxLength"], 300)
+        self.assertEqual(props["hashtags"]["maxItems"], 6)
+        line = props["segments"]["items"]["properties"]["vi"]["maxLength"]
+        from trendvn_worker.domain.analysis import MAX_LINE_CHARS
+
+        self.assertGreaterEqual(line, MAX_LINE_CHARS)  # the cap never cuts a line the validator would still accept
+        self.assertEqual(props["segments"]["maxItems"], 300)
+
     def test_the_caption_must_be_text(self):
         base = dict(ANALYSIS)
         for bad in (None, 5, ["x"], {"a": 1}, "   "):

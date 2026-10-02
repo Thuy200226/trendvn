@@ -78,6 +78,10 @@ REASONS = (
     ("Speech detected without transcript", "Có lời nói nhưng không chép được lời"),
     ("Subtitle timestamps", "Mốc thời gian phụ đề không hợp lệ"),
     ("Topic/sensitivity missing", "Gemini không trả đủ thông tin chủ đề"),
+    (
+        "Gemini output truncated",
+        "Mô hình Gemini viết lan man quá dài nên câu trả lời bị cắt dở (lỗi của mô hình, không phải của video); bấm Duyệt để phân tích lại",
+    ),
     ("Gemini did not return valid", "Gemini trả dữ liệu không đọc được"),
     ("Gemini returned no analysis", "Gemini từ chối hoặc không trả lời video này"),
     ("Invalid caption", "Gemini không viết được mô tả cho video"),

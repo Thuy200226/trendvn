@@ -58,6 +58,11 @@ def analyze(store, path, duration, cfg, folder, lenient=False):
     if not text.strip():  # blocked or empty answer: say why instead of "invalid JSON"
         why = (data.get("promptFeedback") or {}).get("blockReason") or candidate.get("finishReason") or "empty answer"
         raise ValueError("Gemini returned no analysis (%s)" % str(why)[:60])
-    a = parse_analysis(text)
+    try:
+        a = parse_analysis(text)
+    except ValueError:
+        if candidate.get("finishReason") == "MAX_TOKENS":  # the model ran on until the output limit: say so, it is not a bad video
+            raise ValueError("Gemini output truncated (MAX_TOKENS): the model wrote far too much and the answer was cut off") from None
+        raise
     route = validate_analysis(a, duration, cfg["audio_confidence"], strict=True, lenient=lenient, accepted_topics=store.wanted_topics())
     return a, route

@@ -6,7 +6,7 @@ docs/PROMPTS.md explains each rule and how to tune it.
 
 from ..domain.topics import OTHER, TOPIC_IDS, prompt_lines as topic_prompt_lines
 
-PROMPT_VERSION = "2026-10-02.1"
+PROMPT_VERSION = "2026-10-02.2"
 
 # The video is untrusted input. Nothing spoken or shown in it may change these rules.
 ANALYSIS_PROMPT = """You are the editor of Vietnamese TikTok channels that repost entertaining short videos.
@@ -31,7 +31,7 @@ Return ONLY JSON that matches the provided schema.
    at people for who they are, encouragement or instructions for self-harm or serious crime, medical or financial advice that could
    seriously hurt someone, private people's identifying details or accusations against a named private person.
    Everything else is NOT sensitive, however edgy: politics, controversy, drama, fights, conflict, crashes and disasters in news
-   footage, scandals and gossip, shocking or provocative scenes. Set false for those. sensitive_reason: one short sentence.
+   footage, scandals and gossip, shocking or provocative scenes. Set false for those.
 5) segments: transcribe ALL meaningful speech (not song lyrics) with accurate, non-overlapping timestamps in seconds,
    start < end, inside the video length. "original" is the spoken text; "vi" is a faithful, natural Vietnamese
    translation. Viewers must be able to READ each line while it is on screen: at most 16 characters per second of the segment
@@ -75,6 +75,15 @@ def analysis_prompt(style="hook"):
 
 _NUM = {"type": "NUMBER"}
 _STR = {"type": "STRING"}
+
+
+def _text(limit):
+    """A free-text field with a length cap. Constrained decoding stops the string there: a model that falls into a repetition loop
+    (seen live: a never-ending snake_case string in a free-text field, 16,000 tokens until the output limit, JSON cut in half) cannot
+    run on. The caps sit above the limits validate_analysis enforces."""
+    return {"type": "STRING", "maxLength": limit}
+
+
 ANALYSIS_SCHEMA = {
     "type": "OBJECT",
     "properties": {
@@ -82,20 +91,20 @@ ANALYSIS_SCHEMA = {
         "confidence": _NUM,
         "topic": {"type": "STRING", "enum": [*TOPIC_IDS, OTHER]},
         "sensitive": {"type": "BOOLEAN"},
-        "sensitive_reason": _STR,
         "requires_text_translation": {"type": "BOOLEAN"},
         "segments": {
             "type": "ARRAY",
             "items": {
                 "type": "OBJECT",
-                "properties": {"start": _NUM, "end": _NUM, "original": _STR, "vi": _STR},
+                "properties": {"start": _NUM, "end": _NUM, "original": _text(400), "vi": _text(350)},
                 "required": ["start", "end", "vi"],
             },
+            "maxItems": 300,
         },
-        "caption_vi": _STR,
-        "hashtags": {"type": "ARRAY", "items": _STR},
-        "narration_vi": _STR,
-        "language": _STR,
+        "caption_vi": _text(300),
+        "hashtags": {"type": "ARRAY", "items": _text(30), "maxItems": 6},
+        "narration_vi": _text(3000),
+        "language": _text(8),
         "hard_subtitles": {
             "type": "OBJECT",
             "properties": {"present": {"type": "BOOLEAN"}, "top": _NUM, "bottom": _NUM},
