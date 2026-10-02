@@ -1,6 +1,6 @@
 # Lịch sử thay đổi
 
-## 1.4 — đang làm (xem docs/ROADMAP.md)
+## 1.4 — 2026-10-02 (nhật ký từng phase và rà soát: docs/ROADMAP.md)
 
 **Phase A — bố cục và chia module (không đổi hành vi).** Hai ứng dụng được tách thành gói Python có thư mục theo việc, mỗi file một trách nhiệm (không file nào quá khoảng 300 dòng):
 
@@ -19,6 +19,10 @@
 - Thực đơn 14 chủ đề; Gemini phân loại, collector tìm theo chủ đề (Douyin: tab của từng chủ đề; TikTok: chip), chọn tải chia lượt giữa các chủ đề.
 - Nhiều tài khoản TikTok, mỗi tài khoản nhận một số chủ đề, giới hạn ngày/giãn cách/giờ vàng riêng, hồ sơ Chrome riêng (`./trendvn tiktok login --account ID`). Tài khoản của bản cũ thành `main`; CSDL cũ tự chuyển (đã thử trên bản sao CSDL thật của 1.2).
 - Giao diện: mục "Tài khoản TikTok và chủ đề" ở tab Thêm; thẻ video ghi chủ đề và tài khoản sẽ nhận.
+
+**Phase D — hiệu suất.**
+- Xử lý 2 video cùng lúc (`TRENDVN_PROCESS_PARALLEL`); kiểm tra video trùng làm nguyên tử nên hai bản giống nhau xử lý đồng thời vẫn bị bắt.
+- Video nhạc dọc không lời được sao nguyên hình (3,3 giây thay vì 24 giây, không mất chất lượng, từng điểm ảnh giống bản gốc); chờ thích nghi khi quét các tab chủ đề của Douyin.
 
 - Sửa lỗi tìm thấy khi tách: `sys` chưa import trong đường tải Instagram của collector; bước kiểm tra e2e bố cục từng chập chờn vì đo khi trang chưa về đầu.
 

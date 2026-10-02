@@ -1,4 +1,4 @@
-# Lộ trình 1.4: các phase và nhật ký rà soát
+# Lộ trình 1.4 (đã phát hành): các phase và nhật ký rà soát
 
 Tài liệu làm việc: ghi lại yêu cầu, thiết kế từng phase và kết quả 3 vòng rà soát của mỗi phase (để không mất khi làm nhiều phiên).
 Quy ước mỗi phase: (1) làm, (2) **rà soát vòng 1 — tĩnh** (đọc lại mã, lint, tài liệu khớp mã), (3) **vòng 2 — động** (chạy thật, đo thật),
@@ -10,7 +10,7 @@ Quy ước mỗi phase: (1) làm, (2) **rà soát vòng 1 — tĩnh** (đọc l�
 | A | Bố cục thư mục và chia module (worker, agent) cho dễ đọc, dễ mở rộng | xong |
 | B | Chất lượng phân tích (giữ nguyên / Vietsub / thuyết minh) và chất lượng video | xong |
 | C | Tìm kiếm và tổng hợp theo chủ đề, đăng nhiều tài khoản theo nhiều chủ đề | xong |
-| D | Hiệu suất và tốc độ | đang rà soát |
+| D | Hiệu suất và tốc độ | xong |
 
 ## Phase 0 — Chuyển hẳn sang thư mục mới (xong)
 
@@ -76,3 +76,9 @@ Số đo làm nền cho thiết kế (520 video Douyin thật trong 13 tab): ch�
 | Bản xem trước gửi Gemini | 2 khung/giây | 1 khung/giây (Gemini chỉ lấy 1 khung/giây); thời gian mã hóa không đổi vì bị giải mã chi phối |
 
 Thử và **không đổi** vì không nhanh hơn: bộ lọc khung 9:16 (giải mã 1080p và co ảnh chiếm hơn nửa; `fast_bilinear`, ghép lớp, số luồng đều không thắng), `-filter_complex_threads`. `thinkingConfig`/độ phân giải thấp của Gemini không thể đo trong buổi này vì API liên tục quá tải (503), nên không bật; nếu bật mà API từ chối thì sẽ làm hỏng mọi lần phân tích.
+
+**Rà soát 1 — tĩnh.** Đọc lại thay đổi, thêm nhật ký thời gian từng tab vào `agent.log` (`read jingxuan_pets: 40 videos in 9s`) để đo được. Phát hiện khi chạy thật: bộ chờ thích nghi coi mọi phản hồi graphql là "trang đã trả lời", kể cả phản hồi cấu hình không có video (Kuaishou trả 3 video thay vì 96): nay chỉ phản hồi có video mới tính.
+**Rà soát 2 — động.** Chạy thu thập thật nhiều lần trên hệ thống thật: Douyin 6 luồng 40–59 video mỗi luồng (bằng bản chờ cố định), mỗi lần quét 60–75 giây. So sánh trực tiếp Kuaishou giữa chờ cố định và chờ thích nghi **không phân định được**: trang giới hạn khi tải lặp (0 đến 98 video với cả hai bản mã), nên Kuaishou/TikTok giữ chờ cố định (bài học: không so sánh trên một trang đang hạn chế mình). Video nhạc dọc thật dựng bằng sao nguyên hình: 3,3 giây, hình giống bản gốc từng điểm ảnh, âm lượng đưa về -14,4 LUFS.
+**Rà soát 3 — độc lập.** Một tác tử thử phá: 32 kịch bản căng thẳng cho xử lý song song (1–4 luồng, 25–60 video, 0–96% lỗi Gemini giả lập, luồng nền sửa cài đặt): mỗi video xử lý đúng một lần, không treo, không "database is locked", hạn mức Gemini không vượt; 33 nguồn tổng hợp qua đường sao nguyên hình (B-frame, mov, âm thanh lệch 0,5 giây, hai đường tiếng, ảnh bìa...): đều hợp lệ, lệch tiếng-hình ≤ 0,004 giây; 3000 lượt thử bộ đọc luồng ngẫu nhiên: không vi phạm. **Lỗi thật, đã sửa và có test:** (1) hai video giống hệt xử lý cùng lúc đều lọt kiểm tra trùng (dấu vân tay chỉ ghi lúc xong): nay kiểm tra và ghi trong cùng một giao dịch; (2) chỉ số hàng chờ mới của worker không được collector dùng (video dựng xong không ai nhận vẫn chặn thu thập): đã nối; (3) câu tóm tắt "không có video nào" sai khi hai lượt chạy xong lệch thứ tự; (4) `tiktok login` đóng cửa sổ ngay khi có cookie dù đăng nhập nhầm tài khoản: nay chờ tới khi đúng tên. Rủi ro đã xử lý: cuộn dừng sau **hai** lần cuộn trống liên tiếp; chip TikTok chờ xuất hiện trước khi bỏ; cờ "chưa đăng nhập" tự khỏi sau mọi lần đăng đi qua bước đăng nhập và sau `tiktok status`; trạng thái "lỗi" không còn bị tài khoản đã tắt/xóa kéo theo; đăng tay tránh tài khoản biết là chưa đăng nhập; từ chối mọi video có xoay/lật khỏi đường sao nguyên hình; `TRENDVN_PROCESS_PARALLEL` gõ sai không làm worker chết khi khởi động.
+
+Chưa làm / chưa kiểm chứng được (nói thẳng): Gemini thật báo vị trí phụ đề cứng (API video quá tải cả hai ngày), nguồn Mỹ (TikTok, Instagram) vì IP Việt Nam, đăng thật lên nhiều tài khoản (chỉ có một tài khoản thật; nhiều tài khoản được kiểm bằng mô hình ngẫu nhiên 2300 chuỗi và trình duyệt giả), macOS thật, chạy dài ngày với lịch thật.

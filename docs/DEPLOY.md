@@ -23,7 +23,7 @@ Trên máy nguồn, đóng gói bản sạch (không kèm bí mật, dữ liệu
 Chép sang máy mới (AirDrop, USB, scp), kiểm tra `shasum -a 256 -c trendvn-*.sha256` (Mac) / `sha256sum -c …` (Linux), giải nén rồi:
 
 ```bash
-tar xzf trendvn-1.3.tar.gz && cd trendvn-1.3
+tar xzf trendvn-1.4.tar.gz && cd trendvn-1.4
 ./trendvn install
 ```
 
@@ -139,7 +139,7 @@ rồi `./trendvn agent restart`. Agent kiểm tra quốc gia của IP thoát tr�
 ./trendvn backup --with-session
 ./trendvn uninstall
 # Máy MỚI
-tar xzf trendvn-1.3.tar.gz && cd trendvn-1.3
+tar xzf trendvn-1.4.tar.gz && cd trendvn-1.4
 ./trendvn install --no-activate
 ./trendvn restore <bản sao lưu>          # dữ liệu, n8n, phiên TikTok; lịch tự động được để TẮT
 ./trendvn doctor
@@ -183,14 +183,14 @@ Nếu `doctor` báo "Worker đúng phiên bản của mã" lỗi: container còn
 ./trendvn uninstall --purge   # xóa cả dữ liệu, phiên TikTok, n8n (hỏi xác nhận, không hoàn tác)
 ```
 
-## 11. Chuyển từ bản 1.2 (thư mục cũ) sang bản 1.3 trên cùng một máy
+## 11. Chuyển từ bản 1.2 (thư mục cũ) sang bản mới (1.3 trở lên) trên cùng một máy
 
-Bản 1.3 đổi bố cục thư mục (bảng đường dẫn cũ → mới nằm ở [CHANGELOG](../CHANGELOG.md)). Docker nhận diện một hệ thống bằng **tên project** (`trendvn`), không phải bằng thư mục,
-nên bản 1.2 đang chạy và bản 1.3 mới giải nén dùng **cùng tên**: `./trendvn` từ chối dừng hay ghi đè container của thư mục kia (`guard_project`). Chuyển bằng một lệnh, chạy trong thư mục **mới**
+Từ bản 1.3 đổi bố cục thư mục (bảng đường dẫn cũ → mới nằm ở [CHANGELOG](../CHANGELOG.md)). Docker nhận diện một hệ thống bằng **tên project** (`trendvn`), không phải bằng thư mục,
+nên bản 1.2 đang chạy và bản mới giải nén dùng **cùng tên**: `./trendvn` từ chối dừng hay ghi đè container của thư mục kia (`guard_project`). Chuyển bằng một lệnh, chạy trong thư mục **mới**
 (vừa giải nén, chưa cài):
 
 ```bash
-tar xzf trendvn-1.3.tar.gz && cd trendvn-1.3
+tar xzf trendvn-1.4.tar.gz && cd trendvn-1.4
 ./trendvn migrate <thư-mục-1.2>
 ```
 
