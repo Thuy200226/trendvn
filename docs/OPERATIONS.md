@@ -54,6 +54,7 @@ Từ trên xuống:
 | Tự đăng lên TikTok | Tắt | Công tắc cuối cùng. Chỉ bạn bật |
 | Duyệt tay trước khi đăng | Tắt | Bật thì video dựng xong dừng ở "Chờ bạn duyệt" |
 | Lồng tiếng Việt | Tắt | Chỉ áp dụng cho video thuyết minh. Nghe thử giọng đọc trước khi bật |
+| Kiểu mô tả bài đăng | Giật tít | `Giật tít`: câu mở kích thích tò mò, vẫn bám đúng nội dung video; `Điềm đạm`: mô tả thẳng. Đổi ở Thêm → Cài đặt → Gemini |
 | Số bài tối đa mỗi ngày | 2 | 1–10 |
 | Giãn cách tối thiểu | 3 giờ | Giữa hai bài |
 | Giờ vàng | 11-14, 19-23 | Giờ Việt Nam; để trống là đăng bất kỳ lúc nào |

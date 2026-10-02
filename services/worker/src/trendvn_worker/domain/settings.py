@@ -14,6 +14,7 @@ DEFAULTS = {
     "model": "gemini-3.8-flash",
     "tts_model": "gemini-3.8-flash-tts",
     "voice": "Kore",
+    "caption_style": "hook",  # "hook": written to stop the scroll; "factual": the calm descriptive style
     "audio_confidence": 0.90,
     "processing_enabled": False,
     "discovery_connected": False,
@@ -115,6 +116,10 @@ def validate_settings(patch):
         elif k in ("model", "tts_model"):
             if not isinstance(v, str) or not re.fullmatch(r"[A-Za-z0-9._-]{3,60}", v):
                 raise ValueError("Invalid model name")
+            out[k] = v
+        elif k == "caption_style":
+            if v not in ("hook", "factual"):
+                raise ValueError("caption_style must be hook or factual")
             out[k] = v
         elif k == "voice":
             if not isinstance(v, str) or not re.fullmatch(r"[A-Za-z]{3,20}", v):

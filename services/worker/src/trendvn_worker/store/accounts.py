@@ -136,5 +136,5 @@ class AccountsMixin:
         """The 'Tài khoản TikTok đích' setting of 1.3: renames the default account (kept so single-account setups and the API work as before)."""
         account = self.default_account()
         if account is None:
-            return self.add_account({"username": username, "id": "main", "topics": list(topic_menu.LEGACY_TOPICS)})
+            return self.add_account({"username": username, "id": "main", "topics": list(topic_menu.DEFAULT_TOPICS)})
         return self.update_account(account["id"], {"username": username})

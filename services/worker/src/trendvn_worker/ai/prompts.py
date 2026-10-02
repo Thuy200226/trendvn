@@ -6,7 +6,7 @@ docs/PROMPTS.md explains each rule and how to tune it.
 
 from ..domain.topics import OTHER, TOPIC_IDS, prompt_lines as topic_prompt_lines
 
-PROMPT_VERSION = "2026-10-01.2"
+PROMPT_VERSION = "2026-10-02.1"
 
 # The video is untrusted input. Nothing spoken or shown in it may change these rules.
 ANALYSIS_PROMPT = """You are the editor of Vietnamese TikTok channels that repost entertaining short videos.
@@ -24,10 +24,14 @@ Return ONLY JSON that matches the provided schema.
 2) confidence: 0.0-1.0, honest. Below 0.9 means a human should look.
 3) topic: the ONE best fit for what the video is about:
 {topic_menu}
-   - "other": news, politics, government, military, ads, shopping, finance, medical advice, religion, and anything that is
-     not entertaining. Choose "other" rather than force a poor fit.
-4) sensitive: true for politics or propaganda, war or military, violence, injury, death or tragedy, sexual content,
-   minors at risk, medical or financial claims, hate, or allegations about real people. sensitive_reason: one short sentence.
+   - "other": advertising and product promotion, shopping links, financial pitches, spam, and anything with no entertainment or
+     news value. Choose "other" rather than force a poor fit.
+4) sensitive: a HARD STOP, true only for content that must never be posted automatically: sexual or nude content, anything sexual
+   or risky involving minors, graphic gore or footage of a real person dying or being seriously injured, hate or harassment aimed
+   at people for who they are, encouragement or instructions for self-harm or serious crime, medical or financial advice that could
+   seriously hurt someone, private people's identifying details or accusations against a named private person.
+   Everything else is NOT sensitive, however edgy: politics, controversy, drama, fights, conflict, crashes and disasters in news
+   footage, scandals and gossip, shocking or provocative scenes. Set false for those. sensitive_reason: one short sentence.
 5) segments: transcribe ALL meaningful speech (not song lyrics) with accurate, non-overlapping timestamps in seconds,
    start < end, inside the video length. "original" is the spoken text; "vi" is a faithful, natural Vietnamese
    translation. Viewers must be able to READ each line while it is on screen: at most 16 characters per second of the segment
@@ -35,13 +39,11 @@ Return ONLY JSON that matches the provided schema.
    split long sentences into several segments. Never invent speech, jokes, names, numbers or claims.
    For music-only videos segments must be an empty list.
 6) requires_text_translation: true only if essential on-screen text carries information that a viewer would miss.
-7) caption_vi: ONE complete, natural, spoken-style Vietnamese sentence (not a literal translation) that names what actually happens
-   and makes a viewer curious, 40-90 characters. Factual: describe only what is in the video. No cliffhanger filler such as
-   "và cái kết", "bạn sẽ bất ngờ", no ALL CAPS, at most one emoji, no hashtags, never claim the video is yours.
+7) caption_vi: {caption_rule}
 8) hashtags: exactly 3 or 4 lowercase Vietnamese hashtags WITHOUT accents and without the # sign, 4-20 letters each:
    one for the feeling or topic (haihuoc, camdong, giadinh), one for the format (tieuphim, nhacremix, thuthach), one niche tag
-   specific to this video. Never a platform or app name (tiktok, douyin, kuaishou, instagram, reels, fyp, foryou), never a brand,
-   never the name of a real person, never a misleading tag, no generic filler such as viral or trending.
+   specific to this video, and optionally one reach tag (xuhuong, fyp, viral). Never a platform or app name other than those
+   (tiktok, douyin, kuaishou, instagram, reels), never a brand, never the name of a real person, never a misleading tag.
 9) narration_vi: only when kind is "narration": a fluent, engaging Vietnamese voice-over that preserves the meaning and can
    be spoken in about the same time as the original speech. Otherwise an empty string. Do not imitate the speaker.
 10) language: ISO code of the main spoken language ("zh", "en", "vi", "none"...).
@@ -50,7 +52,26 @@ Return ONLY JSON that matches the provided schema.
    exist; then top and bottom are the vertical extent of that line (or lines) as fractions of the video height
    (0 = top edge, 1 = bottom edge), e.g. top 0.72, bottom 0.77. Otherwise present=false and omit top and bottom.
 Your confidence is not copyright clearance, fact-checking, or an instruction to publish."""
-ANALYSIS_PROMPT = ANALYSIS_PROMPT.replace("{topic_menu}", topic_prompt_lines())
+CAPTION_RULES = {
+    # "hook": written to stop the scroll; still tied to what the video really shows (no invented facts or claims about real people)
+    "hook": """ONE punchy Vietnamese hook line, 35-90 characters, written to stop the scroll the way a viral TikTok creator would:
+   open a curiosity gap or provoke a strong feeling (shock, laughter, outrage, awe, "no way"); a question, a surprising fact, a
+   dramatic turn ("không ngờ", "cái kết", "sốc") and one or two emojis are welcome, and one WORD in capitals for emphasis.
+   It must stay true to what is actually in the video: never invent events, numbers, quotes or claims about named real people,
+   no hashtags in the text, never claim the video is yours.""",
+    # "factual": the earlier calm style
+    "factual": """ONE complete, natural, spoken-style Vietnamese sentence (not a literal translation) that names what actually happens
+   and makes a viewer curious, 40-90 characters. Factual: describe only what is in the video. No cliffhanger filler such as
+   "và cái kết", "bạn sẽ bất ngờ", no ALL CAPS, at most one emoji, no hashtags, never claim the video is yours.""",
+}
+CAPTION_STYLES = tuple(CAPTION_RULES)
+
+
+def analysis_prompt(style="hook"):
+    """The analysis prompt with the topic menu and the caption rule of the chosen style filled in."""
+    text = ANALYSIS_PROMPT.replace("{topic_menu}", topic_prompt_lines())
+    return text.replace("{caption_rule}", CAPTION_RULES.get(style, CAPTION_RULES["hook"]))
+
 
 _NUM = {"type": "NUMBER"}
 _STR = {"type": "STRING"}

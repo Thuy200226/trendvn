@@ -60,7 +60,7 @@ class PromptTests(unittest.TestCase):
         for key in prompts.ANALYSIS_SCHEMA["required"]:
             self.assertIn(key, props)
         for word in ("UNTRUSTED", "segments", "hashtags", "sensitive", "narration_vi", "caption_vi"):
-            self.assertIn(word, prompts.ANALYSIS_PROMPT)
+            self.assertIn(word, prompts.analysis_prompt())
         self.assertRegex(prompts.PROMPT_VERSION, r"^\d{4}-\d\d-\d\d\.\d+$")
 
 
@@ -86,3 +86,32 @@ class ParallelSettingTests(unittest.TestCase):
             ("", 2),
         ):
             self.assertEqual(pipeline._parallel_setting(text), expected, repr(text))
+
+
+class PromptPolicyTests(unittest.TestCase):
+    def test_hard_stops_only_and_edgy_content_is_not_sensitive(self):
+        text = prompts.analysis_prompt()
+        self.assertIn("HARD STOP", text)
+        for must_stay_out in ("minors", "gore", "hate"):
+            self.assertIn(must_stay_out, text)
+        self.assertIn("politics, controversy, drama", text)  # named as NOT sensitive
+        self.assertIn('"news"', text)  # the topic menu carries hot news and drama
+
+    def test_caption_style_changes_the_rule_and_unknown_styles_fall_back_to_hook(self):
+        hook, factual = prompts.analysis_prompt("hook"), prompts.analysis_prompt("factual")
+        self.assertIn("stop the scroll", hook)
+        self.assertNotIn("stop the scroll", factual)
+        self.assertIn("never invent events", hook)  # a hook is still tied to what the video shows
+        self.assertEqual(prompts.analysis_prompt("nonsense"), hook)
+        self.assertNotIn("{caption_rule}", hook + factual)
+        self.assertNotIn("{topic_menu}", hook + factual)
+        self.assertEqual(set(prompts.CAPTION_STYLES), {"hook", "factual"})
+
+    def test_caption_style_is_a_validated_setting(self):
+        from trendvn_worker.domain.settings import DEFAULTS, validate_settings
+
+        self.assertEqual(DEFAULTS["caption_style"], "hook")
+        self.assertEqual(validate_settings({"caption_style": "factual"}), {"caption_style": "factual"})
+        for bad in ("viral", "", None, 1, ["hook"]):
+            with self.assertRaises(ValueError, msg=repr(bad)):
+                validate_settings({"caption_style": bad})

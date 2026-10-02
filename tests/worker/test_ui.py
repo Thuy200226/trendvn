@@ -35,7 +35,7 @@ class UiTests(StoreCase):
         self.assertNotIn("<img src=x", html)
 
     def test_reason_translation_and_labels(self):
-        self.assertIn("nhạy cảm", ui.vi_reason("Sensitive content (politics) needs review"))
+        self.assertIn("giới hạn cứng", ui.vi_reason("Sensitive content (hard stop: sexual) needs review"))
         self.assertEqual(ui.vi_reason("unknown reason"), "unknown reason")
         self.assertEqual(ui.ago(None), "—")
         self.assertEqual(ui.num(1234567), "1.234.567")

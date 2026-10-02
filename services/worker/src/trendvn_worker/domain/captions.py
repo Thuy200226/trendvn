@@ -3,7 +3,8 @@
 import re
 import unicodedata
 
-BANNED_TAG_PARTS = ("tiktok", "douyin", "kuaishou", "instagram", "reels", "fyp", "foryou", "viral", "trending", "xuhuong", "capcut")
+# other platforms and editors give a repost away; reach tags (xuhuong, fyp, viral) are welcome
+BANNED_TAG_PARTS = ("tiktok", "douyin", "kuaishou", "instagram", "reels", "capcut")
 
 
 def _cut_at_word(text, limit):

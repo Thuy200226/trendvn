@@ -19,7 +19,7 @@ class TopicMenuTests(unittest.TestCase):
         for t in topics.TOPICS:
             self.assertTrue(t.vi and t.gemini, t.id)
         self.assertNotIn(topics.OTHER, topics.TOPIC_IDS)  # "other" is the rejection bucket, never a topic an account can take
-        self.assertTrue(set(topics.LEGACY_TOPICS) <= set(topics.TOPIC_IDS))
+        self.assertTrue(set(topics.DEFAULT_TOPICS) <= set(topics.TOPIC_IDS))
 
     def test_valid_topics_cleans_orders_and_refuses(self):
         self.assertEqual(topics.valid_topics(["pets", "music", "pets"]), ["music", "pets"])  # menu order, no duplicates
@@ -116,12 +116,13 @@ class AccountRuleTests(unittest.TestCase):
 
 
 class AccountStoreTests(StoreCase):
-    def test_a_fresh_database_has_the_main_account_with_the_legacy_topics(self):
+    def test_a_fresh_database_has_the_main_account_with_the_default_topics(self):
         accounts = self.s.accounts()
         self.assertEqual([a["id"] for a in accounts], ["main"])
-        self.assertEqual(set(accounts[0]["topics"]), set(topics.LEGACY_TOPICS))
+        self.assertEqual(set(accounts[0]["topics"]), set(topics.DEFAULT_TOPICS))
+        self.assertIn("news", accounts[0]["topics"])  # hot news and drama are taken by default
         self.assertEqual(self.s.settings()["target"], accounts[0]["username"])
-        self.assertEqual(self.s.wanted_topics(), [t for t in topics.TOPIC_IDS if t in topics.LEGACY_TOPICS])
+        self.assertEqual(self.s.wanted_topics(), [t for t in topics.TOPIC_IDS if t in topics.DEFAULT_TOPICS])
 
     def test_add_update_and_delete(self):
         pets = self.s.add_account({"username": "kenh_meo", "topics": ["pets"], "daily_limit": 4})

@@ -92,6 +92,12 @@ TOPICS = (
         r"科普|知识|冷知识|干货|历史|知识点|教学|science|learn|howto|kiến thức",
     ),
     Topic(
+        "news",
+        "Tin nóng, xã hội, drama",
+        "breaking news, current events, politics, social controversy, scandals, conflict and drama caught on camera",
+        r"新闻|热搜|吵架|冲突|曝光|事件|争议|社会|突发|现场|监控|警方|通报|维权|反转|news|breaking|drama|scandal|tin nóng|căng",
+    ),
+    Topic(
         "entertainment",
         "Giải trí tổng hợp",
         "any other harmless fun content that fits no category above: talent, challenges, cute moments",
@@ -104,6 +110,8 @@ TOPIC_LABEL = {t.id: t.vi for t in TOPICS}
 BY_ID = {t.id: t for t in TOPICS}
 # what the single account of 1.0 - 1.3 accepted, spelled out in the finer topics (it used to be "entertainment" and "music")
 LEGACY_TOPICS = ("entertainment", "music", "comedy", "pets", "family", "lifestyle")
+# what a new account takes by default: the old topics plus hot news and drama (the owner wants the most talked-about content)
+DEFAULT_TOPICS = (*LEGACY_TOPICS, "news")
 _CJK = re.compile("[\u3400-\u9fff]")
 _LETTER = "A-Za-z0-9\u00c0-\u024f\u1e00-\u1eff"  # Latin and Vietnamese letters; Chinese characters are deliberately not "letters" here
 

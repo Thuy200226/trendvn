@@ -55,7 +55,9 @@ def validate_analysis(a, duration, confidence=0.90, strict=False, lenient=False,
     if strict and not lenient and (a.get("topic") not in (*TOPIC_IDS, OTHER) or not isinstance(a.get("sensitive"), bool)):
         raise ValueError("Topic/sensitivity missing from analysis")
     if not lenient and a.get("sensitive") is True:
-        raise ValueError("Sensitive content (politics, violence, tragedy, adult or medical claims) needs review")
+        raise ValueError(
+            "Sensitive content (hard stop: sexual, minors at risk, gore, hate, self-harm or crime, harmful advice, private persons) needs review"
+        )
     if not lenient and a.get("topic") == OTHER:
         raise ValueError("Off-topic: not entertaining content")
     if not lenient and accepted_topics is not None and a.get("topic") in TOPIC_IDS and a["topic"] not in accepted_topics:

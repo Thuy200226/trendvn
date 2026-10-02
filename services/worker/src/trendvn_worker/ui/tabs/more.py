@@ -153,6 +153,15 @@ def _gemini_group(view):
                     "Google có thể ngừng model cũ; hệ thống tự chuyển sang model mới hơn khi gặp lỗi 404.",
                 ),
                 field("Model giọng đọc", text_input("tts_model", cfg["tts_model"], PLAIN_INPUT)),
+                field(
+                    "Kiểu mô tả bài đăng",
+                    select(
+                        "caption_style",
+                        cfg["caption_style"],
+                        (("hook", "Giật tít, kích thích tò mò"), ("factual", "Điềm đạm, mô tả đúng nội dung")),
+                    ),
+                    "Giật tít vẫn bám đúng điều có trong video, không bịa sự kiện hay lời của người thật.",
+                ),
             )
         ),
         False,

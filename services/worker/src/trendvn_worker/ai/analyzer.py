@@ -6,7 +6,7 @@ import json
 from ..domain.analysis import validate_analysis
 from ..media.ffmpeg import ffmpeg
 from .gemini import generate
-from .prompts import ANALYSIS_PROMPT, ANALYSIS_SCHEMA
+from .prompts import ANALYSIS_SCHEMA, analysis_prompt
 
 
 def analyze(store, path, duration, cfg, folder, lenient=False):
@@ -20,7 +20,7 @@ def analyze(store, path, duration, cfg, folder, lenient=False):
     if proxy.stat().st_size > 12 * 1024 * 1024:
         raise ValueError("Analysis proxy exceeds 12MB")
     parts = [
-        {"text": ANALYSIS_PROMPT + "\nVideo length: %.1f seconds." % duration},
+        {"text": analysis_prompt(cfg.get("caption_style", "hook")) + "\nVideo length: %.1f seconds." % duration},
         {"inline_data": {"mime_type": "video/mp4", "data": base64.b64encode(proxy.read_bytes()).decode()}},
     ]
     data = generate(store, cfg, parts, ANALYSIS_SCHEMA)

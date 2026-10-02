@@ -66,7 +66,10 @@ EVENT_LABELS = {
 # (fragment of the internal English reason, what to tell the owner)
 REASONS = (
     ("Audio needs review", "Gemini chưa đủ chắc chắn về loại âm thanh"),
-    ("Sensitive content", "Nội dung nhạy cảm (chính trị, bạo lực, bi kịch, y tế...)"),
+    (
+        "Sensitive content",
+        "Chạm giới hạn cứng (tình dục, trẻ em gặp nguy, máu me thật, thù ghét, tự hại/tội phạm, lời khuyên nguy hiểm, đời tư): cần bạn quyết định",
+    ),
     ("Off-topic", "Nội dung không thuộc loại giải trí"),
     ("Possible visual duplicate", "Có thể trùng với một video đã xử lý"),
     ("Video duration outside", "Thời lượng ngoài giới hạn cho phép"),

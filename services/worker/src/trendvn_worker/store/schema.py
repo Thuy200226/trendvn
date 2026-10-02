@@ -79,7 +79,7 @@ def _accounts(db):
     target = json.loads(row[0]) if row else DEFAULT_TARGET
     db.execute(
         "INSERT OR IGNORE INTO accounts(id,username,label,topics,enabled,created) VALUES ('main',?,?,?,1,?)",
-        (target, target, json.dumps(list(topics.LEGACY_TOPICS)), time.time()),
+        (target, target, json.dumps(list(topics.DEFAULT_TOPICS)), time.time()),
     )
     present = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
     for column in ("topic TEXT", "topic_hint TEXT", "account TEXT"):

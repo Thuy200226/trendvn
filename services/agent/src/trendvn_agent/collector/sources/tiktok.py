@@ -66,6 +66,7 @@ CHIPS = {
     "movies": "Shows",
     "lifestyle": "Daily Life",
     "knowledge": "Education",
+    "news": "Society",
 }
 DEFAULT_TOPICS = ("music", "comedy", "movies")
 MAX_CHIPS = 5

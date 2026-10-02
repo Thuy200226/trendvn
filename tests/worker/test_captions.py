@@ -57,7 +57,7 @@ class CaptionTests(StoreCase):
         self.assertEqual(build_caption({"kind": "music", "caption_vi": "Hay quá", "hashtags": []}, "t"), "Hay quá #xuhuong #nhac")
         self.assertNotIn("##", build_caption({"caption_vi": "#a #b nội dung", "hashtags": ["#c"]}, "t"))
 
-    def test_platform_names_and_filler_never_become_hashtags(self):
+    def test_platform_names_never_become_hashtags_but_reach_tags_do(self):
         c = build_caption(
             {
                 "kind": "dialogue",
@@ -67,7 +67,8 @@ class CaptionTests(StoreCase):
             "t",
         )
         tags = [x for x in c.split() if x.startswith("#")]
-        self.assertEqual(tags, ["#haihuoc", "#giadinh", "#xuhuong", "#giaitri"])
+        # a repost gives itself away with another platform's name; reach tags (fyp, viral) are exactly what we want
+        self.assertEqual(tags, ["#fyp", "#viral", "#haihuoc", "#giadinh", "#xuhuong"])
 
     def test_caption_with_emoji_and_diacritics_survives(self):
         self.ready("a")
