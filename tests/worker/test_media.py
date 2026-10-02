@@ -119,13 +119,13 @@ class HardSubtitleRenderTests(unittest.TestCase):
         subprocess.run(cmd, check=True)
         return out
 
-    def render(self, src, tag, route="vietsub", band=None, segments=((0.0, 3.0),)):
+    def render(self, src, tag, route="vietsub", band=None, segments=((0.0, 3.0),), mask="auto"):
         folder = self.dir / tag
         folder.mkdir()
         analysis = {"kind": "dialogue", "segments": [{"start": a, "end": b, "vi": "Xin chào"} for a, b in segments]}
         if band:
             analysis["hard_subtitles"] = {"present": True, "top": band[0], "bottom": band[1]}
-        return render_mod.render(src, folder, analysis, route, ffmpeg_mod.probe(src)[0])
+        return render_mod.render(src, folder, analysis, route, ffmpeg_mod.probe(src)[0], mask=mask)
 
     def sharpness(self, video, width, y, height, second=0.0):
         """Mean absolute horizontal gradient of a strip of the frame at `second`: high for detail, low once blurred."""
@@ -175,6 +175,21 @@ class HardSubtitleRenderTests(unittest.TestCase):
             self.assertAlmostEqual(
                 self.sharpness(gated, 720, *in_band, second=later), self.sharpness(plain, 720, *in_band, second=later), delta=2.0
             )
+
+    def frames_md5(self, video):
+        """Checksum of the decoded picture: identical when no filter touched it, different when something (a blur) did."""
+        return subprocess.run(
+            ["ffmpeg", "-v", "error", "-i", str(video), "-map", "0:v", "-f", "md5", "-"], check=True, stdout=subprocess.PIPE
+        ).stdout
+
+    def test_auto_blurs_only_what_our_captions_would_cover_and_the_owner_can_force_either_way(self):
+        src = self.source("p.mp4", "720x1280")
+        plain = self.frames_md5(self.render(src, "plain"))
+        low = (0.90, 0.96)  # below our captions: nothing of ours would sit on it
+        self.assertEqual(self.frames_md5(self.render(src, "auto_low", band=low)), plain)  # auto: left alone, the very same picture
+        self.assertNotEqual(self.frames_md5(self.render(src, "always_low", band=low, mask="always")), plain)  # forced: blurred
+        self.assertNotEqual(self.frames_md5(self.render(src, "auto_mid", band=(0.70, 0.78))), plain)  # where our captions go: blurred
+        self.assertEqual(self.frames_md5(self.render(src, "off_mid", band=(0.70, 0.78), mask="off")), plain)  # never
 
     def test_music_that_stays_as_it_is_keeps_the_lyrics_burned_into_it(self):
         src = self.source("p.mp4", "720x1280")
@@ -390,7 +405,7 @@ class VoiceoverTests(StoreCase):
             "segments": [{"start": 1.0, "end": 5.0, "vi": "Xin chào các bạn"}],
         }
 
-        def fake_tts(store, cfg, text, out):
+        def fake_tts(store, cfg, text, out, voice=None, style=None):
             subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=600:duration=4.4", str(out)], check=True)
             return 4.4
 
@@ -404,14 +419,14 @@ class VoiceoverTests(StoreCase):
             dur, meta = ffmpeg_mod.probe(out)
             self.assertAlmostEqual(dur, 8.0, delta=0.6)
             self.assertTrue(any(s["codec_type"] == "audio" for s in meta["streams"]))
-            speech.tts = lambda *a: 20.0  # voice far longer than the speech window: refuse, subtitles remain
+            speech.tts = lambda *a, **k: 20.0  # voice far longer than the speech window: refuse, subtitles remain
             with self.assertRaises(ai_errors.VoiceoverUnfit):
                 speech.make_voice(self.s, self.s.settings(), analysis, folder)
             long_text = dict(analysis, narration_vi="x" * 150, segments=[{"start": 1.0, "end": 14.0, "vi": "Xin chào"}])
-            speech.tts = lambda *a: 4.0  # 37 characters a second: a voice that skipped words to hurry
+            speech.tts = lambda *a, **k: 4.0  # 37 characters a second: a voice that skipped words to hurry
             with self.assertRaisesRegex(ai_errors.VoiceoverUnfit, "bỏ sót"):
                 speech.make_voice(self.s, self.s.settings(), long_text, folder)
-            speech.tts = lambda *a: 15.0  # 10 characters a second is the natural pace and passes
+            speech.tts = lambda *a, **k: 15.0  # 10 characters a second is the natural pace and passes
             self.assertEqual(speech.make_voice(self.s, self.s.settings(), long_text, folder)["delay"], 1.0)
         finally:
             speech.tts = real

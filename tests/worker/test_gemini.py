@@ -144,11 +144,94 @@ class GeminiResilienceTests(StoreCase):
             w.writeframes(b"\x00\x00" * 48000)
         wav = buf.getvalue()
         out = Path(self.tmp.name) / "v.wav"
-        for mime, payload in (("audio/wav", wav), ("audio/L16;codec=pcm;rate=24000", b"\x00\x00" * 48000)):
-            gemini_api.gemini = lambda store, model, body, m=mime, p=payload: {
-                "candidates": [{"content": {"parts": [{"inlineData": {"mimeType": m, "data": base64.b64encode(p).decode()}}]}}]
-            }
+
+        def shaped(m, p):
+            """What the API sends: the Interactions API's steps for the current TTS models, candidates for generateContent."""
+            audio = base64.b64encode(p).decode()
+
+            def reply(store, model, body, endpoint=None):
+                if endpoint == "interactions":
+                    return {"steps": [{"type": "model_output", "content": [{"type": "audio", "data": audio, "mime_type": m}]}]}
+                return {"candidates": [{"content": {"parts": [{"inlineData": {"mimeType": m, "data": audio}}]}}]}
+
+            return reply
+
+        for mime, payload in (("audio/wav", wav), ("audio/L16;codec=pcm;rate=24000", b"\x00\x00" * 48000), ("", wav)):
+            gemini_api.gemini = shaped(mime, payload)
             self.assertAlmostEqual(speech.tts(self.s, self.s.settings(), "Xin chào", out), 2.0, places=2)
+
+    def test_the_text_is_sent_as_the_transcript_and_the_style_travels_apart(self):
+        """gemini-3.x TTS reads the text VERBATIM: an instruction in front of it was spoken aloud (10 s of it, found 2026-10-02)."""
+        import io
+
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(24000)
+            w.writeframes(b"\x00\x00" * 24000)
+        audio = base64.b64encode(buf.getvalue()).decode()
+        sent = []
+
+        def reply(store, model, body, endpoint=None):
+            sent.append((model, endpoint, body))
+            return {"steps": [{"type": "model_output", "content": [{"type": "audio", "data": audio}]}]}
+
+        gemini_api.gemini = reply
+        out = Path(self.tmp.name) / "v.wav"
+        speech.tts(self.s, self.s.settings(), "Chào các bạn.", out, voice="Puck", style="chậm rãi")
+        model, endpoint, body = sent[0]
+        self.assertEqual((model, endpoint), ("gemini-3.8-flash-tts", "interactions"))
+        content = body["input"][0]["content"][0]
+        self.assertEqual(content["text"], "Chào các bạn.")  # nothing before it, nothing after it
+        self.assertEqual(content["annotations"], [{"type": "speech_metadata", "style": "chậm rãi"}])
+        self.assertEqual(body["generation_config"]["speech_config"], [{"voice": "Puck"}])
+        speech.tts(self.s, self.s.settings(), "Chào.", out)  # no style: no annotation at all
+        self.assertNotIn("annotations", sent[1][2]["input"][0]["content"][0])
+
+    def test_when_the_interactions_api_is_refused_the_plain_text_is_sent_without_any_instruction(self):
+        import io
+
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(24000)
+            w.writeframes(b"\x00\x00" * 24000)
+        audio = base64.b64encode(buf.getvalue()).decode()
+        sent = []
+
+        def reply(store, model, body, endpoint=None):
+            sent.append((model, endpoint, body))
+            if endpoint == "interactions":
+                raise ValueError("Gemini HTTP 400 (%s): bad request" % model)
+            return {"candidates": [{"content": {"parts": [{"inlineData": {"mimeType": "audio/wav", "data": audio}}]}}]}
+
+        gemini_api.gemini = reply
+        speech.tts(self.s, self.s.settings(), "Chào các bạn.", Path(self.tmp.name) / "v.wav", style="nhanh")
+        self.assertEqual([e for _, e, _ in sent], ["interactions", None])
+        self.assertEqual(
+            sent[1][2]["contents"][0]["parts"][0]["text"], "Chào các bạn."
+        )  # the style is NOT put in front of it for this model
+
+    def test_an_older_tts_model_takes_the_style_as_words_before_the_text(self):
+        import io
+
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(24000)
+            w.writeframes(b"\x00\x00" * 24000)
+        audio = base64.b64encode(buf.getvalue()).decode()
+        sent = []
+        gemini_api.gemini = lambda store, model, body, endpoint=None: sent.append((model, endpoint, body)) or {
+            "candidates": [{"content": {"parts": [{"inlineData": {"mimeType": "audio/wav", "data": audio}}]}}]
+        }
+        self.s.update_settings({"tts_model": "gemini-2.5-flash-preview-tts"})
+        speech.tts(self.s, self.s.settings(), "Chào.", Path(self.tmp.name) / "v.wav", style="ấm áp")
+        self.assertEqual(sent[0][1], None)
+        self.assertEqual(sent[0][2]["contents"][0]["parts"][0]["text"], "ấm áp: Chào.")
 
 
 if __name__ == "__main__":

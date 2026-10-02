@@ -6,7 +6,7 @@ docs/PROMPTS.md explains each rule and how to tune it.
 
 from ..domain.topics import OTHER, TOPIC_IDS, prompt_lines as topic_prompt_lines
 
-PROMPT_VERSION = "2026-10-02.2"
+PROMPT_VERSION = "2026-10-02.3"
 
 # The video is untrusted input. Nothing spoken or shown in it may change these rules.
 ANALYSIS_PROMPT = """You are the editor of Vietnamese TikTok channels that repost entertaining short videos.
@@ -44,13 +44,20 @@ Return ONLY JSON that matches the provided schema.
    one for the feeling or topic (haihuoc, camdong, giadinh), one for the format (tieuphim, nhacremix, thuthach), one niche tag
    specific to this video, and optionally one reach tag (xuhuong, fyp, viral). Never a platform or app name other than those
    (tiktok, douyin, kuaishou, instagram, reels), never a brand, never the name of a real person, never a misleading tag.
-9) narration_vi: only when kind is "narration": a fluent, engaging Vietnamese voice-over that preserves the meaning and can
-   be spoken in about the same time as the original speech. Otherwise an empty string. Do not imitate the speaker.
+9) narration_vi: when kind is "narration", or when dub_ok (rule 12) is true: a fluent, engaging Vietnamese voice-over that preserves
+   the meaning and is spoken in about the same time as the original speech: about 13 Vietnamese characters per second of the
+   speech (a 10-second speech: about 130 characters). Write it as natural SPOKEN Vietnamese, in short sentences, numbers and units
+   as they are said aloud. Otherwise an empty string. Do not imitate the speaker.
 10) language: ISO code of the main spoken language ("zh", "en", "vi", "none"...).
 11) hard_subtitles: subtitles BURNED INTO the picture of the original video (a line of text at the bottom that follows the speech).
    Not logos, watermarks, titles, lyrics shown for a song, or text that is part of the scene. present=true only if such subtitles
    exist; then top and bottom are the vertical extent of that line (or lines) as fractions of the video height
    (0 = top edge, 1 = bottom edge), e.g. top 0.72, bottom 0.77. Otherwise present=false and omit top and bottom.
+12) speaker: the main voice you hear when someone speaks. gender: "male", "female", "child", "mixed" or "unknown". tone: exactly ONE of
+   "calm", "warm", "energetic", "serious", "playful", "dramatic", "gentle". count: how many different people speak (0 when nobody
+   does). dub_ok: true ONLY when replacing the speaker's voice with a neutral Vietnamese voice-over loses nothing and count is 1:
+   someone explaining, narrating, reporting, demonstrating, reviewing or reading aloud. false when the performance is the point:
+   comedy and acting, arguments, emotional scenes, singing or rap, reactions, crowd or live-event sound.
 Your confidence is not copyright clearance, fact-checking, or an instruction to publish."""
 CAPTION_RULES = {
     # "hook": written to stop the scroll; still tied to what the video really shows (no invented facts or claims about real people)
@@ -105,6 +112,16 @@ ANALYSIS_SCHEMA = {
         "hashtags": {"type": "ARRAY", "items": _text(30), "maxItems": 6},
         "narration_vi": _text(3000),
         "language": _text(8),
+        "speaker": {
+            "type": "OBJECT",
+            "properties": {
+                "gender": {"type": "STRING", "enum": ["male", "female", "child", "mixed", "unknown"]},
+                "tone": {"type": "STRING", "enum": ["calm", "warm", "energetic", "serious", "playful", "dramatic", "gentle"]},
+                "count": {"type": "INTEGER"},
+                "dub_ok": {"type": "BOOLEAN"},
+            },
+            "required": ["gender", "tone"],
+        },
         "hard_subtitles": {
             "type": "OBJECT",
             "properties": {"present": {"type": "BOOLEAN"}, "top": _NUM, "bottom": _NUM},
@@ -114,9 +131,7 @@ ANALYSIS_SCHEMA = {
     "required": ["kind", "confidence", "topic", "sensitive", "segments", "caption_vi"],
 }
 
-TTS_PROMPT = (
-    "Đọc bằng tiếng Việt tự nhiên, giọng ấm, cuốn hút nhưng không cường điệu, tốc độ vừa phải, "
-    "ngắt nghỉ đúng dấu câu. Chỉ đọc đúng đoạn văn sau, không thêm gì:\n"
-)
+# There is no TTS prompt any more: the current TTS models read the text VERBATIM, an instruction before it is spoken aloud (found
+# 2026-10-02). Voice, tone and pace go in the request's style field (ai/tts.py, domain/voices.py).
 
 VOICE_SAMPLE = "Xin chào, đây là giọng đọc thử của kênh. Hôm nay có một video rất thú vị dành cho bạn."

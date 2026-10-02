@@ -53,7 +53,9 @@ Từ trên xuống:
 | Xử lý video bằng Gemini | Tắt | Bật thì video được gửi tới Google Gemini để phân tích. Cần khóa |
 | Tự đăng lên TikTok | Tắt | Công tắc cuối cùng. Chỉ bạn bật |
 | Duyệt tay trước khi đăng | Tắt | Bật thì video dựng xong dừng ở "Chờ bạn duyệt" |
-| Lồng tiếng Việt | Tắt | Chỉ áp dụng cho video thuyết minh. Nghe thử giọng đọc trước khi bật |
+| Lồng tiếng Việt | Bật | Ưu tiên lồng tiếng khi phù hợp: video thuyết minh và video **một người nói** mà thay giọng không mất gì (Gemini quyết định). Hài, kịch, tranh cãi, nhiều người nói luôn giữ giọng gốc kèm Vietsub. Đổi phạm vi ở "Lồng tiếng cho" |
+| Chọn giọng đọc | Tự động | Giọng theo người nói (nam/nữ, sắc thái) và tốc độ theo cửa sổ lời; "Luôn dùng giọng bên dưới" để cố định (mặc định Kore). Đã kiểm chứng các giọng ở docs/QUALITY.md |
+| Làm mờ phụ đề gốc | Tự động | Chỉ khi phụ đề Việt sẽ đè lên chữ gốc, và chỉ đúng lúc chúng hiện; `Luôn` hoặc `Không bao giờ` nếu bạn muốn |
 | Kiểu mô tả bài đăng | Giật tít | `Giật tít`: câu mở kích thích tò mò, vẫn bám đúng nội dung video; `Điềm đạm`: mô tả thẳng. Đổi ở Thêm → Cài đặt → Gemini |
 | Số bài tối đa mỗi ngày | 2 | 1–10 |
 | Giãn cách tối thiểu | 3 giờ | Giữa hai bài |

@@ -20,6 +20,17 @@ def subtitles(segments, path):
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def caption_extent(width, height, zone, lines=2):
+    """(top, bottom) in pixels of the output that a caption of up to `lines` lines occupies in `zone`; the numbers are those of
+    ass_subtitles() below (font size, padding, margin), so a decision about overlap is made on the same geometry that gets drawn."""
+    font = max(14, round(width * 0.047))
+    pad = max(4, round(font * 0.28)) if zone["box"] else max(3, round(font * 0.09))
+    box = lines * round(font * 1.2) + 2 * pad
+    if zone["align"] == 8:
+        return zone["margin"] - pad, zone["margin"] + box
+    return height - zone["margin"] - box, height - zone["margin"] + pad
+
+
 def ass_subtitles(segments, path, width, height, band_top=None, zone=None):
     """zone (from caption_zone) says where captions go; band_top is the older shortcut for a free band below the picture."""
 

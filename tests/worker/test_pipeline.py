@@ -22,7 +22,7 @@ class PipelineTests(StoreCase):
         self.job("j1", "queued", source_file=str(self.source), content_hash=file_hash(self.source))
         self.calls = []
 
-        def render(path, folder, analysis, route, duration, voice=None):
+        def render(path, folder, analysis, route, duration, voice=None, mask="auto"):
             self.calls.append(("render", route, bool(voice)))
             out = folder / "final.mp4"
             out.write_bytes(b"rendered")
@@ -94,6 +94,25 @@ class PipelineTests(StoreCase):
         self.assertEqual(result["status"], "needs_review")
         self.assertIn("mô tả", result["reason"])
 
+    def test_a_busy_google_puts_the_voice_off_a_few_times_then_the_video_goes_out_with_subtitles(self):
+        """A voice-over is preferred, so a TTS that is merely busy sends the video back in the queue (its analysis is remembered, waiting
+        costs nothing); it is not given up on for the first 429, and not waited for for ever either."""
+        from trendvn_worker.ai.errors import Transient
+
+        def busy(*a, **k):
+            raise Transient("Gemini đang quá tải")
+
+        with (
+            mock.patch.object(pipeline, "analyze", lambda *a, **k: (dict(ANALYSIS), "voiceover")),
+            mock.patch.object(pipeline, "make_voice", busy),
+        ):
+            for attempt in range(pipeline.VOICE_RETRIES - 1):
+                self.assertEqual(pipeline.process_one(self.s)["status"], "rate_limited", attempt)
+                self.assertEqual(self.row()["state"], "queued")  # back in the line, not marked broken, no attempt burned
+            result = pipeline.process_one(self.s)
+        self.assertEqual(result["route"], "vietsub")
+        self.assertIn("Google bận", self.row()["reason"])
+
     def test_voice_over_route_falls_back_to_subtitles_when_the_voice_fails(self):
         self.s.update_settings({"voiceover_enabled": True})
         analyzer = mock.patch.object(pipeline, "analyze", lambda *a, **k: (dict(ANALYSIS), "voiceover"))
@@ -153,9 +172,10 @@ class PipelineTests(StoreCase):
         self.assertEqual(self.info()["why"], "Có lời nói: thêm phụ đề")
 
     def test_a_voice_over_that_falls_back_explains_itself(self):
+        self.s.update_settings({"voiceover_enabled": False})
         analyzer = mock.patch.object(pipeline, "analyze", lambda *a, **k: (dict(ANALYSIS, route_reason="Người dẫn kể lại"), "voiceover"))
         with analyzer:
-            pipeline.process_one(self.s)  # voice-over is off in the default settings
+            pipeline.process_one(self.s)
         self.assertIn("chưa bật lồng tiếng", self.info()["why"])
 
     def test_burned_in_subtitles_are_blurred_only_when_ours_replace_them(self):

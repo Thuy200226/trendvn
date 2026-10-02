@@ -1,12 +1,13 @@
 """Ask Gemini what a video contains and turn the answer into a route."""
 
 import base64
+import copy
 import json
 
 from ..domain.analysis import validate_analysis
 from ..media.ffmpeg import ffmpeg
 from .gemini import generate
-from .prompts import ANALYSIS_SCHEMA, analysis_prompt
+from .prompts import ANALYSIS_SCHEMA, PROMPT_VERSION, analysis_prompt
 
 # Sent after the video: the last words the model reads are ours, not the video's.
 REMINDER = (
@@ -36,7 +37,46 @@ def parse_analysis(text):
     return a
 
 
+def _key(path, duration):
+    """What a remembered answer must match to be reused: the same prompt, and the same file."""
+    return {"prompt_version": PROMPT_VERSION, "duration": round(duration, 2), "size": path.stat().st_size}
+
+
+def _remembered(folder, path, duration):
+    """The model's answer for this very video from an earlier run of this job, or None. A run that fails later (the voice, the render, a
+    stale lease) or an owner's approval would otherwise pay for the same video call again, and the video API is the scarce one."""
+    try:
+        saved = json.loads((folder / "analysis.json").read_text())
+    except (OSError, ValueError):
+        return None
+    if isinstance(saved, dict) and saved.get("key") == _key(path, duration) and isinstance(saved.get("answer"), dict):
+        return saved["answer"]
+    return None
+
+
+def _remember(folder, path, duration, answer):
+    try:
+        (folder / "analysis.json").write_text(json.dumps({"key": _key(path, duration), "answer": answer}, ensure_ascii=False))
+    except OSError:
+        pass  # a missing cache only costs a call later
+
+
 def analyze(store, path, duration, cfg, folder, lenient=False):
+    """(analysis, route): the model's answer (asked once per job and prompt version), validated against this run's settings."""
+    answer = _remembered(folder, path, duration)
+    if answer is None:
+        answer = _ask(store, path, duration, cfg, folder)
+        _remember(folder, path, duration, answer)
+    a = copy.deepcopy(answer)  # validation edits the analysis (repaired timestamps, cleaned lines): the remembered answer stays raw
+    route = validate_analysis(
+        a, duration, cfg["audio_confidence"], strict=True, lenient=lenient, accepted_topics=store.wanted_topics(),
+        voiceover_scope=cfg.get("voiceover_scope", "monologue"),
+    )  # fmt: skip
+    return a, route
+
+
+def _ask(store, path, duration, cfg, folder):
+    """One Gemini video call; returns the parsed answer (one JSON object) or raises."""
     proxy = folder / "analysis.mp4"
     # Gemini looks at one frame per second whatever the file's frame rate, so 1 fps loses nothing and halves the file and the work
     ffmpeg(
@@ -64,5 +104,4 @@ def analyze(store, path, duration, cfg, folder, lenient=False):
         if candidate.get("finishReason") == "MAX_TOKENS":  # the model ran on until the output limit: say so, it is not a bad video
             raise ValueError("Gemini output truncated (MAX_TOKENS): the model wrote far too much and the answer was cut off") from None
         raise
-    route = validate_analysis(a, duration, cfg["audio_confidence"], strict=True, lenient=lenient, accepted_topics=store.wanted_topics())
-    return a, route
+    return a

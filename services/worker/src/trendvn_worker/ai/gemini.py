@@ -10,9 +10,12 @@ from ..domain.settings import MODEL_FALLBACKS
 from .errors import RateLimited, Transient
 
 TRANSIENT = (429, 500, 502, 503, 504)
+BASE = "https://generativelanguage.googleapis.com/v1beta/"
 
 
-def gemini(store, model, body):
+def gemini(store, model, body, endpoint=None):
+    """One call to the Gemini API with the local daily budget. `endpoint` is the path after /v1beta/ when it is not the model's
+    generateContent (the current TTS models speak the Interactions API: endpoint "interactions", the model named in the body)."""
     key_file = store.root / "gemini.key"
     if not key_file.exists():
         raise ValueError("Gemini API key is not configured")
@@ -26,7 +29,7 @@ def gemini(store, model, body):
         stamp = time.time()
         db.execute("INSERT INTO api_calls VALUES(?,?,?)", (stamp, model, "started"))
     request = urllib.request.Request(
-        "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent",
+        BASE + (endpoint or "models/" + model + ":generateContent"),
         data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json", "x-goog-api-key": key_file.read_text().strip()},
     )

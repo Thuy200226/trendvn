@@ -15,7 +15,7 @@ Redirect = namedtuple("Redirect", "key err anchor", defaults=(None, None, ""))
 SETTINGS_TABS = ("home", "publish", "attention", "queue", "posted", "more", "settings")
 SWITCHES = ("processing_enabled", "publisher_enabled", "require_approval", "voiceover_enabled")
 NUMBERS = ("daily_limit", "max_age_days", "max_duration", "max_candidates_per_scan", "max_backlog", "gemini_daily_limit")
-TEXTS = ("target", "voice", "model", "tts_model", "visibility", "caption_style")
+TEXTS = ("target", "voice", "model", "tts_model", "visibility", "caption_style", "voiceover_scope", "voice_mode", "hard_sub_mask")
 
 
 def parse_windows(text):

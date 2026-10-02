@@ -4,9 +4,34 @@ import math
 
 from .route import choose_route
 from .text import clean_subtitle
+from .voices import GENDERS, TONES
 from .topics import OTHER, TOPIC_IDS, label
 
 MAX_LINE_CHARS = 350  # a subtitle line above this is refused outright (see validate_analysis)
+RESTART_BACK = 3.0  # a line that starts this many seconds before the latest end seen so far has "restarted the clock"
+RUSHED_SECONDS = 0.5  # a line on screen for less than this ...
+RUSHED_CHARS = 20  # ... with more characters than this cannot be read: it was invented, not heard (a real one: 50 characters in 0.4 s)
+
+
+def _invented(line):
+    """A line that cannot be real speech: long text squeezed into a fraction of a second."""
+    return line["end"] - line["start"] < RUSHED_SECONDS and len(str(line.get("vi", "")).strip()) > RUSHED_CHARS
+
+
+def _drop_restarted_tail(items):
+    """In the model's own order, a late line that starts long before earlier ones ended means the model restarted its clock and went on
+    writing; when most of what follows is such inventions (long text in a fraction of a second) the whole tail is dropped. Measured:
+    a 53-second skit came back with 11 real lines and 11 more at 1.0-2.1 s, which after sorting cut the first real line short and put an
+    invented one on screen at second 1.6."""
+    latest = 0.0
+    for index, line in enumerate(items):
+        if line["start"] < latest - RESTART_BACK:
+            tail = items[index:]
+            if sum(1 for t in tail if _invented(t)) >= 0.6 * len(tail):
+                return items[:index]
+            return items
+        latest = max(latest, line["end"])
+    return items
 
 
 def clean_segments(segments):
@@ -34,6 +59,7 @@ def normalize_segments(segments, duration):
         if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in (start, finish)):
             raise ValueError("Invalid subtitle time")
         items.append(dict(s, start=float(start), end=float(finish)))
+    items = [line for line in _drop_restarted_tail(items) if not _invented(line)]
     items.sort(key=lambda s: (s["start"], s["end"]))
     out, outside = [], 0
     for s in items:
@@ -57,7 +83,20 @@ def normalize_segments(segments, duration):
     return out
 
 
-def validate_analysis(a, duration, confidence=0.90, strict=False, lenient=False, accepted_topics=None):
+def clean_speaker(a):
+    """The analysis' `speaker` as {gender, tone, count, dub_ok} with safe values; anything unusable becomes "unknown"/"calm"/None/False.
+    Never raises: a voice choice is a nicety, not a reason to refuse a video."""
+    found = a.get("speaker") if isinstance(a.get("speaker"), dict) else {}
+    count = found.get("count")
+    return {
+        "gender": found.get("gender") if found.get("gender") in GENDERS else "unknown",
+        "tone": found.get("tone") if found.get("tone") in TONES else "calm",
+        "count": count if type(count) is int and 0 <= count <= 99 else None,
+        "dub_ok": found.get("dub_ok") is True,
+    }
+
+
+def validate_analysis(a, duration, confidence=0.90, strict=False, lenient=False, accepted_topics=None, voiceover_scope="narration"):
     """lenient=True is a human approval: it waives confidence/topic/sensitivity, never the structural checks.
     accepted_topics: the topics some account takes; a video about anything else needs the owner (None skips that check)."""
     allowed = ("music", "dialogue", "narration", "mixed", "silent", "uncertain")
@@ -105,5 +144,8 @@ def validate_analysis(a, duration, confidence=0.90, strict=False, lenient=False,
         kind = "silent" if not segments else "mixed"
     if kind in ("music", "silent") and a.get("requires_text_translation") and not segments:
         raise ValueError("On-screen information requires translation")
-    chosen, a["route_reason"] = choose_route(kind, bool(segments))
+    a["speaker"] = speaker = clean_speaker(a)
+    # one person talking whose voice a neutral Vietnamese one replaces without loss: dubbed when the owner allows it for such videos
+    monologue = voiceover_scope == "monologue" and speaker["dub_ok"] and speaker["count"] == 1
+    chosen, a["route_reason"] = choose_route(kind, bool(segments), monologue)
     return chosen

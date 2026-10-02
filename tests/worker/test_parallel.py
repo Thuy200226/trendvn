@@ -94,7 +94,7 @@ class RealJobsInParallelTests(StoreCase):
             time.sleep(0.05)
             return dict(ANALYSIS), "vietsub"
 
-        def render(path, folder, analysis, route, duration, voice=None):
+        def render(path, folder, analysis, route, duration, voice=None, mask="auto"):
             out = folder / "final.mp4"
             out.write_bytes(b"rendered " + folder.name.encode())
             return out
@@ -135,7 +135,7 @@ class LookAlikeUnderParallelismTests(StoreCase):
             time.sleep(0.2)  # long enough for the other thread to claim the twin meanwhile
             return dict(ANALYSIS), "vietsub"
 
-        def render(path, folder, analysis, route, duration, voice=None):
+        def render(path, folder, analysis, route, duration, voice=None, mask="auto"):
             out = folder / "final.mp4"
             out.write_bytes(b"x" + folder.name.encode())
             return out

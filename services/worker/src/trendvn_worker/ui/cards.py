@@ -22,8 +22,12 @@ def _fact_chips(job, info):
     facts.append(chip(ROUTE_LABEL.get(job["route"], job["route"] or ""), "info"))
     if info.get("reframed"):
         facts.append(chip("đã đưa vào khung dọc", "mute"))
-    if info.get("hard_subs"):
-        facts.append(chip("đã che phụ đề gốc", "mute"))
+    if info.get("voice"):
+        facts.append(chip("giọng " + str(info["voice"]), "info"))
+    if info.get("hard_subs_blurred"):
+        facts.append(chip("làm mờ phụ đề gốc khi có phụ đề Việt", "mute"))
+    elif info.get("hard_subs"):
+        facts.append(chip("phụ đề gốc giữ nguyên (không bị đè)", "mute"))
     if info.get("warning"):
         facts.append(chip(info["warning"], "warn"))
     return "".join(facts)

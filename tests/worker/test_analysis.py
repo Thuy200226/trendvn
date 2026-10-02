@@ -114,6 +114,48 @@ class SegmentNormalisationTests(unittest.TestCase):
         self.assertEqual([(s["start"], s["end"]) for s in a["segments"]], [(0.0, 3.5), (3.5, 7.0)])
 
 
+class InventedLinesTests(unittest.TestCase):
+    """From a real analysis (2026-10-02, a 53-second skit): after 11 real lines the model restarted its clock and wrote 11 more at
+    1.0-2.1 seconds; sorted in, they cut the first real line short and put an invented line on screen at second 1.6."""
+
+    REAL = [
+        (0.0, 2.0, "Lời khuyên cho mọi người:"), (2.0, 4.0, "Đừng cho bạn thân biết mật khẩu nhà."), (4.0, 5.0, "Nếu không thì..."),
+        (19.0, 21.0, "Lão Tất, cậu dán bao nhiêu cái rồi?"), (21.0, 24.0, "Một tờ có 18 cái, tôi dán hết đống này."),
+        (25.0, 29.0, "1, 2, 3, 4... 14, 15, 16, 17, 18, 19, 22."), (30.0, 31.0, "18 nhân 22 là bao nhiêu?"),
+    ]  # fmt: skip
+    INVENTED = [
+        (1.0, 1.0, "Tôi chịu thua luôn rồi đó."), (1.1, 1.1, "Suốt ngày lướt mạng, toàn học mấy trò này."),
+        (1.2, 1.2, "Bức tranh này của tôi trông có gì đó lạ lạ?"), (1.4, 1.4, "Cứ tưởng trong tủ lạnh không còn gì nữa."),
+        (1.6, 2.0, "Nó vừa nhắn bảo trong phòng vẫn còn 50-60 cái nữa."), (2.0, 2.0, "Cậu rốt cuộc đã dán bao nhiêu cái hả?"),
+    ]  # fmt: skip
+
+    def lines(self, rows):
+        return [{"start": a, "end": b, "vi": text} for a, b, text in rows]
+
+    def test_a_restarted_clock_and_its_invented_lines_are_dropped_and_the_real_ones_keep_their_time(self):
+        out = normalize_segments(self.lines(self.REAL + self.INVENTED), 53.0)
+        self.assertEqual([(s["start"], s["end"]) for s in out], [(a, b) for a, b, _ in self.REAL])
+        self.assertEqual(out[0]["vi"], "Lời khuyên cho mọi người:")  # not cut short, nothing invented in front of or inside it
+
+    def test_one_unreadable_line_is_dropped_even_without_a_restart(self):
+        rows = [(0.0, 2.0, "Xin chào các bạn"), (3.0, 3.4, "Một câu rất dài bị nhét vào chưa đầy nửa giây"), (5.0, 7.0, "Tạm biệt nhé")]
+        self.assertEqual([s["vi"] for s in normalize_segments(self.lines(rows), 10.0)], ["Xin chào các bạn", "Tạm biệt nhé"])
+
+    def test_a_legitimate_later_group_of_lines_is_kept(self):
+        """Lines grouped by speaker (each group in time order) restart the clock too, but they are real: not a degenerate tail."""
+        rows = [
+            (0.0, 3.0, "Người A nói câu một"),
+            (10.0, 14.0, "Người A nói câu hai"),
+            (2.0, 5.0, "Người B trả lời câu một"),
+            (11.0, 13.0, "Người B trả lời câu hai"),
+        ]
+        self.assertEqual(len(normalize_segments(self.lines(rows), 20.0)), 4)
+
+    def test_short_real_lines_are_not_mistaken_for_inventions(self):
+        rows = [(0.0, 0.4, "Ừ"), (1.0, 1.4, "Được thôi"), (2.0, 2.4, "Đi nào")]  # short text in short time
+        self.assertEqual(len(normalize_segments(self.lines(rows), 10.0)), 3)
+
+
 class TopicTests(unittest.TestCase):
     def a(self, **kw):
         base = {"kind": "music", "confidence": 0.99, "segments": [], "topic": "music", "sensitive": False, "caption_vi": "Giai điệu hay"}

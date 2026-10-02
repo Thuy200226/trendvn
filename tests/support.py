@@ -41,6 +41,10 @@ class StoreCase(unittest.TestCase):
         patch = mock.patch.object(pipeline, "free_bytes", lambda path: 100 << 30)
         patch.start()
         self.addCleanup(patch.stop)
+        # and shortening rushed subtitles is a model call: tests never reach the network (tests/worker/test_voiceover.py tests condense itself)
+        patch = mock.patch.object(pipeline, "condense", lambda store, cfg, segments: segments)
+        patch.start()
+        self.addCleanup(patch.stop)
 
     def tearDown(self):
         self.tmp.cleanup()

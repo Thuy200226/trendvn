@@ -66,9 +66,34 @@ def _automation_group(view):
                     switch_select("require_approval", cfg["require_approval"], "Bật — chờ tôi duyệt", "Tắt — hoàn toàn tự động"),
                 ),
                 field(
-                    "Lồng tiếng Việt cho video thuyết minh",
-                    switch_select("voiceover_enabled", cfg["voiceover_enabled"], "Bật", "Tắt — chỉ Vietsub"),
+                    "Lồng tiếng Việt",
+                    switch_select("voiceover_enabled", cfg["voiceover_enabled"], "Bật — ưu tiên khi phù hợp", "Tắt — chỉ Vietsub"),
                     "Hãy nghe thử giọng đọc trước khi bật.",
+                ),
+                field(
+                    "Lồng tiếng cho",
+                    select(
+                        "voiceover_scope",
+                        cfg["voiceover_scope"],
+                        (
+                            ("monologue", "Thuyết minh và một người nói (khi thay giọng không mất gì)"),
+                            ("narration", "Chỉ video thuyết minh"),
+                        ),
+                    ),
+                    "Hài, kịch, tranh cãi, nhiều người nói luôn giữ giọng gốc kèm Vietsub.",
+                ),
+                field(
+                    "Làm mờ phụ đề gốc",
+                    select(
+                        "hard_sub_mask",
+                        cfg["hard_sub_mask"],
+                        (
+                            ("auto", "Tự động: chỉ khi phụ đề Việt sẽ đè lên chữ gốc"),
+                            ("always", "Luôn làm mờ khi có phụ đề Việt"),
+                            ("off", "Không bao giờ làm mờ"),
+                        ),
+                    ),
+                    "Chỉ mờ đúng lúc phụ đề Việt hiện, không bao giờ cả video.",
                 ),
             )
         ),
@@ -146,7 +171,15 @@ def _gemini_group(view):
         "Gemini",
         "".join(
             (
-                field("Giọng đọc", text_input("voice", cfg["voice"], PLAIN_INPUT), "Tên giọng Gemini, ví dụ Kore, Puck, Charon."),
+                field(
+                    "Chọn giọng đọc",
+                    select(
+                        "voice_mode",
+                        cfg["voice_mode"],
+                        (("auto", "Tự động theo người nói (nam/nữ, sắc thái)"), ("fixed", "Luôn dùng giọng bên dưới")),
+                    ),
+                ),
+                field("Giọng cố định", text_input("voice", cfg["voice"], PLAIN_INPUT), "Tên giọng Gemini, ví dụ Kore, Puck, Charon."),
                 field(
                     "Hạn mức gọi Gemini / 24 giờ",
                     number_input("gemini_daily_limit", cfg["gemini_daily_limit"], 1, 500),

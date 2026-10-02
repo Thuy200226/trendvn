@@ -28,7 +28,10 @@ DEFAULTS = {
     "post_windows": [[11, 14], [19, 23]],
     "max_age_days": 7,
     "require_approval": False,
-    "voiceover_enabled": False,
+    "voiceover_enabled": True,  # voice-over is preferred wherever it fits (narration, and one person talking whose voice is replaceable)
+    "voiceover_scope": "monologue",  # "narration": only narrated videos; "monologue": also one person talking when dub_ok
+    "voice_mode": "auto",  # "auto": the voice follows the speaker (gender, tone); "fixed": always the chosen voice
+    "hard_sub_mask": "auto",  # blur the source's burned-in subtitles: "auto" only where our captions would overlap them, "always", "off"
     "gemini_daily_limit": 12,
     "publisher_challenge": False,
     "visibility": "public",
@@ -59,6 +62,13 @@ def _int(v, lo, hi, name):
     ):
         raise ValueError("%s must be an integer between %s and %s" % (name, lo, hi))
     return int(v)
+
+
+CHOICES = {
+    "voiceover_scope": ("narration", "monologue"),
+    "voice_mode": ("auto", "fixed"),
+    "hard_sub_mask": ("auto", "always", "off"),
+}
 
 
 def validate_settings(patch):
@@ -120,6 +130,10 @@ def validate_settings(patch):
         elif k == "caption_style":
             if v not in ("hook", "factual"):
                 raise ValueError("caption_style must be hook or factual")
+            out[k] = v
+        elif k in CHOICES:
+            if v not in CHOICES[k]:
+                raise ValueError("%s must be one of: %s" % (k, ", ".join(CHOICES[k])))
             out[k] = v
         elif k == "voice":
             if not isinstance(v, str) or not re.fullmatch(r"[A-Za-z]{3,20}", v):

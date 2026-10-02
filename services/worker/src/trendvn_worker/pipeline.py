@@ -6,9 +6,11 @@ import threading
 from pathlib import Path
 
 from .ai.analyzer import analyze
+from .ai.condense import CONDENSE_ABOVE, condense
 from .ai.errors import RateLimited
 from .ai.prompts import PROMPT_VERSION
 from .ai.tts import make_voice
+from .domain.hardsubs import covered_spans, hard_subtitle_band
 from .domain.readability import TOO_FAST, fit_reading_speed
 from .domain.route import REASONS
 from .files import file_hash, free_bytes
@@ -18,6 +20,8 @@ from .media.geometry import display_size, layout
 from .media.render import covered_hard_subtitles, make_poster, qc, render
 
 REASON_LIMIT = 700
+PACE_NAMES = {"slow": "nói chậm", "normal": "tốc độ tự nhiên", "fast": "nói nhanh"}
+VOICE_RETRIES = 4  # times a voice-over may be put off because Google is busy before the video goes out with subtitles
 MIN_FREE_BYTES = 512 << 20  # below this much free disk nothing new is processed: a render needs room, and a full disk stops the database
 MIN_SIDE = 64  # pixels: a 1x1 or 2x2 "video" (a tracking pixel, a broken download) cannot become a post
 TERMINAL_STATUSES = ("disabled", "blocked", "idle", "rate_limited")  # after one of these there is nothing more to do right now
@@ -120,12 +124,17 @@ def _process(store, cfg, job):
     if not approved and not str(a.get("caption_vi") or "").strip():
         raise ValueError("Gemini không soạn được mô tả tiếng Việt; cần bạn xem lại")
     a["segments"], fastest = fit_reading_speed(a["segments"], duration)
+    if (
+        route != "original" and fastest > CONDENSE_ABOVE
+    ):  # still rushing after borrowing the pauses: shorten the worst lines (one text call)
+        a["segments"], fastest = fit_reading_speed(condense(store, cfg, a["segments"]), duration)
     voice, route, why, note = _voice_or_subtitles(store, cfg, a, route, folder)
-    out = render(path, folder, a, route, duration, voice)
-    info = _checked_output(out, path, route, folder, duration)
+    out = render(path, folder, a, route, duration, voice, mask=cfg.get("hard_sub_mask", "auto"))
+    info, geo = _checked_output(out, path, route, folder, duration)
     info["why"] = why
-    if covered_hard_subtitles(a, route):
-        info["hard_subs"] = True  # the source's own burned-in subtitles were blurred out
+    _note_hard_subtitles(info, a, route, geo, cfg.get("hard_sub_mask", "auto"))
+    if voice:
+        info["voice"] = "%s, %s" % (voice["voice"], PACE_NAMES.get(voice.get("pace"), "")) if voice.get("voice") else None
     if route != "original" and a["segments"]:
         info["max_cps"] = fastest
         if fastest > TOO_FAST:
@@ -149,6 +158,15 @@ def _process(store, cfg, job):
         reason=("Đã dựng, chờ bạn duyệt" if approval else "Đã dựng, sẵn sàng đăng") + note,
     )
     return {"id": jid, "status": state, "route": route}
+
+
+def _note_hard_subtitles(info, a, route, geo, mask):
+    """What was done about the source's own burned-in subtitles, for the dashboard: seen, and whether blurred (only while our captions are on)."""
+    if route == "original" or not hard_subtitle_band(a):
+        return
+    info["hard_subs"] = True
+    if covered_hard_subtitles(a, route, geo, mask) and covered_spans(a.get("segments") or [], info.get("duration") or 0):
+        info["hard_subs_blurred"] = True
 
 
 def _source(job, cfg):
@@ -176,8 +194,28 @@ def _voice_or_subtitles(store, cfg, a, route, folder):
         return None, "vietsub", REASONS["narration_no_voice"], ""
     try:
         return make_voice(store, cfg, a, folder), "voiceover", why, ""
+    except RateLimited as e:
+        # Google is busy or throttling: the video goes back in the queue (its analysis is remembered, so waiting costs nothing) instead
+        # of losing its voice, but not for ever: after VOICE_RETRIES busy answers it goes out with subtitles
+        tries = _count_try(folder / "voice_retries")
+        if tries < VOICE_RETRIES:
+            raise
+        return None, "vietsub", REASONS["voice_failed"], " (lồng tiếng bỏ qua: Google bận %d lần, %s)" % (tries, str(e)[:80])
     except Exception as e:
         return None, "vietsub", REASONS["voice_failed"], " (lồng tiếng bỏ qua: %s)" % str(e)[:120]
+
+
+def _count_try(marker):
+    """Add one to the small counter file `marker` and return the new count (a damaged or missing file counts as zero)."""
+    try:
+        count = int(marker.read_text().strip()) + 1
+    except (OSError, ValueError):
+        count = 1
+    try:
+        marker.write_text(str(count))
+    except OSError:
+        pass
+    return count
 
 
 def _checked_output(out, source, route, folder, duration):
@@ -187,13 +225,14 @@ def _checked_output(out, source, route, folder, duration):
     if problems:
         raise ValueError("Kiểm tra chất lượng video dựng: " + "; ".join(problems))
     info["route"] = route
-    info["reframed"] = layout(*display_size(next(s for s in src_meta["streams"] if s["codec_type"] == "video")))["reframe"]
+    geo = layout(*display_size(next(s for s in src_meta["streams"] if s["codec_type"] == "video")))
+    info["reframed"] = geo["reframe"]
     try:
         make_poster(out, folder / "poster.jpg", duration)
         info["poster"] = True
     except Exception:
         info["poster"] = False
-    return info
+    return info, geo
 
 
 def _write_manifest(folder, job, cfg, analysis, route, digest, info):
