@@ -16,7 +16,7 @@ PAGE = Template("""<!doctype html><html lang="vi"><head><meta charset="utf-8">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b7a66'/%3E%3Cpath d='M16 42l12-14 8 8 14-18' stroke='white' stroke-width='6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <title>TrendVN · Bảng điều khiển</title><style>$css</style></head><body>
 <header><div class="wrap head"><div class="brand"><h1>TrendVN</h1><p class="muted">TikTok <b>@$target</b> · $clock</p></div>
-<nav class="topnav">$top<a href="$n8n" target="_blank" rel="noopener">n8n ↗</a></nav><button class="refresh ghost" onclick="location.reload()" aria-label="Làm mới">↻</button></div></header>
+<nav class="topnav">$top<a href="$n8n" target="_blank" rel="noopener">n8n ↗</a></nav><button class="refresh ghost" data-reload aria-label="Làm mới">↻</button></div></header>
 <main class="wrap">$flash
 <section data-tab="home" id="home" class="stack">$home</section>
 <section data-tab="queue" id="queue" class="stack">$queue</section>

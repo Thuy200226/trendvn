@@ -3,7 +3,21 @@
 import math
 
 from .route import choose_route
+from .text import clean_subtitle
 from .topics import OTHER, TOPIC_IDS, label
+
+
+def clean_segments(segments):
+    """Subtitle lines as they may be burned in: no links, handles, contacts, emoji or markup. A line that was only such things is
+    dropped (an emoji alone is not worth rejecting the video); an originally empty line is left for the structural check to reject."""
+    out = []
+    for s in segments:
+        if isinstance(s, dict) and isinstance(s.get("vi"), str) and s["vi"].strip():
+            s = dict(s, vi=clean_subtitle(s["vi"]))
+            if not s["vi"]:
+                continue
+        out.append(s)
+    return out
 
 
 def normalize_segments(segments, duration):
@@ -65,7 +79,11 @@ def validate_analysis(a, duration, confidence=0.90, strict=False, lenient=False,
     segments = a.get("segments", [])
     if not isinstance(segments, list) or len(segments) > 500:
         raise ValueError("Invalid segments")
-    segments = a["segments"] = normalize_segments(segments, duration) if segments else []
+    if strict and not lenient and not (isinstance(a.get("caption_vi"), str) and a["caption_vi"].strip()):
+        raise ValueError("Invalid caption")
+    if not isinstance(a.get("caption_vi"), str):
+        a["caption_vi"] = ""  # a human approval keeps the video; the post then falls back to the source title
+    segments = a["segments"] = normalize_segments(clean_segments(segments), duration) if segments else []
     end = 0
     for s in segments:
         start, finish = s.get("start"), s.get("end")

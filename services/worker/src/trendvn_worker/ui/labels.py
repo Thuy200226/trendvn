@@ -77,6 +77,8 @@ REASONS = (
     ("Subtitle timestamps", "Mốc thời gian phụ đề không hợp lệ"),
     ("Topic/sensitivity missing", "Gemini không trả đủ thông tin chủ đề"),
     ("Gemini did not return valid", "Gemini trả dữ liệu không đọc được"),
+    ("Gemini returned no analysis", "Gemini từ chối hoặc không trả lời video này"),
+    ("Invalid caption", "Gemini không viết được mô tả cho video"),
     ("Processing interrupted", "Xử lý bị gián đoạn"),
     ("Local rolling 24-hour limit", "Hết hạn mức Gemini trong 24 giờ; sẽ tự xử lý lại"),
     ("Initial observation only", "Chỉ ghi mốc ban đầu"),

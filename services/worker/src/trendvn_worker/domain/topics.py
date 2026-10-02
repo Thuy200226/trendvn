@@ -95,7 +95,7 @@ TOPICS = (
         "news",
         "Tin nóng, xã hội, drama",
         "breaking news, current events, politics, social controversy, scandals, conflict and drama caught on camera",
-        r"新闻|热搜|吵架|冲突|曝光|事件|争议|社会|突发|现场|监控|警方|通报|维权|反转|news|breaking|drama|scandal|tin nóng|căng",
+        r"新闻|热搜|吵架|冲突|事件|争议|突发|警方|通报|维权|news|scandal|tin nóng",
     ),
     Topic(
         "entertainment",
@@ -105,6 +105,24 @@ TOPICS = (
     ),
 )
 
+# the hashtag a viewer of that topic searches for (Vietnamese, no accents): the fallback when the model suggests too few tags
+TOPIC_TAGS = {
+    "music": "nhac",
+    "comedy": "haihuoc",
+    "pets": "thucung",
+    "food": "amthuc",
+    "travel": "dulich",
+    "family": "giadinh",
+    "beauty": "lamdep",
+    "sports": "thethao",
+    "gaming": "game",
+    "anime": "anime",
+    "movies": "phim",
+    "lifestyle": "doisong",
+    "knowledge": "kienthuc",
+    "news": "tinnong",
+    "entertainment": "giaitri",
+}
 TOPIC_IDS = tuple(t.id for t in TOPICS)
 TOPIC_LABEL = {t.id: t.vi for t in TOPICS}
 BY_ID = {t.id: t for t in TOPICS}

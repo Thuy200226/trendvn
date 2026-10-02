@@ -126,7 +126,7 @@ def task_panel(tasks, now=None, kinds=None):
 
     steps = "".join(
         '<li class="%s"><span class="ti">%s</span><div><b>%s</b>%s</div></li>'
-        % (s["state"], TASK_ICON.get(s["state"], ""), E(s["name"]), ("<small>%s</small>" % link(s["detail"])) if s.get("detail") else "")
+        % (E(s["state"]), TASK_ICON.get(s["state"], ""), E(s["name"]), ("<small>%s</small>" % link(s["detail"])) if s.get("detail") else "")
         for s in task["steps"]
     )
     if not steps and task.get("error"):
@@ -135,7 +135,7 @@ def task_panel(tasks, now=None, kinds=None):
     return (
         '<div class="taskpanel %s" data-running="%d"><div class="row"><b>%s</b>%s</div><ul class="steps">%s</ul><small class="muted">Bắt đầu %s%s</small></div>'
         % (
-            task["state"],
+            E(task["state"]),
             1 if running else 0,
             E(TASK_LABELS.get(task["kind"], task["kind"])),
             state_chip_,

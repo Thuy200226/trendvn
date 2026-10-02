@@ -1,6 +1,8 @@
 # TrendVN worker: queue, rules, Gemini calls, ffmpeg rendering and the dashboard. Standard library only (no pip step).
 # Build context is this folder:  docker compose build worker   (or: ./trendvn build)
-FROM python:3.12-slim
+# Pinned by digest so a rebuild gives the same base bytes (checked 2026-10-02). To take a newer base on purpose:
+#   docker buildx imagetools inspect python:3.12-slim    -> copy the new "Digest:" here, then ./trendvn test container && ./trendvn update
+FROM python:3.12-slim@sha256:dddfd7e07f9d15aeeca61529320492139d21cac7f0070c00609243e51e4e0016
 
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="trendvn-worker" \

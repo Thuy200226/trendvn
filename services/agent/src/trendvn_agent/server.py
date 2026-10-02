@@ -13,6 +13,8 @@ from .worker_client import worker, worker_get
 BIND = ENV.get("TRENDVN_AGENT_BIND", "172.20.0.1")
 PORT = int(ENV.get("TRENDVN_AGENT_PORT", "5682"))
 browser_lock = threading.Lock()  # one Chrome job at a time: profiles cannot be shared and sites throttle parallel scans
+MAX_BODY = 1024 * 1024  # a job request is a few small fields; anything bigger is refused before it is read
+SOCKET_TIMEOUT = 30  # seconds a caller may stall mid-request
 
 
 # ------------------------------------------------------------------ jobs (imports are lazy: Playwright loads only when a job runs)
@@ -81,6 +83,10 @@ ROUTES = {
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "TrendVNAgent/1.0"
+    timeout = SOCKET_TIMEOUT
+
+    def version_string(self):
+        return "TrendVNAgent"
 
     def log_message(self, fmt, *args):
         pass
@@ -108,7 +114,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(401, {"error": "Authentication required"})
         try:
             length = int(self.headers.get("Content-Length", "0"))
+            if not 0 <= length <= MAX_BODY:
+                return self.send(413, {"error": "Request too large"})
             payload = json.loads(self.rfile.read(length) or b"{}") if length else {}
+            if not isinstance(payload, dict):
+                raise ValueError("payload must be an object")
         except Exception:
             return self.send(400, {"error": "Invalid JSON"})
         job = ROUTES.get(self.path)

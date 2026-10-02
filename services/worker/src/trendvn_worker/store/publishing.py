@@ -1,12 +1,12 @@
 """Publishing: claim a rendered video, record the outcome, and the safety rails around the account."""
 
 import json
-import re
 import time
 import uuid
 
 from ..domain.accounts import accepts, effective
 from ..domain.captions import build_caption
+from ..domain.platforms import valid_post_url
 
 
 class PublishingMixin:
@@ -206,7 +206,7 @@ class PublishingMixin:
         states = {"published": "published", "failed": "ready", "deferred": "ready", "unknown": "publish_unknown", "duplicate": "duplicate"}
         if outcome not in states:
             raise ValueError("Invalid publish outcome")
-        if url and not re.fullmatch(r'https://[A-Za-z0-9.-]+\.tiktok\.com/[^\s"<>]{1,300}', url):
+        if url and not valid_post_url(url):
             raise ValueError("Invalid publish URL")
         parked = False
         with self.transaction() as db:
@@ -254,6 +254,8 @@ class PublishingMixin:
         """Operator/agent verified the account: mark an uncertain publish as published or as not posted."""
         if outcome not in ("published", "failed"):
             raise ValueError("Invalid outcome")
+        if url and not valid_post_url(url):
+            raise ValueError("Invalid publish URL")  # the link is shown on the dashboard: only a TikTok https link is accepted
         with self.transaction() as db:
             row = db.execute("SELECT state,prev_state FROM jobs WHERE id=?", (jid,)).fetchone()
             if not row or row["state"] != "publish_unknown":

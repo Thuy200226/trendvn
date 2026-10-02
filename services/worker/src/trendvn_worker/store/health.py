@@ -4,6 +4,18 @@ import json
 import time
 
 HEARTBEAT_MAX_AGE = 30 * 3600
+HEARTBEAT_MAX_CHARS = 6000  # a heartbeat is a status line, not a log; the agent's detail is cut to this before it is stored
+
+
+def bounded(detail):
+    """`detail` as it will be stored: only dict/list/str survive, and an oversize one is replaced by a truncated text (cutting the JSON
+    itself in the middle would leave a settings row that cannot be read back)."""
+    if not isinstance(detail, (dict, list, str)):
+        return None
+    text = json.dumps(detail, ensure_ascii=False)
+    if len(text) <= HEARTBEAT_MAX_CHARS:
+        return detail
+    return {"text": text[:1500] + "…", "truncated": True}
 
 
 class HealthMixin:
@@ -12,16 +24,16 @@ class HealthMixin:
     def heartbeat(self, component, ok, detail=None):
         if component not in ("discovery", "publisher"):
             raise ValueError("Unknown component")
-        value = {"at": time.time(), "ok": bool(ok), "detail": detail if isinstance(detail, (dict, list, str)) else None}
+        value = {"at": time.time(), "ok": bool(ok), "detail": bounded(detail)}
         with self.transaction() as db:
             prev = db.execute("SELECT value FROM settings WHERE key=?", ("hb_" + component,)).fetchone()
-            before = json.loads(prev["value"]).get("detail") if prev else None
+            before = self._stored_detail(prev["value"]) if prev else None
             if isinstance(value["detail"], dict) and isinstance(before, dict):
                 merged = {**before, **value["detail"]}  # a partial run must not erase what other sources last reported
                 if isinstance(before.get("login"), dict) and isinstance(value["detail"].get("login"), dict):
                     merged["login"] = {**before["login"], **value["detail"]["login"]}
-                value["detail"] = merged
-            db.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", ("hb_" + component, json.dumps(value, ensure_ascii=False)[:8000]))
+                value["detail"] = bounded(merged)
+            db.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", ("hb_" + component, json.dumps(value, ensure_ascii=False)))
         if not ok:
             names = {"discovery": "Bộ thu thập", "publisher": "Trình đăng TikTok"}
             text = detail.get("text") if isinstance(detail, dict) and detail.get("text") else detail
@@ -30,6 +42,14 @@ class HealthMixin:
                 "🔌 %s cần chú ý: %s" % (names[component], text if isinstance(text, str) else json.dumps(text, ensure_ascii=False)[:300]),
                 component,
             )
+
+    @staticmethod
+    def _stored_detail(raw):
+        try:
+            value = json.loads(raw)
+        except ValueError:
+            return None
+        return value.get("detail") if isinstance(value, dict) else None
 
     def component_state(self, component, cfg=None):
         cfg = cfg or self.settings()

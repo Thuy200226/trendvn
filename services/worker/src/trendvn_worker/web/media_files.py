@@ -1,11 +1,16 @@
 """Serving files from the data folder to the dashboard (videos, posters, screenshots) with HTTP Range support for seeking."""
 
-import mimetypes
 import re
 from pathlib import Path
 from urllib.parse import unquote
 
 CHUNK = 1 << 16
+SERVED_TYPES = {
+    ".mp4": "video/mp4",
+    ".jpg": "image/jpeg",
+    ".png": "image/png",
+    ".wav": "audio/wav",
+}  # nothing else is ever sent to a browser
 SHOT_NAME = re.compile(r"shot_\d{9,12}\.png")
 JOB_ID = re.compile(r"[0-9a-f]{32}")
 
@@ -58,7 +63,7 @@ def serve(handler, store, path):
         return handler.send(416, {"error": "Bad range"}, extra={"Content-Range": "bytes */%d" % size})
     start, end, partial = span
     handler.send_response(206 if partial else 200)
-    handler.send_header("Content-Type", mimetypes.guess_type(str(file))[0] or "application/octet-stream")
+    handler.send_header("Content-Type", SERVED_TYPES.get(file.suffix.lower(), "application/octet-stream"))
     handler.send_header("Accept-Ranges", "bytes")
     handler.send_header("Content-Length", str(end - start + 1))
     if partial:

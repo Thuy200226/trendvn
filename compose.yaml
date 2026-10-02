@@ -12,12 +12,15 @@ x-logging: &logging
 x-hardening: &hardening
   restart: unless-stopped
   security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  pids_limit: 512                                     # a runaway process tree cannot starve the machine
   logging: *logging
 
 services:
   n8n:
     <<: *hardening
     image: docker.n8n.io/n8nio/n8n:2.38.7          # pinned: workflows in n8n/workflows are built and tested against this version
+    mem_limit: 2g                                     # measured ~0.4 GB idle; a leak is restarted instead of eating the machine
     ports:
       - "${TRENDVN_BIND:-127.0.0.1}:${TRENDVN_N8N_PORT:-5680}:5678"
     environment:
@@ -59,7 +62,7 @@ services:
         VERSION: ${TRENDVN_VERSION:-dev}
     user: "${TRENDVN_UID:-1000}:${TRENDVN_GID:-1000}"
     init: true
-    cap_drop: [ALL]
+    mem_limit: 4g                                     # two parallel ffmpeg renders + the 512 MB /tmp below fit comfortably
     read_only: true                                   # the image is immutable; everything the worker writes goes to /data or /tmp
     tmpfs:
       - /tmp:size=512m
@@ -70,12 +73,16 @@ services:
       TZ: ${TRENDVN_TZ:-Asia/Ho_Chi_Minh}
       TRENDVN_TOKEN: ${TRENDVN_TOKEN:?Chưa có .env - hãy chạy ./trendvn install}
       TRENDVN_DATA: /data
+      TRENDVN_GATEWAY: ${TRENDVN_GATEWAY:-172.20.0.1}   # a connection from here is "this machine" (the published port arrives via the bridge gateway)
+      MALLOC_ARENA_MAX: "2"                           # glibc keeps per-thread arenas otherwise: noticeably less memory for a threaded server
       TRENDVN_PUBLIC_PORT: ${TRENDVN_WORKER_PORT:-5681}
       TRENDVN_AGENT_PORT: ${TRENDVN_AGENT_PORT:-5682}
       TRENDVN_N8N_PORT: ${TRENDVN_N8N_PORT:-5680}
       TRENDVN_PROCESS_PARALLEL: ${TRENDVN_PROCESS_PARALLEL:-2}
       TRENDVN_UI_HOSTS: ${TRENDVN_UI_HOSTS:-}
       TRENDVN_UI_PASSWORD: ${TRENDVN_UI_PASSWORD:-}
+      TRENDVN_UI_HTTPS: ${TRENDVN_UI_HTTPS:-}
+      TRENDVN_TRUSTED_PEERS: ${TRENDVN_TRUSTED_PEERS:-}
       TRENDVN_TELEGRAM_TOKEN: ${TRENDVN_TELEGRAM_TOKEN:-}
       TRENDVN_TELEGRAM_CHAT: ${TRENDVN_TELEGRAM_CHAT:-}
       TRENDVN_NOTIFY_WEBHOOK: ${TRENDVN_NOTIFY_WEBHOOK:-}

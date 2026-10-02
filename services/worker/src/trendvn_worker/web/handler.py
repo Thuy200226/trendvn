@@ -12,17 +12,22 @@ from . import api, forms, media_files
 from .log import log
 from .pages import dashboard_html
 from .responses import ResponseMixin
-from .security import SESSION_COOKIE, same
+from .security import SESSION_COOKIE, SESSION_SECONDS, same
 
 MAX_BODY = 2 * 1024 * 1024
 LOGIN_FORM_MAX = 4096
 # polled by the page or by Docker every few seconds: not worth a log line
 QUIET_PATHS = ("/health", "/fragment/", "/media/", "/favicon")
+SOCKET_TIMEOUT = 30  # seconds a client may stall mid-request before its connection is dropped (slow-client protection)
 
 
 class Handler(ResponseMixin, BaseHTTPRequestHandler):
     server_version = "TrendVN/" + VERSION
+    timeout = SOCKET_TIMEOUT
     app = None  # bound to the running App by web.server.make_handler
+
+    def version_string(self):  # no Python version in the Server header
+        return "TrendVN"
 
     # ------------------------------------------------------------------ logging
     def log_request(self, code="-", size="-"):
@@ -34,7 +39,8 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
             return
         if path.startswith(QUIET_PATHS) and not code.startswith(("4", "5")):
             return
-        log("%s %s -> %s" % (command, path, code))
+        source = " from " + self.client_address[0] if code in ("401", "403") else ""  # who is knocking
+        log("%s %s -> %s%s" % (command, path, code, source))
 
     def log_message(self, fmt, *args):  # malformed requests and other server-level complaints
         log("http: " + (fmt % args))
@@ -52,7 +58,13 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
         return self.access.host_ok(self.headers)
 
     def local_ui(self):
-        return self.access.local_ui(self.headers)
+        return self.access.local_ui(self.headers, self.client_address[0])
+
+    def wrong_peer(self):
+        """The Host header claims localhost but the connection came from somewhere that is not this machine."""
+        return (
+            self.headers.get("Host", "") in self.app.config.loopback_hosts and self.client_address[0] not in self.app.config.trusted_peers
+        )
 
     def api_allowed(self):
         return self.access.authorized(self.headers) or self.local_ui()
@@ -75,6 +87,19 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
         path = url.path
         if path == "/health":
             return self.send(200, {"ok": True, "project": "trendvn", "version": VERSION})
+        if path in ("/", "/login") and self.wrong_peer():
+            peer = self.client_address[0]
+            log(
+                "dashboard refused: Host says this machine but the connection came from %s (set TRENDVN_TRUSTED_PEERS if that is you)"
+                % peer
+            )
+            return self.send(
+                403,
+                {
+                    "error": "Kết nối từ %s không phải máy này. Nếu đây đúng là máy của bạn, thêm địa chỉ đó vào TRENDVN_TRUSTED_PEERS trong .env"
+                    % peer
+                },
+            )
         if path == "/login" and self.host_ok() and not self.local_ui():
             if not self.app.config.ui_password:
                 return self.send(403, {"error": "Đặt TRENDVN_UI_PASSWORD trong .env để mở bảng điều khiển từ máy khác"})
@@ -103,6 +128,8 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/login":
             return self.login_post()
+        if path == "/logout":
+            return self.logout()
         try:
             length = int(self.headers.get("Content-Length", "0"))
             if not 0 < length <= MAX_BODY:
@@ -140,6 +167,16 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
             return self.send(409, {"error": str(busy)})
 
     # ------------------------------------------------------------------ password login (only for hosts other than this machine)
+    def session_cookie(self, value, max_age):
+        secure = "; Secure" if self.app.config.secure_cookie else ""
+        return "%s=%s; HttpOnly; SameSite=Strict; Path=/; Max-Age=%d%s" % (SESSION_COOKIE, value, max_age, secure)
+
+    def logout(self):
+        """Ends the password session in this browser (a form post from the dashboard itself)."""
+        if not self.access.form_origin_ok(self.headers):
+            return self.send(403, {"error": "Local form only"})
+        return self.redirect_to("/login", self.session_cookie("", 0))
+
     def login_page(self, message=""):
         return self.send(200, ui.login_page(message), "text/html; charset=utf-8")
 
@@ -156,8 +193,7 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
             form = {}
         if same(form.get("password", [""])[0], self.app.config.ui_password):
             self.access.login_succeeded(ip)
-            cookie = "%s=%s; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000" % (SESSION_COOKIE, self.access.session_value)
-            return self.redirect_to("/", cookie)
+            return self.redirect_to("/", self.session_cookie(self.access.session_value, SESSION_SECONDS))
         self.access.login_failed(ip)
         time.sleep(1)  # slow down guessing
         return self.login_page("Mật khẩu chưa đúng.")

@@ -14,6 +14,8 @@ class WebConfig:
     ui_hosts: frozenset  # Host headers the dashboard answers to
     loopback_hosts: frozenset  # the subset that is "this machine": no password needed
     ui_password: str
+    trusted_peers: frozenset = frozenset({"127.0.0.1", "::1"})  # connection sources that count as "this machine"
+    secure_cookie: bool = False  # mark the password session cookie Secure (set when a TLS proxy fronts the dashboard)
 
     @property
     def ui_origins(self):
@@ -28,6 +30,7 @@ class WebConfig:
         public_port = env.get("TRENDVN_PUBLIC_PORT", "5681")
         loopback = frozenset({"localhost:" + public_port, "127.0.0.1:" + public_port, "localhost:8080"})
         extra = {h.strip() for h in env.get("TRENDVN_UI_HOSTS", "").split(",") if h.strip()}  # hosts you deliberately expose
+        peers = {p.strip() for p in env.get("TRENDVN_TRUSTED_PEERS", "").split(",") if p.strip()}  # e.g. Docker Desktop's VM address
         return cls(
             token=token,
             data_dir=env.get("TRENDVN_DATA", "./data"),
@@ -37,4 +40,7 @@ class WebConfig:
             ui_hosts=frozenset(loopback | extra),
             loopback_hosts=loopback,
             ui_password=env.get("TRENDVN_UI_PASSWORD", ""),
+            # Docker hands a connection that came through the published port to the container with the bridge gateway as its source
+            trusted_peers=frozenset({"127.0.0.1", "::1", "::ffff:127.0.0.1", env.get("TRENDVN_GATEWAY", "172.20.0.1")} | peers),
+            secure_cookie=env.get("TRENDVN_UI_HTTPS", "") == "1",
         )

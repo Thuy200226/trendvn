@@ -17,6 +17,8 @@ class FeedbackMixin:
         now, matched = time.time(), 0
         with self.transaction() as db:
             for it in items:
+                if not isinstance(it, dict):
+                    continue
                 vid = str(it.get("video_id", ""))
                 if not re.fullmatch(r"\d{6,25}", vid):
                     continue

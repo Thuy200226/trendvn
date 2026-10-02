@@ -32,7 +32,7 @@ def sources(view):
     for platform, (name, country) in PLATFORM.items():
         states = d["by_platform"].get(platform, {})
         info = detail.get(platform)
-        text = json.dumps(info, ensure_ascii=False) if isinstance(info, dict) else (info or "")
+        text = info if isinstance(info, str) else (json.dumps(info, ensure_ascii=False) if info else "")
         skipped = isinstance(info, str) and "IP" in info
         tone = "warn" if skipped else ("good" if last_scan.get(platform) else "mute")
         label = "Cần IP %s" % country if skipped else ("Đang thu thập" if last_scan.get(platform) else "Chưa quét")

@@ -6,7 +6,7 @@
 
 - Bật "Duyệt tay trước khi đăng" trong thời gian đầu và xem từng video.
 - Ưu tiên video có âm nhạc gốc của chính người làm hoặc giải trí không dùng nhạc thương mại; hạ "Số bài mỗi ngày" xuống thấp.
-- Giữ nguyên quy tắc "Cần duyệt" cho nội dung nhạy cảm/lệch chủ đề (mặc định đã bật).
+- Chỉ chạm "giới hạn cứng" (tình dục, trẻ em gặp nguy, máu me thật, thù ghét, tự hại/tội phạm, lời khuyên nguy hiểm, đời tư) mới bị chặn chờ bạn; chính trị, drama, xung đột, tin nóng được đăng bình thường. Nội dung càng gây tranh cãi thì rủi ro bị gỡ/giảm phân phối càng cao, đó là đánh đổi bạn đã chọn.
 
 **Cách làm dựa trên trình duyệt** (không API) phụ thuộc giao diện các trang; các nền tảng có thể đổi giao diện hoặc chặn tự động hóa. Hệ thống được thiết kế để khi gặp bất thường thì *dừng và báo*, không cố vượt.
 
@@ -21,7 +21,7 @@
 | Đăng khi không chắc | `publish_unknown` chặn mọi lần đăng sau đó; không tự thử lại bài đã bấm Đăng |
 | Đăng ngoài luật | Lịch tự động: công tắc, giờ vàng, giới hạn ngày, giãn cách đều kiểm tra ở worker trong một giao dịch. **Đăng thủ công** (nút Đăng ngay) bỏ qua các luật đó vì bạn đã bấm, nhưng vẫn bị chặn khi có một bài đang đăng, có bài chưa xác nhận, hoặc TikTok đang đòi xác minh; mỗi lần bấm chỉ đăng đúng video đã chọn (bấm đúp không đăng hai lần) |
 | Đăng file bị đổi | Hash SHA-256 của `final.mp4` phải khớp lúc dựng |
-| Tin lời trong video | Prompt coi video là dữ liệu không đáng tin; đầu ra Gemini bị kiểm tra cứng lại |
+| Tin lời trong video | Prompt coi video là dữ liệu không đáng tin và nhắc lại ngay sau video; đầu ra Gemini bị kiểm tra cứng lại: từ chối khóa JSON lặp, nhiều đối tượng, mô tả không phải chuỗi; mô tả và phụ đề bị lọc liên kết, @tên, số điện thoại, email, ký tự ẩn/đảo chiều (`domain/text.py`) |
 
 ## 3. Bề mặt tấn công và biện pháp
 
@@ -29,17 +29,18 @@
 |---|---|
 | **Cổng dịch vụ** | Mặc định chỉ `127.0.0.1`. Agent chỉ nghe trên địa chỉ cầu nối Docker của dự án, không lộ ra LAN |
 | **API worker và agent** | Bearer token 256-bit (`TRENDVN_TOKEN`), so sánh thời gian hằng (`hmac.compare_digest`) |
-| **Bảng điều khiển** | Mở không mật khẩu chỉ trên chính máy này; mọi `Host` khác trong `TRENDVN_UI_HOSTS` bắt buộc `TRENDVN_UI_PASSWORD` (cookie phiên HttpOnly SameSite=Strict, khóa 1 phút sau 5 lần sai), không đặt mật khẩu thì bị từ chối. Chỉ trả lời `Host` trong danh sách cho phép; mọi form kiểm tra `Origin` và token CSRF; tiêu đề CSP, `X-Frame-Options: DENY`, `nosniff`; mọi giá trị hiển thị đều được escape (có test chống chèn mã) |
+| **Bảng điều khiển** | Mở không mật khẩu chỉ khi `Host` là localhost **và** kết nối đến từ chính máy này (127.0.0.1, `::1` hoặc cổng cầu nối Docker của dự án); một `Host` giả từ mạng không đủ. Mọi `Host` khác trong `TRENDVN_UI_HOSTS` bắt buộc `TRENDVN_UI_PASSWORD` (cookie phiên HttpOnly SameSite=Strict, hiệu lực 7 ngày, gắn với mật khẩu nên đổi mật khẩu là đăng xuất tất cả, có `/logout`, khóa 1 phút sau 5 lần sai), không đặt mật khẩu thì bị từ chối. Chỉ trả lời `Host` trong danh sách cho phép; mọi form kiểm tra `Origin` và token CSRF; CSP không còn `script-src 'unsafe-inline'` (script duy nhất được phép theo mã băm, không có `onclick` trong HTML), `base-uri 'none'`, `Permissions-Policy`, `X-Frame-Options: DENY`, `nosniff`; mọi giá trị hiển thị đều được escape (có test chống chèn mã) |
+| **Kết nối HTTP** | Hết hạn socket 30 giây (chống client treo), tối đa 48 luồng cùng lúc (dư thì trả 503), hàng đợi nghe 64, thân yêu cầu tối đa 2 MiB (worker) / 1 MiB (agent), không lộ phiên bản Python; log làm sạch ký tự điều khiển, và ghi địa chỉ nguồn của mọi 401/403 |
 | **Phát video xem trước** | Chỉ đường dẫn nằm trong `data/worker/`, id phải là 32 ký tự hex, hỗ trợ Range, chỉ từ giao diện nội bộ |
 | **Cài đặt** | Mỗi khóa cho phép đổi có kiểu và khoảng giá trị chặt; khóa lạ bị từ chối (`validate_settings`) |
-| **Tải video** | Chỉ HTTPS, chỉ tên miền CDN của chính nền tảng (`CDN_SUFFIXES`), giới hạn 250 MB, phải là MP4 thật (kiểm tra `ftyp`), ghi qua file `.part` rồi đổi tên |
+| **Tải video** | Chỉ HTTPS, cú pháp URL chặt (không `\`, không `@`, không cổng, không địa chỉ IP, không khoảng trắng/ký tự điều khiển), chỉ tên miền CDN của chính nền tảng (`CDN_SUFFIXES`), giới hạn 250 MB, phải là MP4 thật (kiểm tra `ftyp` trên 12 byte đầu), ghi qua file `.part` rồi đổi tên. Proxy của yt-dlp đi qua biến môi trường, không nằm trên dòng lệnh (`ps` không thấy mật khẩu) |
 | **Đường dẫn file** | `attach` chỉ nhận tên file an toàn trong `inbox/`; chống `..` |
-| **Thông báo** | Webhook/ntfy chỉ nhận `https`, từ chối địa chỉ nội bộ/riêng tư (chống SSRF); bí mật lưu `data/worker/notify.json` mode 0600, không bao giờ trả về qua API |
+| **Thông báo** | Webhook/ntfy chỉ nhận `https` trên tên miền công khai (không IP dưới mọi dạng, không `localhost`/`.local`/`.internal`), lúc gửi tên phải phân giải ra địa chỉ công khai, không đi theo chuyển hướng 3xx, tin nhắn không bao giờ @everyone (`allowed_mentions`); bí mật lưu `data/worker/notify.json` mode 0600, không bao giờ trả về qua API |
 | **Khóa Gemini** | `data/worker/gemini.key` mode 0600; không ghi log, không gửi vào n8n; khóa chỉ đi trong header gửi tới Google. Khi lỗi, chỉ hiển thị dòng `message` do Google trả về (không bao giờ chứa khóa) |
 | **Nội dung đầu vào (n8n webhook 10)** | Bắt buộc xác thực; JSON không thể ra lệnh đăng: chỉ đưa video vào hàng đợi sau khi qua mọi kiểm tra |
 | **n8n** | `N8N_ENCRYPTION_KEY` riêng cho dự án, tắt telemetry, tài khoản chủ do bạn tạo, workflow xuất không chứa bí mật |
 | **Cô lập** | n8n, volume, mạng, container, thông tin xác thực đều riêng, không đọc gì từ dự án khác |
-| **Container** | worker chạy bằng uid của bạn (không root), root filesystem chỉ đọc, bỏ mọi Linux capability, `no-new-privileges`; log tự xoay vòng nên không đầy đĩa |
+| **Container** | worker chạy bằng uid của bạn (không root), root filesystem chỉ đọc; cả hai container bỏ mọi Linux capability, `no-new-privileges`, giới hạn RAM (worker 4 GB, n8n 2 GB) và số tiến trình (512); log tự xoay vòng nên không đầy đĩa |
 
 ## 4. Bí mật ở đâu, cách bảo vệ
 
@@ -68,3 +69,16 @@ Nếu nghi ngờ lộ `TRENDVN_TOKEN`: sửa giá trị trong `.env`, chạy `./
 - Không xác nhận bản quyền hoặc tính đúng của nội dung; độ chắc chắn của Gemini không phải sự cho phép.
 - Không kiểm soát việc TikTok đổi giao diện (trình đăng có thể hỏng; khi hỏng, bài không bị đăng nhầm).
 - Không thay thế giới hạn chi phí của Google; hạn mức 12 lần/24 giờ chỉ là chốt chặn cục bộ.
+
+## 7. Rủi ro đã biết và được chấp nhận (cập nhật 2026-10-02)
+
+| Rủi ro | Vì sao chấp nhận | Giảm thiểu |
+|---|---|---|
+| Một token dùng chung cho n8n, worker và agent | Hệ thống một chủ, một máy; tách quyền cần thêm bộ cấp phát và sẽ làm phức tạp việc cài đặt | Token 256-bit trong `.env` (0600); cổng chỉ nghe localhost và cầu nối riêng; lộ token thì đổi theo mục 4 |
+| Người có token có thể bấm "đăng ngay" qua API, bỏ qua lịch tự động | Đó chính là nút đăng thủ công; vẫn bị chặn khi có bài đang đăng/chưa xác nhận/đang bị xác minh | Chỉ chủ có token |
+| yt-dlp không ghim phiên bản | Instagram đổi liên tục, bản cũ hỏng trong vài tuần | Chỉ chạy với URL đã qua kiểm tra miền, kết quả vẫn phải là MP4 thật; cập nhật chủ động bằng `./trendvn update` |
+| Phân giải DNS lúc gửi thông báo và lúc kết nối là hai bước (DNS rebinding) | Kênh chỉ do chủ cấu hình; chặn hoàn toàn cần tự kết nối theo IP | Tên miền công khai bắt buộc, không IP, không theo chuyển hướng, kiểm tra lại địa chỉ ngay trước khi gửi |
+| `style-src 'unsafe-inline'` còn trong CSP | Giao diện dùng thuộc tính `style` ở nhiều nơi; thay bằng lớp CSS là việc lớn, lợi ích nhỏ vì script đã bị khóa | Mọi giá trị hiển thị được escape; không có script nội tuyến ngoài file đã băm |
+| Không có TLS giữa trình duyệt và bảng điều khiển ở localhost | Cùng máy; TLS cần chứng chỉ | Khi mở ra ngoài, dùng đường hầm SSH hoặc proxy TLS và đặt `TRENDVN_UI_HTTPS=1` |
+| Docker Desktop (macOS/Windows) có thể trình địa chỉ nguồn khác cổng cầu nối | Chưa kiểm chứng trên máy thật | Nếu bảng điều khiển báo "không phải máy này", thêm địa chỉ đó vào `TRENDVN_TRUSTED_PEERS` (thông báo có ghi sẵn địa chỉ) |
+| `PrivateTmp` cho dịch vụ agent | Chrome có cửa sổ cần ổ cắm X11 trong `/tmp`; cô lập `/tmp` làm hỏng nó | `NoNewPrivileges=true`; agent chỉ nghe cầu nối riêng |

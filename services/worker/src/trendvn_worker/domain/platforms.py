@@ -1,5 +1,6 @@
 """Supported source platforms and what makes a source video URL canonical."""
 
+import re
 from urllib.parse import urlsplit, urlunsplit
 
 PLATFORMS = {"douyin": ("douyin.com",), "kuaishou": ("kuaishou.com",), "tiktok": ("tiktok.com",), "instagram": ("instagram.com",)}
@@ -23,3 +24,11 @@ def canonical_url(platform, value):
     if host in ("vm.tiktok.com", "vt.tiktok.com", "v.douyin.com", "v.kuaishou.com"):
         raise ValueError("Resolve short share link to canonical video URL first")
     return urlunsplit(("https", host, u.path.rstrip("/"), "", ""))
+
+
+POST_URL = re.compile(r'https://[A-Za-z0-9.-]+\.tiktok\.com/[^\s"<>\\]{1,300}')
+
+
+def valid_post_url(url):
+    """A link to a published TikTok post as the owner's browser would show it (stored and later rendered as a link)."""
+    return bool(POST_URL.fullmatch(url or ""))

@@ -4,10 +4,13 @@ import gzip
 import json
 from urllib.parse import quote
 
+from ..ui.assets import JS_SHA256
+
+# The one inline script is allowed by its hash (computed from the real file), so an injected script would not run.
 CONTENT_SECURITY_POLICY = (
-    "default-src 'self'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
-    "media-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'"
-)
+    "default-src 'self'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'sha256-%s'; "
+    "media-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
+) % JS_SHA256
 GZIP_MIN_BYTES = 1500
 
 
@@ -30,6 +33,8 @@ class ResponseMixin:
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
         # 'no-referrer' would make Chrome send `Origin: null` on form posts, which once broke every button
         self.send_header("Referrer-Policy", "same-origin")
         if compress:

@@ -103,6 +103,7 @@ class SegmentNormalisationTests(unittest.TestCase):
             "confidence": 0.99,
             "topic": "entertainment",
             "sensitive": False,
+            "caption_vi": "Mô tả đủ dài",
             "segments": [
                 {"start": 0.0, "end": 4.0, "vi": "a"},
                 {"start": 3.5, "end": 7.0, "vi": "b"},
@@ -115,7 +116,7 @@ class SegmentNormalisationTests(unittest.TestCase):
 
 class TopicTests(unittest.TestCase):
     def a(self, **kw):
-        base = {"kind": "music", "confidence": 0.99, "segments": [], "topic": "music", "sensitive": False}
+        base = {"kind": "music", "confidence": 0.99, "segments": [], "topic": "music", "sensitive": False, "caption_vi": "Giai điệu hay"}
         return dict(base, **kw)
 
     def test_strict_requires_topic_fields(self):

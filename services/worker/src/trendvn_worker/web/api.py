@@ -40,8 +40,16 @@ def handle(app, path, payload):
 
 
 def _job_id(value):
-    if value is not None and not JOB_ID.fullmatch(str(value)):
+    if value is not None and not (isinstance(value, str) and JOB_ID.fullmatch(value)):
         raise ValueError("Mã video không hợp lệ")
+    return value
+
+
+def _text(payload, key, default=None):
+    """payload[key] as a string; a list, number or object in its place is a client error (400), not a crash."""
+    value = payload.get(key, default)
+    if not isinstance(value, str):
+        raise ValueError("%s phải là chuỗi" % key)
     return value
 
 
@@ -53,7 +61,7 @@ def ingest(app, payload):
 
 @route("/api/attach")
 def attach(app, payload):
-    return app.store.attach(payload["id"], payload["filename"])
+    return app.store.attach(_text(payload, "id"), _text(payload, "filename"))
 
 
 @route("/api/media/pending")
@@ -63,7 +71,7 @@ def media_pending(app, payload):
 
 @route("/api/media/failed")
 def media_failed(app, payload):
-    app.store.mark_media_failed(payload["id"], str(payload.get("reason", "")))
+    app.store.mark_media_failed(_text(payload, "id"), str(payload.get("reason", "")))
     return OK
 
 
@@ -102,7 +110,7 @@ def start_task(app, payload):
 # ------------------------------------------------------------------ publishing
 @route("/api/publish/peek")
 def publish_peek(app, payload):
-    return app.store.publish_peek(payload.get("job_id"))
+    return app.store.publish_peek(_job_id(payload.get("job_id")))
 
 
 @route("/api/publish/claim")
@@ -112,7 +120,9 @@ def publish_claim(app, payload):
 
 @route("/api/publish/finish")
 def publish_finish(app, payload):
-    app.store.publish_finish(payload["id"], payload["lease"], payload["outcome"], payload.get("url", ""), str(payload.get("reason", "")))
+    app.store.publish_finish(
+        _text(payload, "id"), _text(payload, "lease"), _text(payload, "outcome"), _text(payload, "url", ""), str(payload.get("reason", ""))
+    )
     return OK
 
 
@@ -123,7 +133,7 @@ def publish_unresolved(app, payload):
 
 @route("/api/publish/resolve")
 def publish_resolve(app, payload):
-    app.store.resolve_unknown(payload["id"], payload["outcome"], payload.get("url", ""))
+    app.store.resolve_unknown(_text(payload, "id"), _text(payload, "outcome"), _text(payload, "url", ""))
     return OK
 
 

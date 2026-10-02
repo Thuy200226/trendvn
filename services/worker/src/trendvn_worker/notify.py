@@ -8,6 +8,7 @@ import ipaddress
 import json
 import os
 import re
+import socket
 import time
 import urllib.error
 import urllib.request
@@ -34,21 +35,27 @@ ENV_KEYS = {
 }
 
 
+INTERNAL_SUFFIXES = (".local", ".localhost", ".internal", ".lan", ".home", ".corp", ".intranet")
+DNS_NAME = re.compile(r"(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]*")  # at least one dot and a last label that starts with a letter: never an IP
+
+
 def _safe_https(url):
+    """An https URL on a public DNS name: not an IP address (in any notation), not localhost or an internal suffix, no user-info."""
     u = urlsplit(url)
     host = (u.hostname or "").lower()
-    if u.scheme != "https" or not host or u.username or u.password or len(url) > 400:
+    if u.scheme != "https" or not host or u.username or u.password or len(url) > 400 or any(c.isspace() or c == "\\" for c in url):
         raise ValueError("Cần địa chỉ https hợp lệ")
-    if host == "localhost" or host.endswith((".local", ".internal")):
+    if not DNS_NAME.fullmatch(host) or host == "localhost" or host.endswith(INTERNAL_SUFFIXES):
         raise ValueError("Không dùng địa chỉ nội bộ")
-    try:
-        ip = ipaddress.ip_address(host)
-        if ip.is_private or ip.is_loopback or ip.is_link_local:
-            raise ValueError("Không dùng địa chỉ nội bộ")
-    except ValueError as e:
-        if "nội bộ" in str(e):
-            raise
     return url
+
+
+def _public_only(url):
+    """At send time: the name must resolve to public addresses only (a name pointing at 127.0.0.1 or 169.254.x.x is refused)."""
+    host = urlsplit(url).hostname
+    for info in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM):
+        if not ipaddress.ip_address(info[4][0].split("%")[0]).is_global:
+            raise ValueError("Địa chỉ nội bộ")
 
 
 def validate(cfg):
@@ -104,9 +111,21 @@ def channels(cfg):
     return names
 
 
-def _post(url, data, headers):
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A webhook that answers 302 could point us at an internal address: a redirect counts as a failure instead of being followed."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
+def _post(url, data, headers, check_host=False):
+    if check_host:
+        _public_only(url)
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=15) as r:
+    with _OPENER.open(req, timeout=15) as r:
         return 200 <= r.status < 300
 
 
@@ -126,13 +145,17 @@ def send(cfg, text):
     if cfg.get("webhook"):
         try:
             results["Webhook (Discord/Slack)"] = _post(
-                cfg["webhook"], json.dumps({"content": text[:1900], "text": text}).encode(), {"Content-Type": "application/json"}
+                cfg["webhook"],
+                # allowed_mentions: a message can never ping @everyone or a role, whatever text it carries
+                json.dumps({"content": text[:1900], "text": text, "allowed_mentions": {"parse": []}}).encode(),
+                {"Content-Type": "application/json"},
+                check_host=True,
             )
         except Exception:
             results["Webhook (Discord/Slack)"] = False
     if cfg.get("ntfy"):
         try:
-            results["ntfy"] = _post(cfg["ntfy"], text.encode("utf-8"), {"Title": "TrendVN"})
+            results["ntfy"] = _post(cfg["ntfy"], text.encode("utf-8"), {"Title": "TrendVN"}, check_host=True)
         except Exception:
             results["ntfy"] = False
     return results

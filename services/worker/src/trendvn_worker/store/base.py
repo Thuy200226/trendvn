@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from ..domain import schedule
-from ..domain.settings import DEFAULT_TARGET, validate_settings
+from ..domain.settings import DEFAULT_TARGET, DEFAULTS, validate_settings
 from .schema import initialise
 
 DATA_FOLDERS = ("inbox", "jobs", "exports")
@@ -51,7 +51,13 @@ class StoreBase:
     def settings(self):
         """All settings. `target` (the TikTok account of 1.0 - 1.3) is not stored: it is the default account's username."""
         with self.connect() as db:
-            cfg = {row["key"]: json.loads(row["value"]) for row in db.execute("SELECT * FROM settings")}
+            cfg = {}
+            for row in db.execute("SELECT * FROM settings"):
+                try:
+                    cfg[row["key"]] = json.loads(row["value"])
+                except ValueError:  # one unreadable row must not take every page down; its default applies
+                    if row["key"] in DEFAULTS:
+                        cfg[row["key"]] = DEFAULTS[row["key"]]
             default = db.execute("SELECT username FROM accounts ORDER BY enabled DESC, created, id LIMIT 1").fetchone()
         cfg["target"] = default[0] if default else DEFAULT_TARGET
         return cfg

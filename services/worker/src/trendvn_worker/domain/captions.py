@@ -3,6 +3,9 @@
 import re
 import unicodedata
 
+from .text import clean_caption
+from .topics import TOPIC_TAGS
+
 # other platforms and editors give a repost away; reach tags (xuhuong, fyp, viral) are welcome
 BANNED_TAG_PARTS = ("tiktok", "douyin", "kuaishou", "instagram", "reels", "capcut")
 
@@ -11,30 +14,36 @@ def _cut_at_word(text, limit):
     if len(text) <= limit:
         return text
     cut = text[:limit].rsplit(" ", 1)[0].rstrip(" ,;:-–—")
-    return (cut if len(cut) >= limit * 0.5 else text[:limit]).strip()
+    return (cut if len(cut) >= limit * 0.5 else text[:limit]).rstrip("\u200d\ufe0f").strip()  # never end on half an emoji sequence
+
+
+def ascii_tag(raw):
+    """A hashtag the way viewers type it: lowercase, no accents ('Hài hước' -> 'haihuoc'), letters and digits only."""
+    text = unicodedata.normalize("NFD", unicodedata.normalize("NFC", raw).lstrip("#").strip().lower().replace("đ", "d"))
+    return "".join(c for c in text if not unicodedata.combining(c))
 
 
 def build_caption(analysis, title):
     """Vietnamese caption from the analysis; falls back to the source title. Never adds claims that were not in the video."""
     analysis = analysis if isinstance(analysis, dict) else {}
-    caption = unicodedata.normalize("NFC", analysis.get("caption_vi").strip()) if isinstance(analysis.get("caption_vi"), str) else ""
-    if not caption:
-        caption = re.sub(r"\s+", " ", re.sub(r"#\S+", " ", title or "")).strip()
-    caption = re.sub(r"[\x00-\x1f]", " ", re.sub(r"#\S+", " ", caption))  # hashtags are added below, never duplicated from the text
-    caption = _cut_at_word(re.sub(r"\s+", " ", caption).strip(), 110)
+    caption = analysis.get("caption_vi") if isinstance(analysis.get("caption_vi"), str) else ""
+    # hashtags are added below, never duplicated from the text; links, handles and invisible characters never reach the post
+    caption = clean_caption(re.sub(r"#\S+", " ", caption)) or clean_caption(re.sub(r"#\S+", " ", title or ""))
+    caption = _cut_at_word(caption, 110)
     tags = []
     raw_tags = analysis.get("hashtags") if isinstance(analysis.get("hashtags"), list) else []
     for h in raw_tags:
         if not isinstance(h, str):
             continue
-        h = unicodedata.normalize("NFC", h).lstrip("#").strip().lower()
-        if not re.fullmatch(r"[\w]{2,30}", h) or h in tags:
+        h = ascii_tag(h)
+        if not re.fullmatch(r"[a-z0-9_]{2,30}", h) or h in tags:
             continue
         if any(b in h for b in BANNED_TAG_PARTS):
             continue  # never advertise other platforms or filler, whatever the model says
         tags.append(h)
     tags = tags[:4]
-    for d in (["xuhuong", "nhac"] if analysis.get("kind") == "music" else ["xuhuong", "giaitri"]):
+    topic_tag = TOPIC_TAGS["music"] if analysis.get("kind") == "music" else TOPIC_TAGS.get(analysis.get("topic"), "giaitri")
+    for d in ("xuhuong", topic_tag, "viral"):  # reach first; always 3 or more tags, never more than 5
         if d not in tags and len(tags) < 5:
             tags.append(d)
     return (caption + " " + " ".join("#" + h for h in tags)).strip()

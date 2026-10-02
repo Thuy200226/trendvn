@@ -21,6 +21,7 @@
   apply();folds();
 
   // confirm dangerous buttons (post now, discard), count caption characters and hashtags while typing
+  document.addEventListener('click',function(e){if(e.target.closest('[data-reload]'))location.reload();});
   document.addEventListener('click',function(e){var b=e.target.closest('button[data-confirm]');if(b&&!window.confirm(b.dataset.confirm))e.preventDefault();});
   document.addEventListener('input',function(e){
     var t=e.target;if(!t.matches||!t.matches('textarea[data-caption]'))return;

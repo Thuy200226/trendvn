@@ -54,7 +54,7 @@ class CaptionTests(StoreCase):
         self.assertLessEqual(len(tags), 5)
         self.assertIn("#xuhuong", tags)
         self.assertTrue(lint_caption(c)["tags"] <= 5)
-        self.assertEqual(build_caption({"kind": "music", "caption_vi": "Hay quá", "hashtags": []}, "t"), "Hay quá #xuhuong #nhac")
+        self.assertEqual(build_caption({"kind": "music", "caption_vi": "Hay quá", "hashtags": []}, "t"), "Hay quá #xuhuong #nhac #viral")
         self.assertNotIn("##", build_caption({"caption_vi": "#a #b nội dung", "hashtags": ["#c"]}, "t"))
 
     def test_platform_names_never_become_hashtags_but_reach_tags_do(self):
