@@ -72,7 +72,7 @@ Số đo làm nền cho thiết kế (520 video Douyin thật trong 13 tab): ch�
 |---|---|---|
 | Xử lý nhiều video | lần lượt từng video | 2 video cùng lúc (`TRENDVN_PROCESS_PARALLEL`), thông lượng gần gấp đôi vì phần lớn là chờ Gemini |
 | Video nhạc dọc không lời (giữ nguyên) | dựng lại 24 giây, tệp 24,8 MB | sao nguyên hình 3,3 giây, 13,8 MB, từng điểm ảnh giống bản gốc |
-| Thu thập Douyin (6 luồng chủ đề) | chờ cố định ~95 giây | chờ thích nghi ~60 giây (mỗi tab 5–11 giây) |
+| Thu thập Douyin (6 luồng chủ đề) | chờ cố định ~95 giây | chờ thích nghi ~60–75 giây (mỗi tab 6–12 giây, vẫn 40–59 video mỗi tab); Kuaishou/TikTok giữ chờ cố định |
 | Bản xem trước gửi Gemini | 2 khung/giây | 1 khung/giây (Gemini chỉ lấy 1 khung/giây); thời gian mã hóa không đổi vì bị giải mã chi phối |
 
 Thử và **không đổi** vì không nhanh hơn: bộ lọc khung 9:16 (giải mã 1080p và co ảnh chiếm hơn nửa; `fast_bilinear`, ghép lớp, số luồng đều không thắng), `-filter_complex_threads`. `thinkingConfig`/độ phân giải thấp của Gemini không thể đo trong buổi này vì API liên tục quá tải (503), nên không bật; nếu bật mà API từ chối thì sẽ làm hỏng mọi lần phân tích.

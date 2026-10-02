@@ -126,23 +126,43 @@ class Feed:
 
 
 def capture_once(ctx, url, match, parse, scrolls=4, wait_ms=12000, before_scroll=None):
+    """One stream with fixed waits (the behaviour of every earlier version). Kuaishou's feed trickles in over about 25 seconds (answers at
+    4, 16-19, 21 and 25 s were seen) and sometimes stalls on the first request, so these sources keep the long waits that are known to
+    work; the adaptive waits of `capture_once_streams` are used only for Douyin, where per-tab counts were measured equal. An A/B on the
+    live Kuaishou site could not separate the two: the site throttled repeated loads (0 to 98 videos with either code), so the cheap
+    saving was not worth the risk."""
     page = ctx.new_page()
-    feed = Feed(page, match, parse, ["feed"])
+    found = {}
+    order = []
+
+    def on_response(r):
+        try:
+            if r.status == 200 and match(r.url) and "json" in r.headers.get("content-type", ""):
+                for it in parse(json.loads(r.body())):
+                    if it["source_id"] not in found:
+                        found[it["source_id"]] = it
+                        order.append(it["source_id"])
+        except Exception:
+            pass
+
+    page.on("response", on_response)
     try:
-        mark = time.time()
         try:
             page.goto(url, wait_until="commit", timeout=60000)
         except Exception as e:
             log("goto warning %s: %s" % (url, str(e)[:100]))
-        feed.settle(4000, wait_ms, 2500, mark)
+        page.wait_for_timeout(wait_ms)
         if before_scroll:
-            mark = time.time()
             before_scroll(page)
-            feed.settle(2000, 4000, 1500, mark)
-        feed.scroll(scrolls)
-        if not feed.count() and looks_blocked(page):
+            page.wait_for_timeout(4000)
+        for _ in range(scrolls):
+            page.mouse.wheel(0, 1400)
+            page.wait_for_timeout(2500)
+        if not found and looks_blocked(page):
             raise Blocked("verification or login wall shown")
-        return feed.result()["feed"]
+        for n, sid in enumerate(order, 1):
+            found[sid]["rank"] = n
+        return [found[s] for s in order]
     finally:
         page.close()
 

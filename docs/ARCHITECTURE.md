@@ -88,7 +88,7 @@ Thời gian xử lý một video: Gemini khoảng hai phần ba (30–100 giây,
 
 - **Xử lý song song** (`pipeline.process_many`): mặc định 2 video cùng lúc (`TRENDVN_PROCESS_PARALLEL`, 1 = lần lượt). Vì phần lớn thời gian một video là chờ Gemini nên 2 luồng gần như gấp đôi thông lượng mà không tranh CPU; dừng phát việc mới ngay khi gặp trạng thái dừng (tắt, thiếu khóa, hết hạn mức, hết hàng chờ).
 - **Giữ nguyên hình** (`media/render.can_copy_video`): video **giữ nguyên** (nhạc, không lời) đã là dọc H.264 8-bit trong khung 1080×1920, ≤ 30 khung/giây, bitrate ≤ 6 Mb/s thì chỉ chỉnh âm lượng, hình được sao nguyên từng điểm ảnh (kiểm bằng md5). Đo trên video thật: 3,3 giây thay cho 24 giây, tệp 13,8 MB thay cho 24,8 MB, không mất chất lượng.
-- **Chờ thích nghi khi thu thập** (`collector/capture.Feed`): thay các lần chờ cố định bằng "chờ tới khi trang đã trả lời và yên lặng", nên trang nhanh thì quét nhanh, trang chậm vẫn có đủ thời gian; cuộn dừng ngay khi không còn video mới.
+- **Chờ thích nghi khi thu thập Douyin** (`collector/capture.Feed`): thay các lần chờ cố định bằng "chờ tới khi trang đã trả lời và yên lặng"; cuộn dừng sau hai lần cuộn liên tiếp không có gì mới. Số video mỗi tab đo được vẫn 40–59 như trước. Kuaishou và TikTok **giữ chờ cố định**: dữ liệu Kuaishou về rải rác trong khoảng 25 giây (đã thấy ở giây 4, 16–19, 21, 25) và đôi khi kẹt ở yêu cầu đầu; lần so sánh trực tiếp không phân định được vì trang bị hạn chế khi tải lặp (0 đến 98 video với cả hai bản mã), nên không đánh đổi độ tin cậy lấy vài giây.
 - Không đổi sau khi đo: bộ lọc khung 9:16 (giải mã 1080p và co ảnh chiếm hơn nửa, thử các biến thể không nhanh hơn), mã hóa `veryfast` (đã chọn ở Phase B), trang bảng điều khiển (8–12 ms mỗi lần tải).
 
 ## 4. Nguồn thu thập
