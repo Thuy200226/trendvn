@@ -65,7 +65,7 @@ data/                   (tự tạo, không đóng gói) dữ liệu: worker/ ag
 
 [Mac](docs/MAC.md) · [Lệnh](docs/COMMANDS.md) · [Triển khai](docs/DEPLOY.md) · [Vận hành](docs/OPERATIONS.md) ·
 [Kiến trúc](docs/ARCHITECTURE.md) · [n8n](docs/N8N.md) · [Prompt Gemini](docs/PROMPTS.md) · [Bảo mật](docs/SECURITY.md) ·
-[API](docs/API.md) · [Lộ trình 1.4](docs/ROADMAP.md) · [Rà soát 1.3](docs/REVIEW-1.3.md) · [Thay đổi](CHANGELOG.md)
+[API](docs/API.md) · [Quy tắc cho agent](AGENTS.md) · [Lộ trình 1.4](docs/ROADMAP.md) · [Rà soát 1.3](docs/REVIEW-1.3.md) · [Thay đổi](CHANGELOG.md)
 
 ## Giới hạn cần biết
 

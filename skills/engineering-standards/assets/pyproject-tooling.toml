@@ -1,0 +1,19 @@
+# Starter tooling config (Python). Copy into pyproject.toml and adjust line length / target version to the project.
+# Pin the exact tool versions in requirements-dev.txt (see below) and make the lint step skip with a message when the installed
+# version differs: formatter style changes between releases. Versions below are a 2026-10 snapshot: check what is current first.
+[tool.black]
+line-length = 140
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py310"
+
+[tool.ruff.lint]
+# small, high-signal set: undefined/unused names, syntax errors, mutable defaults, deprecated escapes
+select = ["F", "E9", "W6", "B006", "B008"]
+
+# requirements-dev.txt (dev tools only; the runtime should need none):
+#   black==26.5.1
+#   ruff==0.16.9
+#   shellcheck-py>=0.10
