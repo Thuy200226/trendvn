@@ -51,11 +51,12 @@ else rm -f "$TMP/n8n_data.tgz"; warn "không sao lưu được volume n8n (n8n c
 restart_n8n
 # one Chrome profile per TikTok account: `publisher` (the main account) and `publisher-<id>` (the others)
 if [ "$WITH_SESSION" = 1 ]; then
-  profiles=()
-  for d in data/agent/profiles/publisher data/agent/profiles/publisher-*; do
-    if [ -d "$d" ]; then profiles+=("$(basename "$d")"); fi
-  done
-  if [ "${#profiles[@]}" -gt 0 ]; then tar czf "$TMP/tiktok_session.tgz" -C data/agent/profiles "${profiles[@]}"; fi
+  pack_rc=0; pack_profiles "$TMP/tiktok_session.tgz" data/agent/profiles || pack_rc=$?
+  case "$pack_rc" in
+    0) ;;
+    10) warn "Chưa có hồ sơ TikTok nào để sao lưu (chưa đăng nhập lần nào?)." ;;
+    *) fail "Không đóng gói được hồ sơ TikTok (tar mã $pack_rc); sao lưu bị hủy để khỏi lưu một bản thiếu cookie." ;;
+  esac
 fi
 OUT="data/backups/trendvn-$STAMP.tar.gz"
 tar czf "$OUT" -C "$TMP" .

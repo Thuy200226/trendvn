@@ -19,6 +19,8 @@
   function folds(){document.querySelectorAll('.settings .fs,#notify .fs').forEach(function(d,i){if(phone.matches&&i>0&&!d.dataset.touched)d.open=false;});}
   document.addEventListener('toggle',function(e){if(e.target.classList&&e.target.classList.contains('fs'))e.target.dataset.touched='1';},true);
   apply();folds();
+  // the confirmation flash travels in the address (?ok=...): drop it once shown, so a later reload does not repeat a message about an old click
+  if(/[?&](ok|err)=/.test(location.search)&&history.replaceState)history.replaceState(null,'',location.pathname+location.hash);
 
   // confirm dangerous buttons (post now, discard), count caption characters and hashtags while typing
   document.addEventListener('click',function(e){if(e.target.closest('[data-reload]'))location.reload();});

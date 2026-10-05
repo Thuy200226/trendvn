@@ -21,10 +21,12 @@ tar xzf trendvn-1.6.tar.gz && cd trendvn-1.6     # hoặc nhấp đúp macos/Cai
 
 Rồi 5 việc chỉ bạn làm được:
 1. `./trendvn open` → Thêm → Cài đặt: dán khóa Gemini (lấy ở https://aistudio.google.com/apikey), bật **Xử lý video**.
-2. `./trendvn tiktok login`: tự đăng nhập TikTok một lần trong cửa sổ Chrome hiện ra.
-3. Thêm → Cài đặt → Lịch đăng: đặt **Tài khoản TikTok đích** đúng kênh bạn vừa đăng nhập (mặc định là một tài khoản mẫu).
+2. Thêm → Cài đặt → Lịch đăng: đặt **Tài khoản TikTok mặc định** là kênh của bạn (lúc mới cài đó là một tài khoản mẫu). Làm bước này **trước** khi đăng nhập: lệnh đăng nhập chỉ chấp nhận đúng tài khoản này.
+3. `./trendvn tiktok login`: tự đăng nhập TikTok một lần trong cửa sổ Chrome hiện ra.
 4. Bấm **▶ Bắt đầu** ở Tổng quan (lần quét đầu chỉ ghi mốc, nên bấm lại sau vài giờ hoặc chờ lịch 3 giờ) cho tới khi tab **Đăng bài** có video, rồi `./trendvn tiktok dry-run` (chạy thử, không đăng; báo `"status": "idle"` nghĩa là chưa có video dựng xong, không phải lỗi).
 5. Bật **Tự đăng** khi hài lòng.
+
+Lịch tự động (n8n) được bật ngay khi cài: thu thập và xử lý mỗi 3 giờ, hỏi "có được đăng không" mỗi 30 phút; tắt bằng `./trendvn n8n deactivate`. Khi **Xử lý video** còn tắt, lịch chỉ thu thập; khi **Tự đăng** còn tắt, lịch vẫn xử lý nhưng không đăng gì.
 
 ## Lệnh hay dùng
 
@@ -56,7 +58,7 @@ services/agent/         Chrome trên máy: thu thập và đăng TikTok
 n8n/                    build.py sinh 6 workflow từ mã · manage.py nạp/bật/xuất · workflows/*.json
 scripts/                install · backup · restore · doctor · package · fmt · service (systemd, launchd)
 macos/                  file nhấp đúp cho Mac
-tests/                  worker/ agent/ tools/ (hơn 320 test) + e2e/ (giao diện bằng Chrome thật)
+tests/                  worker/ agent/ tools/ (hơn 500 test) + e2e/ (giao diện bằng Chrome thật)
 docs/                   tài liệu chi tiết
 data/                   (tự tạo, không đóng gói) dữ liệu: worker/ agent/ backups/
 ```

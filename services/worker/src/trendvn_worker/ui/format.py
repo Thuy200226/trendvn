@@ -2,6 +2,7 @@
 
 import html
 import json
+import re
 import time
 
 escape = html.escape
@@ -33,6 +34,30 @@ def meta_of(job):
         return {}
 
 
+def left_text(seconds):
+    """'2 giờ 50 phút', '35 phút', 'dưới 1 phút': how long a wait still has to run."""
+    minutes = max(0, int(seconds)) // 60
+    if minutes < 1:
+        return "dưới 1 phút"
+    hours, minutes = divmod(minutes, 60)
+    return ("%d giờ %d phút" % (hours, minutes)) if hours and minutes else ("%d giờ" % hours if hours else "%d phút" % minutes)
+
+
+def shown_of(shown, total):
+    """'30 trong 45' when a list was cut short, the plain number when it was not: a heading must not promise more rows than the table has."""
+    return "%d trong %d" % (shown, total) if total > shown else str(total)
+
+
 def windows_text(windows):
     """[[11, 14], [19, 23]] -> '11-14, 19-23'."""
     return ", ".join("%d-%d" % (start, end) for start, end in windows)
+
+
+def headline(row, limit=90):
+    """HTML naming a video on a list: its Vietnamese caption (hashtags left out) when it has one, with the source title in small grey
+    type under it; just the title otherwise. The source title is Chinese for most videos, so alone it tells the owner nothing."""
+    title = str(row.get("title") or "")
+    caption = re.sub(r"\s+", " ", re.sub(r"#\w+", "", str(row.get("caption_vi") or ""))).strip()
+    if not caption:
+        return escape(title[:limit])
+    return '%s<div class="muted small">%s</div>' % (escape(caption[:limit]), escape(title[:limit]))

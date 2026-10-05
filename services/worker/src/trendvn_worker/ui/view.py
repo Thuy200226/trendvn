@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from ..domain.accounts import account_flag
 from .components import task_panel  # noqa: F401  (re-exported for the tabs)
 from .format import escape as E
 
@@ -26,10 +27,25 @@ class View:
         running = [t for t in self.tasks if t["state"] == "running"]
         self.busy_browser = any(t["kind"] in BROWSER_TASKS for t in running)
         self.busy_process = any(t["kind"] in PROCESS_TASKS for t in running)
+        self.key_rejected = bool(data.get("gemini_key_rejected"))
         self.challenge_on = bool(data.get("publisher_challenge"))
-        self.attention = len(data["review"]) + len(data["unresolved"]) + (1 if self.challenge_on else 0)
+        who = next((a for a in data.get("accounts", []) if a["id"] == data.get("publisher_challenge_account")), None)
+        self.challenge_command = "./trendvn tiktok trust" + account_flag(data.get("publisher_challenge_account"))
+        self.challenge_who = " ở @" + who["username"] if who else ""
+        self.attention = (
+            max(len(data["review"]), self.counts.get("needs_review", 0))
+            + len(data["unresolved"])
+            + (1 if self.challenge_on else 0)
+            + (1 if self.key_rejected else 0)
+        )
         self.waiting = self.counts.get("queued", 0) + self.counts.get("processing", 0)
         self.n8n_url = data.get("n8n_url") or "http://localhost:5680"
+
+    def unconfirmed_for(self, account):
+        """The posts of this account that may or may not be on TikTok (a post without an account belongs to the first enabled one)."""
+        default = next((a for a in self.d.get("accounts", []) if a["enabled"]), None)
+        mine = account["id"] if account else None
+        return [u for u in self.d.get("unresolved", []) if account is None or (u.get("account") or (default and default["id"])) == mine]
 
     def takers(self, topic):
         """The enabled accounts that take a video of this topic (a video without a topic goes anywhere)."""

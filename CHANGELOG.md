@@ -20,6 +20,12 @@
 - **Lỗi nặng đã sửa:** video đã duyệt tay bị xếp lại hàng đợi mãi khi Google bận lúc tạo giọng (bộ đếm lần hoãn bị đặt về 0 ở mỗi lần chạy vì cờ `approved` ở lại trên dòng); nay bộ đếm chỉ đặt lại một lần, lúc duyệt.
 - Nhánh chuyển mp3/ogg sang WAV hỏng vì tên file `.part` (ffmpeg không chọn được định dạng): đã chỉ định `-f wav`.
 
+**Nhiều tài khoản (Phase G).** Phiên TikTok hết hạn không còn bị tính là lỗi của video (hoãn, báo mỗi tài khoản kèm lệnh đăng nhập; kiểm tra phiên 3 giờ không xóa được cờ đăng xuất); một bài đăng treo không chặn các tài khoản khác quá 45 phút; CAPTCHA, hộp xác nhận "Đăng ngay" và nút Đăng theo từng tài khoản; `tiktok dry-run --account`; sao lưu hồ sơ Chrome không mang cache. Chi tiết và phần để lại: docs/ROADMAP.md, mục Phase G.
+
+**Chất lượng sản phẩm (Phase I).** Thanh trạng thái trung thực (7 giờ), dòng "vì sao chưa đăng" trên mỗi video, khóa Gemini bị từ chối giữ video ở hàng đợi và hiện trên banner và tab Cần xem (điện thoại: tối đa mỗi 6 giờ), lỗi và lý do bằng tiếng Việt (có test quét mã), danh sách hiện mô tả tiếng Việt, số đếm khớp danh sách, bước thu thập lỗi hết thì báo lỗi, `./trendvn doctor` cùng ngưỡng ổ đĩa với bảng điều khiển và kiểm tra `linger`, thứ tự cài đặt lần đầu đúng. Chi tiết: docs/ROADMAP.md, mục Phase I.
+
+**Hiệu năng (Phase H).** Dải làm mờ phụ đề gốc làm mờ trên bản thu nhỏ 1/4 rồi phóng lại: dựng video cần làm mờ nhanh hơn 19% (44,8 → 36,4 giây trên video thật 134 giây), hình tương đương (SSIM 0,988–0,996). Bộ thu thập ghi vào `agent.log` thời gian từng lần cuộn và chuyển tab. Số đo và các thử nghiệm không đổi (bộ mã hóa, gộp QC, thời gian chờ thu thập): docs/ROADMAP.md, mục Phase H.
+
 **Đã đo và không đổi:** mã hóa (crf, preset, tune: SSIM chỉ chênh 0,001–0,002 mà dung lượng +30–70%, thời gian +31–78%). Hiệu năng giữ nguyên hoặc tốt hơn (ít làm mờ hơn).
 
 ## 1.5 — 2026-10-02 (rà soát độc lập 3 vòng: docs/ROADMAP.md, mục "Rà soát 1.5")

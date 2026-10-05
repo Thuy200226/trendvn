@@ -36,6 +36,24 @@ require_simple_path() {
   fi
 }
 
+# The Chrome profiles of the TikTok accounts (`publisher` for the main one, `publisher-<id>` for the others) packed into $1 from the
+# profiles folder $2. Caches and the Singleton* lock files stay out: Chrome rebuilds the first, and a stale lock can keep Chrome from
+# opening the profile on the machine it is restored to. Returns 0 when packed, 10 when there is no profile (not an error), and tar's own
+# code when packing failed (a profile without its cookies must never pass for a backup). tar's 1 means "a file changed while it was read"
+# (Chrome is running): the archive is still good.
+pack_profiles() {
+  local out="$1" dir="${2:-data/agent/profiles}" d names=() rc=0
+  for d in "$dir"/publisher "$dir"/publisher-*; do
+    if [ -d "$d" ]; then names+=("$(basename "$d")"); fi
+  done
+  [ "${#names[@]}" -gt 0 ] || return 10
+  tar czf "$out" --exclude='Cache' --exclude='Code Cache' --exclude='GPUCache' --exclude='GrShaderCache' --exclude='ShaderCache' \
+    --exclude='DawnCache' --exclude='component_crx_cache' --exclude='Service Worker/CacheStorage' --exclude='Crashpad' \
+    --exclude='Singleton*' -C "$dir" "${names[@]}" || rc=$?
+  [ "$rc" -le 1 ] || return "$rc"
+  return 0
+}
+
 need_env() { [ -f "$ROOT/.env" ] || fail "Chưa cài đặt. Chạy: ./trendvn install"; }
 
 need_docker() {

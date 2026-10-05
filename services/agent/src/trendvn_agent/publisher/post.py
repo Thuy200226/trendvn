@@ -8,7 +8,7 @@ from ..config import RUNTIME
 from ..log import log
 from .challenge import Challenge, wait_for_upload_ui
 from .constants import HEADED, POST_LABELS, UPLOAD_URL
-from .profile import logged_in, own_descriptions, profile_name, wrong_account
+from .profile import account_flag, logged_in, own_descriptions, profile_name, wrong_account
 from .screenshots import export_shot, shot
 from .studio import dismiss_popups, set_caption, set_visibility, studio_shows, wait_uploaded
 from .text import norm, sha256
@@ -81,7 +81,7 @@ def _post_in_studio(ctx, job, video, dry_run, state):
         picture = shot(page, "challenge") or ""
         if state["clicked"]:
             return "unknown", picture, "Đã bấm Đăng nhưng TikTok đòi xác minh: chưa biết bài có lên không"
-        return "challenge", picture, "%s. Đăng tạm dừng tới khi bạn giải: ./trendvn tiktok trust" % e
+        return "challenge", picture, "%s. Đăng tạm dừng tới khi bạn giải: ./trendvn tiktok trust%s" % (e, account_flag(job.get("account")))
     except Exception as e:
         picture = shot(page, "error") or ""
         if state["clicked"]:
@@ -100,8 +100,8 @@ def _upload_and_fill(page, job, video):
     failure is an (outcome, url, reason) tuple, or None when the Post button is ready."""
     page.goto(UPLOAD_URL, wait_until="domcontentloaded", timeout=60000)
     page.wait_for_timeout(3000)
-    if "/login" in page.url:
-        return ("failed", "", "Phiên đăng nhập đã hết hạn"), None, None
+    if "/login" in page.url:  # the session ended: the account's trouble, not the video's (see publish_one's callers)
+        return ("signed_out", "", "Phiên đăng nhập TikTok đã hết hạn cho @%s" % job.get("target", "?")), None, None
     target, file_input = wait_for_upload_ui(page)
     if file_input is None:
         return _failed(page, "no_file_input", "Không tìm thấy ô chọn file; giao diện TikTok Studio có thể đã đổi"), None, None

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Chẩn đoán TrendVN trong một lệnh (./trendvn doctor). Chỉ đọc, không đổi gì. Thoát mã 1 nếu có mục bắt buộc bị lỗi."""
 
+import getpass
 import json
 import shutil
 import subprocess
@@ -150,8 +151,26 @@ if chrome and venv_py.exists():
         "ổn" if rc == 0 else out.strip().splitlines()[-1][:90] if out.strip() else "lỗi không rõ",
         "Cài lại Google Chrome; rồi ./trendvn agent update",
     )
-free_gb = shutil.disk_usage(ROOT).free / 1e9
-check("Ổ đĩa còn trống", free_gb > 3, "%.1f GB" % free_gb, "Dọn ổ đĩa: video và image Docker cần chỗ")
+free_gb = shutil.disk_usage(ROOT).free / 2**30  # GiB, like the dashboard chip and the worker
+# the same lines as the dashboard chip and the worker: amber below 2 GiB; below 1 GiB the worker stops downloading and below 512 MiB rendering
+check(
+    "Ổ đĩa còn trống",
+    free_gb >= 2,
+    "%.1f GiB" % free_gb,
+    "Dọn ổ đĩa: video và image Docker cần chỗ (dưới 1 GiB hệ thống ngừng tải video, dưới 512 MiB ngừng dựng)",
+    required=free_gb < 1,
+)
+if not MAC and shutil.which("loginctl"):
+    rc, out = sh("loginctl", "show-user", getpass.getuser(), "-p", "Linger", "--value")
+    if rc == 0:
+        check(
+            "Agent tự chạy sau khi khởi động máy",
+            out.strip() == "yes",
+            "có" if out.strip() == "yes" else "chỉ chạy sau khi bạn đăng nhập màn hình",
+            "sudo loginctl enable-linger %s  (một lần; không có thì lịch đăng dừng sau mỗi lần khởi động lại cho tới khi bạn đăng nhập)"
+            % getpass.getuser(),
+            required=False,
+        )
 if MAC:
     rc, out = sh("pmset", "-g")
     sleeping = [l for l in out.splitlines() if l.strip().startswith("sleep ") and l.split()[1] not in ("0",)]

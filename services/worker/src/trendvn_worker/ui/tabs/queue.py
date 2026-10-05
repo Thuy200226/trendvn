@@ -2,7 +2,7 @@
 
 from ...domain import topics
 from ..components import accordion, cell, platform_badge, state_chip, table, task_panel
-from ..format import ago, escape as E, meta_of, num
+from ..format import ago, escape as E, headline, meta_of, num, shown_of
 
 
 def _topic_cell(job):
@@ -17,7 +17,7 @@ def _video_table(items, now, empty):
         "<tr>%s%s%s%s%s%s</tr>"
         % (
             cell("Nguồn", platform_badge(j["platform"])),
-            cell("Video", E((j["title"] or "")[:90]), "t"),
+            cell("Video", headline(j, 90), "t"),
             cell("Chủ đề", _topic_cell(j)),
             cell("Trạng thái", state_chip(j["state"])),
             cell("Điểm", E(num(meta_of(j).get("score"))) if meta_of(j).get("score") else "—"),
@@ -54,19 +54,19 @@ def render(view):
     d = view.d
     candidates = accordion(
         "candidates",
-        "Ứng viên chưa tải về (%d)" % view.counts.get("candidate", 0),
+        "Ứng viên chưa tải về (%s)" % shown_of(len(d.get("candidates", [])), view.counts.get("candidate", 0)),
         '<p class="muted small">Đã tìm thấy và đạt ngưỡng thịnh hành; sẽ được tải về ở lần thu thập kế tiếp.</p>'
         + _video_table(d.get("candidates", []), view.now, "Không có ứng viên nào."),
     )
     return (
         '<h2>Hàng đợi</h2><p class="hint">Đường đi của một video: <b>Ứng viên</b> (đã tìm thấy, chưa tải) → <b>Chờ xử lý</b> (đã tải, chờ Gemini) → '
         "<b>Sẵn sàng</b> (sang tab Đăng bài) → <b>Đã đăng</b>.</p>%s%s%s"
-        '<h3 class="sub">Đang chờ xử lý (%d)</h3>%s%s'
+        '<h3 class="sub">Đang chờ xử lý (%s)</h3>%s%s'
     ) % (
         view.funnel(),
         processing_card(view),
         task_panel(view.tasks, view.now, ("process", "update", "collect")),
-        view.waiting,
+        shown_of(len(d.get("queue", [])), view.waiting),
         _video_table(d.get("queue", []), view.now, "Không có video nào chờ xử lý."),
         candidates,
     )

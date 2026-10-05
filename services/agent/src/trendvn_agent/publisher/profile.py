@@ -10,6 +10,11 @@ MAIN_PROFILE = "publisher"  # the account of 1.0 - 1.3 keeps its signed-in profi
 ACCOUNT_ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,23}")
 
 
+def account_flag(account):
+    """' --account ID' for a command line, or '' for the default account (what the command line uses when no account is given)."""
+    return "" if account in (None, "", "main") else " --account " + str(account)
+
+
 def profile_name(account):
     """The Chrome profile folder of an account: one per TikTok account, so their sessions never mix."""
     if account in (None, "", "main"):

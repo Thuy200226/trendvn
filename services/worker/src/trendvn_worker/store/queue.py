@@ -8,6 +8,7 @@ from pathlib import Path
 from ..files import free_bytes
 
 LOW_DISK_BYTES = 1 << 30  # the same line the collector stops downloading at
+STALE_PUBLISHING_SECONDS = 45 * 60  # a post claimed this long ago and never finished has an unknown outcome
 from ..jsonsafe import loads
 
 
@@ -120,17 +121,7 @@ class QueueMixin:
         """Crash recovery and the disk: stuck work is freed, then the retention rules run (see store/retention.py)."""
         now = time.time()
         processing = self._recover_processing(now - 1800)
-        with self.transaction() as db:
-            unknown = db.execute(
-                "UPDATE jobs SET state='publish_unknown',reason='Publishing confirmation missing; never retry automatically' WHERE state='publishing' AND updated<?",
-                (now - 2700,),
-            ).rowcount
-        if unknown:
-            self.emit(
-                "urgent",
-                "🚨 Có %d bài đăng chưa xác nhận. Hệ thống đã dừng đăng để tránh trùng; mở bảng điều khiển để xác nhận." % unknown,
-                "unknown",
-            )
+        unknown = self.expire_stale_publishing(now)
         pruned = self.prune(now)
         free = free_bytes(self.root)
         if (
@@ -143,6 +134,23 @@ class QueueMixin:
                 "disk",
             )
         return {"interrupted_processing": processing, "uncertain_publishing": unknown, "pruned": pruned, "disk_free_mb": free >> 20}
+
+    def expire_stale_publishing(self, now):
+        """A post claimed more than 45 minutes ago and never finished (the agent died mid-post) has an unknown outcome: it may be on TikTok.
+        It is never retried by itself and its account waits for the owner's confirmation. Called by housekeeping and by every claim, so the
+        other accounts do not wait for the next housekeeping (up to three hours) to be allowed to post. Returns how many were found."""
+        with self.transaction() as db:
+            unknown = db.execute(
+                "UPDATE jobs SET state='publish_unknown',reason='Publishing confirmation missing; never retry automatically' WHERE state='publishing' AND updated<?",
+                (now - STALE_PUBLISHING_SECONDS,),
+            ).rowcount
+        if unknown:
+            self.emit(
+                "urgent",
+                "🚨 Có %d bài đăng chưa xác nhận. Hệ thống đã dừng đăng để tránh trùng; mở bảng điều khiển để xác nhận." % unknown,
+                "unknown",
+            )
+        return unknown
 
     def recover_after_restart(self):
         """The worker process has just started, so nothing it had claimed is still running: put those videos back right away instead of

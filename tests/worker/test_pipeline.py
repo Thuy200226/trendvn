@@ -163,6 +163,52 @@ class PipelineTests(StoreCase):
                     )  # our own budget: waits, never ships without a voice
                     self.assertEqual(self.row("j2")["state"], "queued")
 
+    def test_a_key_google_rejects_blocks_the_queue_instead_of_sending_every_video_to_review(self):
+        from trendvn_worker.ai.errors import KeyRejected
+
+        sent = []
+        self.s.notifier = lambda kind, text, key: sent.append((kind, text, key))
+        self.job("j2", "queued", source_file=str(self.source), content_hash=file_hash(self.source), approved=1)
+
+        def rejected(*a, **k):
+            raise KeyRejected("Gemini HTTP 403 (m): API key not valid")
+
+        with mock.patch.object(pipeline, "analyze", rejected):
+            results = pipeline.process_many(self.s, 4, parallel=1)
+        self.assertEqual([r["status"] for r in results], ["blocked"])  # one answer, and nothing else is started
+        self.assertIn("Khóa Gemini", results[0]["reason"])
+        self.assertEqual(self.row()["state"], "queued")  # not blamed: still waiting, no attempt burned
+        self.assertEqual(self.row()["attempts"], 0)
+        self.assertEqual(self.row("j2")["state"], "queued")
+        self.assertEqual(len(sent), 1)
+        self.assertEqual((sent[0][0], sent[0][2]), ("urgent", "gemini_key"))
+        self.assertIn("Cài đặt", sent[0][1])
+        self.assertTrue(self.s.status()["gemini_key_rejected"])  # and the dashboard says so, not only a phone message that may not exist
+
+    def test_the_rejected_key_flag_goes_when_a_call_goes_through_or_a_new_key_is_saved(self):
+        self.s.set_key_rejected(True)
+        self.assertTrue(self.s.status()["gemini_key_rejected"])
+        self.s.key_accepted()
+        self.assertFalse(self.s.status()["gemini_key_rejected"])
+        self.s.set_key_rejected(True)
+        from trendvn_worker.ai import gemini as gemini_api
+
+        (self.s.root / "gemini.key").write_text("k" * 30)
+
+        class Reply:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self, *a):
+                return b'{"candidates": []}'
+
+        with mock.patch("urllib.request.urlopen", lambda request, timeout=0: Reply()):
+            gemini_api.gemini(self.s, "gemini-3.5-flash", {})
+        self.assertFalse(self.s.status()["gemini_key_rejected"])  # Google answered: the key works
+
     def test_voice_over_route_falls_back_to_subtitles_when_the_voice_fails(self):
         self.s.update_settings({"voiceover_enabled": True})
         analyzer = mock.patch.object(pipeline, "analyze", lambda *a, **k: (dict(ANALYSIS), "voiceover"))

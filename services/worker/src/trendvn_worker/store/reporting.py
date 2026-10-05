@@ -6,7 +6,9 @@ from ..domain import schedule
 from ..domain.accounts import effective
 
 # columns of a job shown in lists on the dashboard
-JOB_COLUMNS = "id,platform,title,state,reason,route,meta,url,updated,first_seen,duration,topic,topic_hint"
+# the Vietnamese caption the analysis wrote (lists show it before the source title, which is Chinese for most videos); a damaged analysis gives NULL
+CAPTION_VI = "CASE WHEN json_valid(analysis) THEN json_extract(analysis,'$.caption_vi') END AS caption_vi"
+JOB_COLUMNS = "id,platform,title,state,reason,route,meta,url,updated,first_seen,duration,topic,topic_hint," + CAPTION_VI
 # settings the dashboard page needs (a subset of all settings)
 DASHBOARD_SETTINGS = (
     "daily_limit", "min_publish_gap", "post_windows", "max_age_days", "max_duration", "max_candidates_per_scan", "max_backlog",
@@ -123,7 +125,7 @@ class ReportingMixin:
         discovery_beat = cfg.get("hb_discovery") or {}
         publisher_beat = cfg.get("hb_publisher") or {}
         posted = self.posts_today(schedule.day_start(cfg["timezone"]))  # one pass: the total and every account's share
-        accounts = self._account_overview(cfg, publisher_beat, posted)
+        accounts = self._account_overview(cfg, publisher_beat, posted, self.last_posts())
         wanted = self.wanted_topics()
         return {
             "project": "TrendVN",
@@ -151,11 +153,13 @@ class ReportingMixin:
             "weights": self.platform_weights(),
             "require_approval": cfg["require_approval"],
             "voiceover_enabled": cfg["voiceover_enabled"],
+            "gemini_key_rejected": bool(cfg.get("gemini_key_rejected")),
             "publisher_challenge": bool(cfg.get("publisher_challenge")),
+            "publisher_challenge_account": cfg["publisher_challenge"] if isinstance(cfg.get("publisher_challenge"), str) else None,
             "note": "Publishing stays off until the switch is turned on from the local dashboard.",
         }
 
-    def _account_overview(self, cfg, publisher_beat, posted):
+    def _account_overview(self, cfg, publisher_beat, posted, last_post=None):
         """Each account with what it posted today, its effective daily limit and whether the browser is signed in to it."""
         logins = (publisher_beat.get("detail") or {}).get("login") if isinstance(publisher_beat.get("detail"), dict) else None
         overview = []
@@ -174,6 +178,11 @@ class ReportingMixin:
                     "visibility": eff["visibility"],
                     "own": {k: account[k] for k in ("daily_limit", "min_gap", "windows", "visibility")},
                     "published_today": posted.get(account["id"], 0),
+                    "next_post_at": (
+                        (last_post or {}).get(account["id"], 0) + eff["min_gap"] if (last_post or {}).get(account["id"]) else None
+                    ),
+                    "in_window": (window := self.window_state({**cfg, "post_windows": eff["windows"]}))[0],
+                    "next_window": window[1],
                     "logged_in": logins.get(account["id"]) if isinstance(logins, dict) else None,
                 }
             )

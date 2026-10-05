@@ -30,7 +30,7 @@ Mọi lời gọi `POST` (trừ các form của bảng điều khiển) dùng `A
 | `POST /api/publish/peek` | `{}` | Bài kế tiếp (chạy thử, không đổi trạng thái) |
 | `POST /api/publish/unresolved`, `/api/publish/resolve` | `{}` / `{id, outcome: published\|failed, url}` | Bài chưa xác nhận |
 | `POST /api/stats` | `{items:[{video_id, views, likes, comments, shares}]}` | Khớp bài đã đăng theo `/video/<id>` |
-| `POST /api/publisher/challenge` | `{active: bool}` | Bật/tắt trạng thái "TikTok đang đòi xác minh": bật thì `publish/claim` trả `blocked` cho tới khi tắt |
+| `POST /api/publisher/challenge` | `{active: bool, account?: string}` | Bật/tắt trạng thái "TikTok đang đòi xác minh": bật thì `publish/claim` trả `blocked` cho tới khi tắt. `account` là mã tài khoản có hồ sơ gặp CAPTCHA: thông báo và lệnh gợi ý nêu đúng `--account`, và tắt cho một tài khoản khác thì không gỡ chặn (không gửi `account` thì tắt được bằng mọi tài khoản) |
 | `POST /api/accounts` | `{}` | `{accounts, wanted_topics}` |
 | `POST /api/accounts/add` | `{username, topics:[...], id?, label?, enabled?, daily_limit?, min_gap?, windows?, visibility?}` | Thêm tài khoản (tối đa 10). Giới hạn bỏ trống/`null` = dùng cài đặt chung |
 | `POST /api/accounts/update` | `{id, ...các trường như trên}` | Sửa; không cho tắt tài khoản cuối cùng đang bật |

@@ -32,6 +32,8 @@ PROCESS_LABELS = {
     "awaiting_approval": "chờ bạn duyệt",
     "needs_review": "cần duyệt",
     "rate_limited": "chờ Gemini hết quá tải",
+    "error": "lỗi",
+    "blocked": "bị chặn",
 }
 
 
@@ -120,8 +122,8 @@ def summarize_publish(res):
         shot = str(res.get("screenshot") or "")
         link = " Xem ảnh chụp: /media/shot/" + shot if re.fullmatch(r"shot_\d{9,12}\.png", shot) else ""
         return "Chạy thử xong: đã tải video, điền mô tả và dừng trước nút Đăng." + link
-    if s == "challenge":
-        return "TikTok đòi xác minh. Đăng tạm dừng; giải một lần bằng `./trendvn tiktok trust`."
+    if s == "challenge":  # the agent's reason names the account's own command (`... trust --account pets`)
+        return res.get("reason") or "TikTok đòi xác minh. Đăng tạm dừng; giải một lần bằng `./trendvn tiktok trust`."
     if s == "unknown":
         return "Đã bấm Đăng nhưng chưa xác nhận được. Hệ thống dừng đăng; xem mục Cần xem."
     return res.get("reason") or "Chưa đăng được (%s)." % s
@@ -190,8 +192,9 @@ class Tasks:
         except AgentError as error:
             steps.end(index, "error", str(error))
             return False
-        steps.end(index, "done", summarize_collect(report))
-        return True
+        worked = any(r.get("status") == "ok" for r in (report or {}).values())  # every source failed or skipped: nothing was collected
+        steps.end(index, "done" if worked else "error", summarize_collect(report))
+        return worked
 
     def _process_step(self, steps):
         index = steps.begin("Xử lý video đang chờ")

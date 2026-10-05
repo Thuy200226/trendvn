@@ -79,5 +79,67 @@ class SetupTests(unittest.TestCase):
                 self.assertTrue((root / "data" / sub).is_dir())
 
 
+class BackupProfilesTests(unittest.TestCase):
+    """The TikTok sessions in a backup: every account's profile, without Chrome's caches and lock files."""
+
+    def pack(self, profiles):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            for name in profiles:
+                for rel in (
+                    "Default/Cookies",
+                    "Cache/blob",
+                    "Code Cache/js/x",
+                    "GPUCache/y",
+                    "Service Worker/CacheStorage/z",
+                    "SingletonLock",
+                    "SingletonSocket",
+                ):
+                    path = root / "profiles" / name / rel
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text("x")
+            (root / "profiles" / "other").mkdir(parents=True)  # not an account profile: never packed
+            out = root / "s.tgz"
+            r = subprocess.run(
+                ["bash", "-c", '. "$1"; pack_profiles "$2" "$3"', "x", str(ROOT / "scripts" / "lib.sh"), str(out), str(root / "profiles")],
+                capture_output=True,
+                text=True,
+            )
+            names = subprocess.run(["tar", "tzf", str(out)], capture_output=True, text=True).stdout.split() if out.exists() else []
+            return r.returncode, names
+
+    def test_every_account_profile_goes_in_with_its_session_and_nothing_that_chrome_rebuilds(self):
+        code, names = self.pack(["publisher", "publisher-pets"])
+        self.assertEqual(code, 0)
+        self.assertIn("publisher/Default/Cookies", names)
+        self.assertIn("publisher-pets/Default/Cookies", names)
+        self.assertFalse([n for n in names if "Cache" in n or "Singleton" in n], names)
+        self.assertFalse([n for n in names if n.startswith("other")], names)
+
+    def test_no_profile_is_told_apart_from_a_failure(self):
+        code, names = self.pack([])
+        self.assertEqual((code, names), (10, []))  # "nothing to pack" is a warning for the caller, not an error
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root can read anything")
+    def test_a_profile_that_cannot_be_read_fails_instead_of_passing_for_a_backup(self):
+        """At HEAD `set -e` stopped the backup; a blanket `|| true` once let a 247-byte archive without cookies through."""
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            cookies = root / "profiles" / "publisher" / "Default" / "Cookies"
+            cookies.parent.mkdir(parents=True)
+            cookies.write_text("secret")
+            cookies.chmod(0)
+            r = subprocess.run(
+                ["bash", "-c", '. "$1"; pack_profiles "$2" "$3"', "x", str(ROOT / "scripts" / "lib.sh"), str(root / "s.tgz"), str(root / "profiles")],
+                capture_output=True, text=True,
+            )  # fmt: skip
+        self.assertNotIn(r.returncode, (0, 10))
+
+    def test_backup_stops_when_the_profiles_cannot_be_packed(self):
+        script = (ROOT / "scripts" / "backup.sh").read_text()
+        self.assertIn("pack_rc", script)
+        self.assertNotIn('pack_profiles "$TMP/tiktok_session.tgz" data/agent/profiles || true', script)
+
+
 if __name__ == "__main__":
     unittest.main()

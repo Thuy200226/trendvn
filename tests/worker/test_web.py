@@ -126,6 +126,25 @@ class LocalServerTests(unittest.TestCase):
         )
         self.assertEqual(evil[0], 403)
 
+    def test_a_form_error_reaches_the_owner_in_vietnamese_not_as_a_setting_name(self):
+        from urllib.parse import unquote_plus
+
+        status, headers, _ = self.post("/settings", {"daily_limit": "99"})
+        self.assertEqual(status, 303)
+        shown = unquote_plus(headers["location"])
+        self.assertIn("Số bài tối đa mỗi ngày", shown)  # (the wiring in handler.py: a mutant that dropped vi_error survived the suite)
+        self.assertNotIn("daily_limit", shown)
+
+    def test_a_page_left_open_across_an_update_gets_a_plain_vietnamese_answer_not_json(self):
+        """After `./trendvn update` the page's token no longer matches: the owner who clicks Save must be told to reload, in words."""
+        status, headers, body = self.post("/settings", {"daily_limit": "2"}, csrf=False)
+        self.assertEqual(status, 403)  # still refused: nothing was changed
+        self.assertIn("text/html", headers["content-type"])
+        text = body.decode()
+        self.assertIn("Trang đã cũ", text)
+        self.assertNotIn('"error"', text)
+        self.assertIn('href="/"', text)
+
     def test_blank_fields_mean_what_they_say(self):
         store = Store(self.srv.tmp.name)
         self.post("/settings", {"post_windows": "9-12", "views_tiktok": "5"}, fetch_site="same-origin")

@@ -82,6 +82,53 @@ class TaskTests(StoreCase):
         self.assertEqual(row["state"], "done")  # processing still ran, so the round is not a total failure
         self.assertTrue(self.processed)
 
+    def test_a_collect_where_every_source_failed_is_not_reported_as_done(self):
+        """A green 'Xong' over 'lỗi, lỗi' made the owner believe the scan had worked."""
+        FakeAgentHandler.body = {
+            "report": {"douyin": {"status": "error", "reason": "mạng"}, "kuaishou": {"status": "skipped", "reason": "x"}}
+        }
+        try:
+            row = self.wait(self.t.start("collect"))
+        finally:
+            FakeAgentHandler.body = {
+                "report": {
+                    "douyin": {
+                        "status": "ok",
+                        "summary": {"jingxuan": {"seen": 5, "qualified": 2, "baseline": False, "new": 1}, "media": {"downloaded": 1}},
+                    }
+                }
+            }
+        self.assertEqual(row["state"], "error")
+        self.assertEqual(row["steps"][0]["state"], "error")
+        self.assertIn("lỗi", row["result"])
+
+    def test_one_source_working_is_enough_for_the_scan_to_count(self):
+        FakeAgentHandler.body = {
+            "report": {
+                "douyin": {"status": "ok", "summary": {"jingxuan": {"seen": 5, "qualified": 2, "baseline": False, "new": 1}, "media": {}}},
+                "kuaishou": {"status": "error", "reason": "mạng"},
+            }
+        }
+        try:
+            row = self.wait(self.t.start("collect"))
+        finally:
+            FakeAgentHandler.body = {
+                "report": {
+                    "douyin": {
+                        "status": "ok",
+                        "summary": {"jingxuan": {"seen": 5, "qualified": 2, "baseline": False, "new": 1}, "media": {"downloaded": 1}},
+                    }
+                }
+            }
+        self.assertEqual(row["state"], "done")
+
+    def test_a_challenge_found_while_posting_tells_the_owner_the_exact_command_of_that_account(self):
+        self.assertIn(
+            "trust --account pets",
+            tasks_mod.summarize_publish({"status": "challenge", "reason": "TikTok đòi xác minh. ./trendvn tiktok trust --account pets"}),
+        )
+        self.assertIn("tiktok trust", tasks_mod.summarize_publish({"status": "challenge"}))  # an older agent: the plain command
+
     def test_agent_busy_and_agent_down_give_owner_readable_errors(self):
         FakeAgentHandler.code = 409
         row = self.wait(self.t.start("collect"))

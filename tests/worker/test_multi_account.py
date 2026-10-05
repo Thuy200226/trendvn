@@ -2,6 +2,7 @@
 
 import json
 import time
+from pathlib import Path
 
 from tests.support import StoreCase, at
 
@@ -34,6 +35,34 @@ class MultiAccountPublishingTests(StoreCase):
         routed = {first["id"]: first["account"], second["id"]: second["account"]}
         self.assertEqual(routed, {"song": "main", "cat": "pets"})
         self.assertEqual((first["target"] if first["id"] == "cat" else second["target"]), "meo_channel")
+
+    def test_a_post_that_never_finished_does_not_block_the_other_accounts_until_the_next_housekeeping(self):
+        """The agent can die mid-post (a restart, a crash). After 45 minutes the outcome counts as lost: that account waits for the owner,
+        but the other accounts must not wait for the 3-hourly housekeeping to be told so."""
+        self.video("song", "music")
+        self.video("cat", "pets")
+        t0 = time.time()
+        first = self.claim(now=t0)
+        self.assertEqual(first["status"], "claimed")  # (nothing finishes it)
+        self.assertEqual(self.claim(now=t0 + 600)["status"], "blocked")  # a post may well be running: nobody else posts meanwhile
+        later = self.claim(now=t0 + 46 * 60)
+        self.assertEqual(later["status"], "claimed")
+        self.assertNotEqual(later["account"], first["account"])  # the account with the lost post is held for the owner's confirmation
+        with self.s.connect() as db:
+            state = db.execute("SELECT state FROM jobs WHERE id=?", (first["id"],)).fetchone()[0]
+        self.assertEqual(state, "publish_unknown")
+
+    def test_a_rehearsal_for_one_account_uses_a_video_that_account_takes(self):
+        self.video("song", "music", score=9)
+        self.video("cat", "pets", score=1)
+        self.assertEqual(self.s.publish_peek()["id"], "song")  # no account asked for: the best video overall, as before
+        peek = self.s.publish_peek(account_id="pets")
+        self.assertEqual((peek["id"], peek["account"], peek["target"]), ("cat", "pets", "meo_channel"))
+        with self.assertRaises(ValueError):
+            self.s.publish_peek(account_id="nobody")
+        self.s.update_account("pets", {"enabled": False})
+        with self.assertRaises(ValueError):
+            self.s.publish_peek(account_id="pets")  # a switched-off account is not rehearsed either
 
     def test_a_video_no_enabled_account_takes_is_never_picked_by_the_schedule(self):
         self.video("game", "gaming")
@@ -234,7 +263,9 @@ class BrokenAccountTests(StoreCase):
         self.s.heartbeat("publisher", False, {"login": {"main": False}, "text": "x"})
         login = self.s.status()["accounts"]
         self.assertEqual({a["id"]: a["logged_in"] for a in login}, {"main": False, "newch": False})
-        self.s.heartbeat("publisher", True, {"login": {"newch": True}})
+        self.s.heartbeat("publisher", True, {"login": {"newch": True}})  # a cookie check cannot say an account is signed in again ...
+        self.assertEqual({a["id"]: a["logged_in"] for a in self.s.status()["accounts"]}, {"main": False, "newch": False})
+        self.s.set_account_login("newch", True)  # ... a real sign-in can
         self.assertEqual({a["id"]: a["logged_in"] for a in self.s.status()["accounts"]}, {"main": False, "newch": True})
         with self.assertRaises(ValueError):
             self.s.set_account_login("ghost", True)
@@ -368,3 +399,262 @@ class LoginFlagTests(StoreCase):
         self.assertEqual(self.s._backlog({"ready": 0}, ["pets"]), 0)  # counts read a moment earlier than the query can disagree
         self.assertEqual(self.s._backlog({"ready": 2}, ["pets"]), 0)
         self.assertEqual(self.s._backlog({"ready": 3, "queued": 1}, ["pets"]), 2)
+
+
+class LoginAlertTests(StoreCase):
+    """Being signed out of one account is reported once per account, with the account's name and the exact command to fix it."""
+
+    def setUp(self):
+        super().setUp()
+        self.s.add_account({"username": "meo_channel", "id": "pets", "topics": ["pets"]})
+        self.sent = []
+        self.s.notifier = lambda kind, text, key: self.sent.append((kind, text, key))
+
+    def test_signing_out_of_an_account_tells_the_owner_which_account_and_how_to_sign_in_again(self):
+        self.s.set_account_login("pets", False)
+        self.assertEqual(len(self.sent), 1)
+        kind, text, key = self.sent[0]
+        self.assertIn("@meo_channel", text)
+        self.assertIn("./trendvn tiktok login --account pets", text)
+        self.assertEqual(kind, "urgent")
+
+    def test_each_account_has_its_own_alert_so_the_second_logout_is_not_swallowed_by_the_first(self):
+        self.s.set_account_login("pets", False)
+        self.s.set_account_login("main", False)
+        keys = [key for _, _, key in self.sent]
+        self.assertEqual(len(set(keys)), 2)  # the notifier throttles by (kind, key): one key per account
+        self.assertIn("main", self.sent[1][1] + self.sent[1][2])
+
+    def test_a_logout_that_is_already_known_is_not_announced_again_but_a_new_one_after_signing_in_is(self):
+        self.s.set_account_login("pets", False)
+        self.s.set_account_login("pets", False)  # every tick of the schedule reports the same thing
+        self.assertEqual(len(self.sent), 1)
+        self.s.set_account_login("pets", True)
+        self.s.set_account_login("pets", False)
+        self.assertEqual(len(self.sent), 2)
+
+    def test_being_signed_in_says_nothing(self):
+        self.s.set_account_login("pets", True)
+        self.assertEqual(self.sent, [])
+
+
+class ChallengeByAccountTests(StoreCase):
+    """A CAPTCHA appears in one account's browser profile: the message names that account and solving it for another one changes nothing."""
+
+    def setUp(self):
+        super().setUp()
+        self.s.update_settings({"publisher_enabled": True, "post_windows": [], "min_publish_gap": 0, "daily_limit": 5})
+        self.s.add_account({"username": "meo_channel", "id": "pets", "topics": ["pets"]})
+        self.sent = []
+        self.s.notifier = lambda kind, text, key: self.sent.append((kind, text, key))
+        self.ready("cat", topic="pets", meta=json.dumps({"score": 1}))
+
+    def test_the_message_and_the_pause_reason_name_the_account_and_the_exact_command(self):
+        self.s.set_challenge(True, "pets")
+        self.assertIn("./trendvn tiktok trust --account pets", self.sent[-1][1])
+        self.assertIn("@meo_channel", self.sent[-1][1])
+        blocked = self.s.publish_claim()
+        self.assertEqual(blocked["status"], "blocked")
+        self.assertIn("trust --account pets", blocked["reason"])
+
+    def test_the_default_account_needs_no_flag(self):
+        self.s.set_challenge(True, "main")
+        self.assertIn("./trendvn tiktok trust", self.sent[-1][1])
+        self.assertNotIn("--account", self.sent[-1][1])
+
+    def test_solving_it_for_another_account_does_not_lift_the_pause(self):
+        self.s.set_challenge(True, "pets")
+        self.s.set_challenge(False, "main")  # the owner ran `tiktok trust` for the wrong profile
+        self.assertEqual(self.s.publish_claim()["status"], "blocked")
+        self.assertTrue(self.s.status()["publisher_challenge"])
+        self.s.set_challenge(False, "pets")
+        self.assertEqual(self.s.publish_claim()["status"], "claimed")
+
+    def test_a_pause_without_a_known_account_is_lifted_by_any_account(self):
+        self.s.set_challenge(True)  # (an older agent does not say which account)
+        self.s.set_challenge(False, "pets")
+        self.assertFalse(self.s.status()["publisher_challenge"])
+
+    def test_the_dashboard_card_gives_the_command_for_the_account(self):
+        self.s.set_challenge(True, "pets")
+        self.assertEqual(self.s.status()["publisher_challenge_account"], "pets")
+
+
+class AccountRulesTests(StoreCase):
+    """Small rules between the accounts that no other test pinned (found by mutating the code: each of these survived the suite)."""
+
+    def setUp(self):
+        super().setUp()
+        self.s.update_settings({"publisher_enabled": True, "post_windows": [], "min_publish_gap": 0, "daily_limit": 5})
+        self.s.update_account("main", {"topics": ["music"]})
+        self.s.add_account({"username": "meo_channel", "id": "pets", "topics": ["pets"]})
+
+    def video(self, job_id, topic):
+        self.ready(job_id, topic=topic, meta=json.dumps({"score": 1}))
+
+    def test_the_default_account_is_the_first_enabled_one(self):
+        self.s.update_account("main", {"enabled": False})
+        self.assertEqual(self.s.default_account()["id"], "pets")
+        self.s.update_account("main", {"enabled": True})
+        self.assertEqual(self.s.default_account()["id"], "main")
+
+    def test_an_unconfirmed_post_holds_only_its_own_account_even_for_a_hand_picked_video(self):
+        for job_id, topic in (("cat1", "pets"), ("cat2", "pets"), ("song", "music")):
+            self.video(job_id, topic)
+        first = self.s.publish_claim(job_id="cat1")
+        self.s.publish_finish(first["id"], first["lease"], "unknown", "")
+        self.assertEqual(self.s.publish_claim(job_id="cat2")["status"], "blocked")  # the same account: it may have posted cat1
+        other = self.s.publish_claim(job_id="song")  # another account is not affected
+        self.assertEqual((other["status"], other["account"]), ("claimed", "main"))
+
+    def test_the_posts_waiting_for_confirmation_say_which_account_and_profile_they_belong_to(self):
+        self.video("cat1", "pets")
+        claim = self.s.publish_claim(job_id="cat1")
+        self.s.publish_finish(claim["id"], claim["lease"], "unknown", "")
+        (item,) = self.s.unresolved()
+        self.assertEqual((item["account"], item["target"]), ("pets", "meo_channel"))
+
+    def test_the_button_sends_a_video_to_an_account_that_is_signed_in_before_one_that_is_signed_out(self):
+        from trendvn_worker.ui.view import View
+
+        self.s.update_account("main", {"topics": ["pets"]})  # both accounts take pets
+        self.s.set_account_login("main", False)
+        view = View(self.s.dashboard_data(), "CSRF")
+        self.assertEqual(view.destination("pets")["id"], "pets")  # (main has fewer posts today but cannot post)
+        self.s.set_account_login("main", True)
+        self.s.set_account_login("pets", False)
+        view = View(self.s.dashboard_data(), "CSRF")
+        self.assertEqual(view.destination("pets")["id"], "main")
+
+
+class SurvivingMutantTests(StoreCase):
+    """Behaviours a survey found nothing guarding (each was checked by breaking the code and seeing every test still pass)."""
+
+    def setUp(self):
+        super().setUp()
+        self.s.update_settings({"publisher_enabled": True, "post_windows": [], "min_publish_gap": 0, "daily_limit": 5})
+        self.s.update_account("main", {"topics": ["music", "pets"]})
+        self.s.add_account({"username": "meo_channel", "id": "pets", "topics": ["pets"]})
+
+    def test_the_default_account_is_the_first_one_that_is_switched_on(self):
+        self.s.update_account("main", {"enabled": False})
+        self.assertEqual(self.s.default_account()["id"], "pets")
+        self.s.update_account("main", {"enabled": True})
+        self.assertEqual(self.s.default_account()["id"], "main")
+
+    def test_an_unconfirmed_post_names_its_account_and_target(self):
+        self.ready("cat", topic="pets")
+        claim = self.s.publish_claim()
+        self.s.publish_finish(claim["id"], claim["lease"], "unknown", "", "chưa xác nhận")
+        (item,) = self.s.unresolved()
+        self.assertEqual((item["account"], item["target"]), (claim["account"], claim["target"]))
+
+    def test_an_unconfirmed_post_of_one_account_does_not_stop_a_hand_picked_post_on_another(self):
+        self.s.update_account("main", {"topics": ["music"]})  # cats only fit the pets account, songs only main
+        self.ready("cat", topic="pets", meta=json.dumps({"score": 5}))
+        self.ready("song", topic="music", meta=json.dumps({"score": 1}))
+        first = self.s.publish_claim(job_id="cat")
+        self.assertEqual(first["account"], "pets")
+        self.s.publish_finish(first["id"], first["lease"], "unknown", "", "chưa xác nhận")
+        other = self.s.publish_claim(job_id="song")  # the pets account waits for its owner's confirmation; main is not held up by it
+        self.assertEqual((other["status"], other["account"]), ("claimed", "main"))
+
+    def test_a_hand_picked_video_goes_to_an_account_that_is_not_known_to_be_signed_out(self):
+        self.s.set_account_login("pets", False)
+        self.ready("cat", topic="pets", meta=json.dumps({"score": 1}))
+        claim = self.s.publish_claim(job_id="cat")
+        self.assertEqual(claim["account"], "main")  # both take pets; the one whose browser is signed in gets it
+        self.s.set_account_login("pets", True)
+        self.s.set_account_login("main", False)
+        with self.s.connect() as db:
+            db.execute("UPDATE jobs SET state='ready',publish_lease=NULL WHERE id='cat'")
+        self.assertEqual(self.s.publish_claim(job_id="cat")["account"], "pets")
+
+
+class SmallRulesTests(StoreCase):
+    def test_the_command_line_flag_is_empty_for_the_main_account_and_for_an_unnamed_one(self):
+        from trendvn_worker.domain.accounts import account_flag
+
+        self.assertEqual([account_flag(a) for a in (None, "", "main", True)], ["", "", "", ""])
+        self.assertEqual(account_flag("pets"), " --account pets")
+
+    def test_a_rehearsal_for_a_chosen_video_and_account_uses_that_account(self):
+        self.s.add_account({"username": "meo_channel", "id": "pets", "topics": ["pets"]})
+        self.ready("song", topic="music", meta=json.dumps({"score": 1}))
+        peek = self.s.publish_peek(job_id="song", account_id="pets")
+        self.assertEqual((peek["id"], peek["account"]), ("song", "pets"))  # the owner asked for pets: not the account that takes music
+
+    def test_the_dashboards_confirm_javascript_drops_the_flash_from_the_address(self):
+        js = (Path(__file__).resolve().parents[2] / "services/worker/src/trendvn_worker/ui/static/app.js").read_text()
+        self.assertIn("history.replaceState", js)
+        self.assertIn("(ok|err)", js)
+
+
+class ChallengeHardeningTests(StoreCase):
+    """What the independent review of the multi-account work found (2026-10-05)."""
+
+    def setUp(self):
+        super().setUp()
+        self.s.add_account({"username": "meo_channel", "id": "pets", "topics": ["pets"]})
+        self.sent = []
+        self.s.notifier = lambda kind, text, key: self.sent.append((kind, text, key))
+
+    def test_a_pause_held_for_an_account_that_was_deleted_can_still_be_cleared(self):
+        self.s.set_challenge(True, "pets")
+        self.s.delete_account("pets")  # the profile is gone: nobody can solve the check there
+        self.assertFalse(self.s.status()["publisher_challenge"])
+
+    def test_clearing_works_when_the_stored_value_is_damaged(self):
+        self.s.set_challenge(True, "pets")
+        with self.s.transaction() as db:
+            db.execute("UPDATE settings SET value='not json' WHERE key='publisher_challenge'")
+        self.assertTrue(self.s.set_challenge(False, "pets"))  # (it used to raise and leave the post claimed for 45 minutes)
+        self.assertFalse(self.s.status()["publisher_challenge"])
+
+    def test_a_name_nobody_has_is_never_stored_or_put_in_a_command_for_the_owner_to_copy(self):
+        self.s.set_challenge(True, "x; touch /tmp/pwn #")
+        self.assertTrue(self.s.status()["publisher_challenge"])
+        self.assertIsNone(self.s.status()["publisher_challenge_account"])
+        self.assertNotIn("touch", self.sent[-1][1])
+
+    def test_the_mac_double_click_is_offered_only_for_the_account_it_works_for(self):
+        self.s.set_challenge(True, "pets")
+        self.assertNotIn("Xac-minh-TikTok.command", self.sent[-1][1])  # that launcher always opens the main account's profile
+        self.s.set_challenge(False, "pets")
+        self.s.set_challenge(True, "main")
+        self.assertIn("Xac-minh-TikTok.command", self.sent[-1][1])
+
+
+class HeartbeatLoginTests(StoreCase):
+    """The 3-hourly sign-in check only sees a cookie: it must not undo a sign-out a real post just found, and it tells the owner too."""
+
+    def setUp(self):
+        super().setUp()
+        self.s.add_account({"username": "meo_channel", "id": "pets", "topics": ["pets"]})
+        self.sent = []
+        self.s.notifier = lambda kind, text, key: self.sent.append((kind, text, key))
+
+    def login(self):
+        return self.s.login_map(self.s.settings())
+
+    def test_a_cookie_check_does_not_heal_a_sign_out_found_by_a_real_post(self):
+        self.s.set_account_login("pets", False)
+        self.s.heartbeat("publisher", True, {"login": {"main": True, "pets": True}, "text": "ok"})
+        self.assertIs(self.login()["pets"], False)  # only a real sign-in (the login command, a post that got through) clears it
+        self.assertIs(self.login()["main"], True)
+        self.s.set_account_login("pets", True)
+        self.s.heartbeat("publisher", True, {"login": {"main": True, "pets": True}, "text": "ok"})
+        self.assertIs(self.login()["pets"], True)
+
+    def test_the_status_stays_unhealthy_while_an_enabled_account_is_signed_out(self):
+        self.s.set_account_login("pets", False)
+        self.s.heartbeat("publisher", True, {"login": {"main": True, "pets": True}})
+        self.assertEqual(self.s.component_state("publisher"), "error")
+
+    def test_when_the_cookie_check_notices_first_the_owner_still_gets_the_alert_with_the_command(self):
+        self.s.heartbeat("publisher", False, {"login": {"main": True, "pets": False}, "text": "Chưa đăng nhập: @meo_channel"})
+        alerts = [text for kind, text, key in self.sent if key == "login:pets"]
+        self.assertEqual(len(alerts), 1)
+        self.assertIn("./trendvn tiktok login --account pets", alerts[0])
+        self.s.set_account_login("pets", False)  # the next post attempt finds the same thing: no second alert
+        self.assertEqual(len([1 for _, _, key in self.sent if key == "login:pets"]), 1)

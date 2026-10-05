@@ -298,13 +298,18 @@ def main():
             errors = []
 
             def go(pg, url):
-                """goto that survives a form redirect still in flight (it would otherwise abort the new navigation)."""
+                """A fresh page at `url`, surviving a form redirect still in flight (it would otherwise abort the new navigation). When only
+                the #hash differs from where the page is, goto changes the hash without loading anything: the page is reloaded then."""
                 for _ in range(3):
                     try:
                         pg.wait_for_load_state("load")
-                        return pg.goto(url, wait_until="load")
+                        same_page = pg.url.split("#")[0] == url.split("#")[0]
+                        response = pg.goto(url, wait_until="load")
+                        return pg.reload(wait_until="load") if same_page else response
                     except Exception as e:
-                        if "interrupted by another navigation" not in str(e):
+                        if not any(
+                            text in str(e) for text in ("interrupted by another navigation", "ERR_ABORTED")
+                        ):  # the page may reload itself when a task ends
                             raise
                         pg.wait_for_timeout(500)
                 return pg.goto(url, wait_until="load")

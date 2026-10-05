@@ -6,12 +6,16 @@ from ..format import escape as E
 from ..labels import VISIBILITY_LABEL
 
 
-def blocked_reason(view):
-    """Why posting cannot start right now (shown on every card), or ''."""
+def blocked_reason(view, job=None):
+    """Why posting this video cannot start right now (shown on its card), or ''. The verification pause holds every account; an unconfirmed
+    post holds only its own account, the one this video would go to."""
     if view.challenge_on:
-        return "TikTok đang đòi xác minh: giải một lần bằng ./trendvn tiktok trust (xem mục Cần xem)."
+        return "TikTok đang đòi xác minh%s: giải một lần bằng %s (xem mục Cần xem)." % (view.challenge_who, view.challenge_command)
     if view.d["unresolved_publishes"]:
-        return "Có bài đăng chưa xác nhận: xử lý ở mục Cần xem trước."
+        destination = view.destination((job or {}).get("topic"))
+        if view.unconfirmed_for(destination):
+            who = " của @%s" % destination["username"] if destination else ""
+            return "Có bài đăng%s chưa xác nhận: xử lý ở mục Cần xem trước." % who
     return ""
 
 
@@ -62,8 +66,7 @@ def _empty_guide(view):
 
 
 def render(view):
-    blocked = blocked_reason(view)
-    body = "".join(ready_card(job, view, blocked) for job in view.ready) if view.ready else _empty_guide(view)
+    body = "".join(ready_card(job, view, blocked_reason(view, job)) for job in view.ready) if view.ready else _empty_guide(view)
     return (
         '<h2>Đăng bài</h2><p class="hint">Đây là các video đã xử lý xong. Xem thử, sửa mô tả và hashtag nếu muốn, rồi bấm <b>Đăng ngay</b> để đăng đúng video đó. '
         'Lịch tự động vẫn tự chọn bài điểm cao nhất để đăng trong giờ vàng.</p>%s%s<div class="stack">%s</div>'

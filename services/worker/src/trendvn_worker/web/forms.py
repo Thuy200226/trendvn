@@ -73,6 +73,7 @@ def save_gemini_key(app, form):
     path = app.store.root / "gemini.key"
     path.write_text(key)
     path.chmod(0o600)
+    app.store.key_accepted()  # a new key: the old rejection no longer applies (a wrong one is found out by the next call)
     return Redirect("key", anchor="#settings")
 
 

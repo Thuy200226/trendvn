@@ -7,17 +7,13 @@ from ..log import log
 from ..worker_client import worker
 from .challenge import has_challenge
 from .constants import HEADED, LOGIN_URL, UPLOAD_URL
-from .profile import logged_in, profile_name, wrong_account
+from .profile import account_flag, logged_in, profile_name, wrong_account
 
 
 def _report(account, ok):
     from .jobs import report_login
 
     report_login(account, ok)
-
-
-def _account_flag(account):
-    return "" if account in (None, "", "main") else " --account " + account
 
 
 def login(minutes=10, account=None, expected=None):
@@ -57,7 +53,9 @@ def trust(minutes=15, account=None):
                 page.wait_for_timeout(3000)
                 log("Trang tải lên đã sẵn sàng, không còn yêu cầu xác minh.")
                 try:
-                    worker("/api/publisher/challenge", {"active": False})  # publishing resumes on its own
+                    worker(
+                        "/api/publisher/challenge", {"active": False, "account": account or "main"}
+                    )  # resumes on its own, if it was this account's
                 except Exception:
                     pass
                 return True
@@ -70,7 +68,7 @@ def session_status(deep=False, account=None, expected=None):
     expected: the TikTok handle the profile must be signed in as; a profile signed in as somebody else is reported as not signed in."""
     with chrome(profile_name(account), locale="vi-VN", headless=not (deep and HEADED)) as ctx:
         if not logged_in(ctx):
-            return {"logged_in": False, "reason": "Chưa đăng nhập. Chạy: ./trendvn tiktok login" + _account_flag(account)}
+            return {"logged_in": False, "reason": "Chưa đăng nhập. Chạy: ./trendvn tiktok login" + account_flag(account)}
         if expected:
             mismatch = wrong_account(ctx, expected)
             if mismatch:
@@ -82,7 +80,7 @@ def session_status(deep=False, account=None, expected=None):
             page.goto(UPLOAD_URL, wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(6000)
             if "/login" in page.url:
-                return {"logged_in": False, "reason": "Phiên đã hết hạn. Đăng nhập lại: ./trendvn tiktok login" + _account_flag(account)}
+                return {"logged_in": False, "reason": "Phiên đã hết hạn. Đăng nhập lại: ./trendvn tiktok login" + account_flag(account)}
             return {"logged_in": True}
         finally:
             page.close()

@@ -7,7 +7,7 @@ import urllib.error
 import urllib.request
 
 from ..domain.settings import MODEL_FALLBACKS
-from .errors import RateLimited, Transient
+from .errors import KeyRejected, RateLimited, Transient
 
 TRANSIENT = (429, 500, 502, 503, 504)
 BASE = "https://generativelanguage.googleapis.com/v1beta/"
@@ -48,13 +48,17 @@ def gemini(store, model, body, endpoint=None):
                 message += " [%s]" % DAILY_QUOTA
         except Exception:
             message = ""
-        raise ValueError("Gemini HTTP %d (%s)%s" % (e.code, model, ": " + message if message else "")) from None
+        text = "Gemini HTTP %d (%s)%s" % (e.code, model, ": " + message if message else "")
+        if e.code in (401, 403) or (e.code == 400 and re.search(r"api[ _]?key", message, re.I)):
+            raise KeyRejected(text) from None
+        raise ValueError(text) from None
     except Exception:
         # Timeout or dropped connection. Analysis and voice generation have no side effects, so this is retried like an overload;
         # the row is removed so retries cannot exhaust the local daily allowance.
         with store.transaction() as db:
             db.execute("DELETE FROM api_calls WHERE at=? AND model=?", (stamp, model))
         raise ValueError("Gemini HTTP 504 (%s): no response in time" % model) from None
+    store.key_accepted()  # Google answered: whatever was wrong with the key is not any more
     return data
 
 
@@ -68,7 +72,7 @@ def call_with_fallback(store, cfg, key, chain_default, fn, rounds=4, waits=(10, 
     chain = [cfg[key]] + [m for m in chain_default if m != cfg[key]]
     last = None
     transient = busy = exhausted = False
-    gone = set()
+    gone, rejected = set(), None
     deadline = time.time() + budget  # one call never holds the worker (and n8n's HTTP request) longer than the budget
     for rnd in range(rounds):
         transient = busy = exhausted = False
@@ -77,6 +81,9 @@ def call_with_fallback(store, cfg, key, chain_default, fn, rounds=4, waits=(10, 
                 raise Transient("Gemini không phản hồi kịp (%ds), sẽ thử lại sau: %s" % (budget, last))
             try:
                 result = fn(model)
+            except KeyRejected as e:  # this model refuses the key: a key can lack access to one model while the fallbacks work
+                rejected = rejected or e
+                continue
             except ValueError as e:
                 text = str(e)
                 if "HTTP 404" in text:
@@ -101,6 +108,8 @@ def call_with_fallback(store, cfg, key, chain_default, fn, rounds=4, waits=(10, 
             break
         if rnd < rounds - 1:
             time.sleep(min(waits[rnd], max(0, deadline - time.time())))
+    if rejected and not transient:
+        raise rejected  # every model that answered refused the key: the key is the problem, whatever else failed on the way
     if transient:
         raise Transient(
             ("Hạn mức Gemini của khóa đã hết, sẽ thử lại sau: " if exhausted and not busy else "Gemini đang quá tải, sẽ thử lại sau: ")

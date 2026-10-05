@@ -12,6 +12,11 @@ OVERRIDES = ("daily_limit", "min_gap", "windows", "visibility")  # None = use th
 SETTING_OF = {"daily_limit": "daily_limit", "min_gap": "min_publish_gap", "windows": "post_windows", "visibility": "visibility"}
 
 
+def account_flag(account_id):
+    """' --account ID' for a command line, or '' for the default account (the command line's own default)."""
+    return "" if account_id in (None, "", "main", True) else " --account " + str(account_id)
+
+
 def clean_username(value):
     name = str(value or "").strip().lstrip("@")
     if not USERNAME_RX.fullmatch(name):

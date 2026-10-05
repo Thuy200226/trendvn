@@ -34,7 +34,7 @@ def run_publish(job_id=None):
         "signed_out": "deferred",  # not the video's fault either: nothing was posted
     }.get(outcome, "failed")
     if outcome == "challenge":
-        worker("/api/publisher/challenge", {"active": True})
+        worker("/api/publisher/challenge", {"active": True, "account": claim.get("account")})
     if outcome == "signed_out":
         report_login(claim.get("account"), False)  # the schedule leaves this account alone until it is signed in again
     elif outcome in ("published", "duplicate", "unknown", "challenge", "deferred"):
@@ -46,9 +46,10 @@ def run_publish(job_id=None):
     return {"status": outcome, "id": claim["id"], "reason": reason, "url": url if url.startswith("https://") else ""}
 
 
-def dry_run_next(job_id=None):
-    """Rehearse a ready video (the next one, or the chosen one) without touching the switch: upload, caption, screenshot, stop."""
-    st = worker("/api/publish/peek", {"job_id": job_id} if job_id else {})
+def dry_run_next(job_id=None, account=None):
+    """Rehearse a ready video (the next one, or the chosen one; for `account` when given) without touching the switch: upload, caption,
+    screenshot, stop."""
+    st = worker("/api/publish/peek", {k: v for k, v in (("job_id", job_id), ("account", account)) if v})
     if st.get("status") != "ready":
         return st
     outcome, shot, reason = publish_one(st, dry_run=True)

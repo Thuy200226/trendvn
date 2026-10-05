@@ -23,8 +23,8 @@ Bảng điều khiển có sáu tab: **Tổng quan**, **Hàng đợi** (video đ
 
 Từ trên xuống:
 
-1. **Thanh trạng thái:** xanh = đang tự động hoàn toàn; cam = còn việc cần xem hoặc thiếu thiết lập.
-2. **Thẻ Tình trạng:** ba dòng Thu thập video · Đăng TikTok · Giờ vàng (đang mở hay mở lúc mấy giờ). Mỗi dòng nằm gọn trong thẻ, không cuộn ngang.
+1. **Thanh trạng thái:** xanh chỉ khi đủ cả bốn điều: thiết lập xong (khóa Gemini, Xử lý video, Tự đăng), không còn việc cần xem, không có video nào đang chờ bạn duyệt, và cả bộ thu thập lẫn trình đăng đã báo cáo trong 7 giờ qua. Cam = thiếu một trong bốn, và thanh nói thiếu cái nào (lịch n8n tắt hoặc agent không chạy hiện ở đây).
+2. **Thẻ Tình trạng:** bốn dòng Thu thập video · Đăng TikTok · Giờ vàng (đang mở hay mở lúc mấy giờ) · Ổ đĩa. Mỗi dòng nằm gọn trong thẻ, không cuộn ngang.
 3. **Thiết lập n/6:** danh sách việc để đạt tự động hoàn toàn, mỗi mục chưa xong có gợi ý ngay bên dưới.
 4. **Luồng xử lý:** Ứng viên → Chờ xử lý → Sẵn sàng → Đã đăng. Chạm vào từng bước để mở đúng tab (Hàng đợi, Đăng bài, Đã đăng).
 5. **Cần xem:** gom ba loại việc, xem bên dưới.
@@ -43,8 +43,9 @@ Từ trên xuống:
 | Thẻ | Nghĩa | Bạn làm gì |
 |---|---|---|
 | 🚨 **Chưa xác nhận đã đăng** | Hệ thống đã bấm Đăng nhưng chưa thấy bài trên hồ sơ TikTok. Đăng tự dừng để không trùng | Mở TikTok kiểm tra. **Bài đã lên** → bấm "Bài đã lên TikTok". **Chưa có** → bấm "Chưa có, cho phép đăng lại" |
-| 🎬 **Chờ bạn duyệt** | Chỉ xuất hiện khi bật "Duyệt tay trước khi đăng". Đã dựng xong | Xem video, bấm "Duyệt và cho đăng" hoặc "Bỏ" |
 | ⚠️ **Cần duyệt** | Hệ thống giữ lại và ghi lý do (lệch chủ đề, nhạy cảm, Gemini không chắc, có thể trùng video đã xử lý...) | Xem video gốc. Ổn → "Duyệt lại, bỏ qua kiểm tra" (chạy lại và bỏ qua các kiểm tra phán đoán, vẫn giữ kiểm tra cấu trúc). Không → "Bỏ" |
+
+Khi bật "Duyệt tay trước khi đăng", video dựng xong **không** nằm ở Cần xem mà ở tab **Đăng bài** (có chấm xanh): xem video rồi bấm "Duyệt và cho đăng" hoặc "Bỏ"; chưa duyệt thì lịch tự động chưa đăng.
 
 ## 3. Cài đặt (đều đổi được ngay trên bảng điều khiển)
 
@@ -118,15 +119,16 @@ Bắt đầu bằng: `./trendvn doctor` (mỗi dòng lỗi kèm cách sửa), r�
 
 ## 5. Dọn dẹp và bảo trì
 
-- Video đã đăng thành công không cần giữ lại. Xóa an toàn thư mục `data/worker/jobs/<id>/` và `data/worker/inbox/*` của video có trạng thái `published`, `rejected`, `duplicate`, `failed` (bản ghi trong SQLite vẫn giữ để chống trùng).
+- Hệ thống tự dọn: tệp của video đã xong sau 7 ngày, ứng viên chưa tải sau 3 ngày, video chưa ai quyết sau 21 ngày (`store/retention.py`); bản ghi trong SQLite luôn được giữ. Khi ổ đĩa đang cạn mà chưa tới hạn, bạn có thể dọn tay: xóa an toàn thư mục `data/worker/jobs/<id>/` và `data/worker/inbox/*` của video có trạng thái `published`, `rejected`, `duplicate`, `failed` (bản ghi trong SQLite vẫn giữ để chống trùng).
 - Không xóa `data/worker/trendvn.sqlite3`: mất nó là mất toàn bộ lịch sử chống trùng, hệ thống sẽ đăng lại video đã từng đăng.
 - Sao lưu định kỳ: `./trendvn backup --keep 8` (đưa vào cron nếu muốn; cron có PATH rất ngắn nên khai báo để tìm thấy `docker`: `0 3 * * 0 PATH=/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin; cd /đường/dẫn/trendvn && ./trendvn backup --keep 8`).
 - Lịch sử thực thi n8n tự xóa sau 7 ngày (`EXECUTIONS_DATA_MAX_AGE`).
 
 ## 6. Khôi phục các tình huống
 
-- **Mất điện giữa lúc xử lý:** `housekeeping` (trong workflow 01) chuyển video bị treo > 30 phút sang "Cần duyệt", bạn duyệt lại là chạy tiếp.
-- **Mất điện giữa lúc đăng:** trạng thái `publishing` quá 45 phút tự thành "Chưa xác nhận"; agent đối chiếu hồ sơ ở lần chạy 01 kế tiếp, không xác nhận được thì bạn xác nhận tay.
+- **Mất điện giữa lúc xử lý:** khi worker khởi động lại, video đang xử lý được xếp lại hàng đợi ngay (và `housekeeping` làm việc đó cho video treo quá 30 phút); video đã bị ngắt hai lần mới vào "Cần xem" để bạn duyệt.
+- **Mất điện giữa lúc đăng:** trạng thái `publishing` quá 45 phút tự thành "Chưa xác nhận" (kiểm ở mỗi lần hỏi đăng và ở `housekeeping`, nên các tài khoản khác không phải chờ); agent đối chiếu hồ sơ ở lần chạy 01 kế tiếp, không xác nhận được thì bạn xác nhận tay.
+- **Máy khởi động lại (Linux):** agent chạy dưới `systemd --user`, nên chỉ tự chạy sau khi bạn đăng nhập màn hình, trừ khi bật một lần `sudo loginctl enable-linger $USER` (`./trendvn doctor` nhắc). Không có màn hình đăng nhập thì Chrome chạy ẩn và TikTok đòi xác minh thường hơn.
 - **Đổi mật khẩu TikTok hoặc bị đăng xuất:** đăng nhập lại bằng `./trendvn tiktok login`. Đăng tự dừng ("Trình đăng: Cần chú ý") cho tới khi có phiên.
 - **Gemini sai lệch:** dùng "Duyệt tay trước khi đăng" trong vài ngày đầu để xem chất lượng phụ đề và mô tả trước khi để hoàn toàn tự động.
 - **Muốn dừng ngay mọi thứ:** đặt "Tự đăng: Tắt" trên bảng điều khiển (có hiệu lực ngay ở lần hỏi tiếp theo). Muốn dừng cả thu thập: tắt Publish của workflow 01 trong n8n.
@@ -134,7 +136,7 @@ Bắt đầu bằng: `./trendvn doctor` (mỗi dòng lỗi kèm cách sửa), r�
 ## 7. Kiểm thử
 
 ```bash
-./trendvn test              # nhanh: lint + hơn 150 test trên máy
+./trendvn test              # nhanh: lint + hơn 500 test trên máy
 ./trendvn test container    # toàn bộ test trong image Docker (có ffmpeg, gồm dựng video thật)
 ./trendvn test e2e          # Chrome thật: bố cục 7 kích thước × 6 tab và mọi luồng bấm nút
 ./trendvn test all

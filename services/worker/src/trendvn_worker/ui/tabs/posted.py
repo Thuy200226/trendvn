@@ -1,14 +1,14 @@
 """Đã đăng: what was posted and how it performed."""
 
 from ..components import cell, platform_badge, table, task_panel
-from ..format import ago, escape as E, num
+from ..format import ago, escape as E, headline, num
 from ..labels import ROUTE_LABEL
 
 
 def _performance_table(view):
     rows = []
     for post in view.d["performance"]:
-        title = E((post["title"] or "")[:80])
+        title = headline(post, 80)
         link = (
             ('<a href="%s" target="_blank" rel="noopener noreferrer">%s</a>' % (E(post["publish_url"]), title))
             if post["publish_url"]

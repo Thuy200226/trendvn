@@ -4,7 +4,7 @@ import json
 import time
 import uuid
 
-from ..domain.accounts import accepts, effective
+from ..domain.accounts import account_flag, accepts, effective
 from ..domain.captions import build_caption
 from ..domain.platforms import valid_post_url
 from ..jsonsafe import loads
@@ -25,6 +25,14 @@ class PublishingMixin:
             return db.execute(q, args).fetchone()[0]
         with self.connect() as c:
             return c.execute(q, args).fetchone()[0]
+
+    def last_posts(self):
+        """{account id: when it last posted} for every account in one pass (the spacing between two posts is counted from it)."""
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT COALESCE(account,?),max(published_at) FROM jobs WHERE state='published' GROUP BY 1", (self._default_id(),)
+            ).fetchall()
+        return {account: when for account, when in rows}
 
     def posts_today(self, start):
         """{account id: posts since `start`} for every account in one pass (the dashboard asks about each account and about the total)."""
@@ -48,12 +56,17 @@ class PublishingMixin:
         window, limit, spacing and topic are waived; the safety rails that protect the account (one post in flight, unconfirmed posts,
         TikTok verification pause) still apply."""
         now = now or time.time()
+        self.expire_stale_publishing(now)
         cfg = self.settings()
         manual = job_id is not None
         if not manual and not cfg["publisher_enabled"]:
             return {"status": "disabled", "reason": "Publishing switch is off"}
         if cfg.get("publisher_challenge"):
-            return {"status": "blocked", "reason": "TikTok is asking for human verification; solve it once with `./trendvn tiktok trust`"}
+            return {
+                "status": "blocked",
+                "reason": "TikTok is asking for human verification; solve it once with `./trendvn tiktok trust%s`"
+                % account_flag(cfg["publisher_challenge"]),
+            }
         with self.transaction() as db:
             accounts = self._accounts_in(db, enabled_only=True)  # read under the lock: an account deleted a moment ago must not get a post
             if not accounts:
@@ -184,20 +197,28 @@ class PublishingMixin:
             "visibility": effective(account, cfg)["visibility"],
         }
 
-    def publish_peek(self, job_id=None):
-        """A rendered video for rehearsals (the next one, or a chosen one); changes nothing and ignores the publishing switch."""
+    def publish_peek(self, job_id=None, account_id=None):
+        """A rendered video for rehearsals (the next one, or a chosen one, for the account asked for or the best fit); changes nothing and
+        ignores the publishing switch."""
         cfg = self.settings()
         accounts = self.accounts(enabled_only=True)
+        asked = None
+        if account_id:
+            asked = next((a for a in accounts if a["id"] == account_id), None)
+            if not asked:
+                raise ValueError("Không có tài khoản đang bật có mã %s" % account_id)
         with self.connect() as db:
             if job_id:
                 row = self._chosen_video(db, job_id)
+            elif asked:
+                row = self._best_ready_video(db, asked, time.time())
             else:
                 row = db.execute(
                     "SELECT * FROM jobs WHERE state='ready' AND output_file IS NOT NULL ORDER BY COALESCE(json_extract(meta,'$.score'),0) DESC, first_seen LIMIT 1"
                 ).fetchone()
             if not row or not accounts:
                 return {"status": "idle", "reason": "No rendered video is waiting"}
-            account = self._account_for_manual(db, row, accounts, time.time())
+            account = asked or self._account_for_manual(db, row, accounts, time.time())
         a = loads(row["analysis"], {})
         return {
             "status": "ready",
@@ -249,17 +270,34 @@ class PublishingMixin:
         elif outcome == "failed":
             self.emit("publish_failed", "⚠️ Đăng chưa thành công (sẽ thử lại sau): %s" % reason, "publish_failed")
 
-    def set_challenge(self, active):
-        """TikTok asked for human verification. Publishing pauses (no retries that would keep triggering it) until the owner clears it."""
+    def set_challenge(self, active, account=None):
+        """TikTok asked for human verification in one account's browser profile. Publishing pauses (no retries that would keep triggering
+        it) until the owner clears it, and it is cleared only by solving it in that same profile: the setting holds the account's id (True
+        when the agent did not say which). Clearing it for another account changes nothing. An id no account has is not stored (nor put
+        in a command for the owner to copy); a pause held for an account that no longer exists can be cleared by anyone."""
+        known = self.account(account) if account else None
+        account = known["id"] if known else None
         with self.transaction() as db:
-            db.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", ("publisher_challenge", json.dumps(bool(active))))
-            self.event(db, "", "challenge_on" if active else "challenge_off", "")
+            row = db.execute("SELECT value FROM settings WHERE key='publisher_challenge'").fetchone()
+            held = loads(row["value"]) if row else False
+            if not active and account and isinstance(held, str) and held != account:
+                if db.execute("SELECT 1 FROM accounts WHERE id=?", (held,)).fetchone():
+                    return False  # the owner solved the check in another profile: this one still has it
+            db.execute(
+                "INSERT OR REPLACE INTO settings VALUES (?,?)", ("publisher_challenge", json.dumps((account or True) if active else False))
+            )
+            self.event(db, "", "challenge_on" if active else "challenge_off", account or "")
         if active:
+            mac = (
+                " (Mac: nhấp đúp macos/Xac-minh-TikTok.command)" if account in (None, "main") else ""
+            )  # that launcher opens the main profile
             self.emit(
                 "urgent",
-                "🧩 TikTok đang yêu cầu xác minh (CAPTCHA). Đăng bài tạm dừng. Hãy giải một lần: chạy `./trendvn tiktok trust` (Mac: nhấp đúp macos/Xac-minh-TikTok.command).",
-                "challenge",
+                "🧩 TikTok đang yêu cầu xác minh (CAPTCHA)%s. Đăng bài tạm dừng. Hãy giải một lần: chạy `./trendvn tiktok trust%s`%s."
+                % (" ở @" + known["username"] if known else "", account_flag(account), mac),
+                "challenge:%s" % (account or ""),
             )
+        return True
 
     def resolve_unknown(self, jid, outcome, url=""):
         """Operator/agent verified the account: mark an uncertain publish as published or as not posted."""

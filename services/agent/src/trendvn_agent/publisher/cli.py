@@ -53,7 +53,7 @@ def main(argv=None):
         if username is not None:  # the worker is reachable: let it know, so the schedule stops or resumes using this account
             report_login(account, bool(status.get("logged_in")))
     elif command == "dry-run":
-        print(json.dumps(dry_run_next(), ensure_ascii=False))
+        print(json.dumps(dry_run_next(account=account), ensure_ascii=False))
     elif command == "stats":
         print(json.dumps(run_stats(), ensure_ascii=False))
     elif command == "verify":

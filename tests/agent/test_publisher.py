@@ -171,9 +171,13 @@ class ScriptedStudioTests(unittest.TestCase):
                 outcome, picture, _ = self.run_job()
                 self.assertEqual((outcome, picture), ("failed", "/shots/%s.png" % name))
 
-    def test_expired_login_page_is_a_failure(self):
+    def test_expired_login_page_means_signed_out_and_is_not_the_videos_fault(self):
+        """A session TikTok ended sends Studio to /login. That is the account's trouble: reported as signed out (the schedule then leaves the
+        account alone and the owner is told), never as a failed post that counts against the video and parks it after three strikes."""
         self.page.url = "https://www.tiktok.com/login?redirect=upload"
-        self.assertEqual(self.run_job()[0], "failed")
+        outcome, _, reason = self.run_job()
+        self.assertEqual(outcome, "signed_out")
+        self.assertIn("hết hạn", reason)
 
     def test_challenge_before_the_click_pauses_publishing(self):
         def blocked(page):
@@ -280,12 +284,31 @@ class AccountProfileTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             cli._split(["login", "--account"])
 
+    def test_a_rehearsal_asks_for_the_account_it_was_given(self):
+        from trendvn_agent.publisher import cli, jobs
+
+        sent = []
+
+        def worker(path, payload=None, timeout=900):
+            sent.append((path, payload))
+            return {"status": "idle", "reason": "No rendered video is waiting"}
+
+        with mock.patch.object(jobs, "worker", worker):
+            jobs.dry_run_next(account="pets")
+            jobs.dry_run_next()
+        self.assertEqual(sent[0], ("/api/publish/peek", {"account": "pets"}))
+        self.assertEqual(sent[1], ("/api/publish/peek", {}))  # as before when no account is given
+        with mock.patch.object(cli, "dry_run_next", lambda job_id=None, account=None: {"asked": account}) as _:
+            with mock.patch("builtins.print") as shown:
+                cli.main(["dry-run", "--account", "pets"])
+        self.assertIn("pets", str(shown.call_args))  # `tiktok dry-run --account pets` no longer ignores the account
+
     def test_the_login_hint_names_the_account(self):
         from trendvn_agent.publisher import session
 
-        self.assertEqual(session._account_flag(None), "")
-        self.assertEqual(session._account_flag("main"), "")
-        self.assertEqual(session._account_flag("pets"), " --account pets")
+        self.assertEqual(session.account_flag(None), "")
+        self.assertEqual(session.account_flag("main"), "")
+        self.assertEqual(session.account_flag("pets"), " --account pets")
 
 
 class RecordingChrome:
@@ -441,3 +464,164 @@ class ProfileCheckTests(unittest.TestCase):
         page.close.assert_called_once()
         page.goto.side_effect = RuntimeError("offline")
         self.assertIsNone(profile.signed_in_as(ctx))
+
+
+class SessionCheckTests(unittest.TestCase):
+    """The 3-hourly sign-in check: one answer per enabled account, and a profile signed in as somebody else is not signed in."""
+
+    @staticmethod
+    def fake_chrome(*args, **kwargs):
+        from contextlib import contextmanager
+
+        @contextmanager
+        def context():
+            yield object()
+
+        return context()
+
+    def test_a_profile_signed_in_as_somebody_else_is_not_signed_in_even_in_the_quick_check(self):
+        from trendvn_agent.publisher import session
+
+        def wrong(ctx, expected):
+            return "Hồ sơ Chrome đang đăng nhập @khac, không phải @%s." % expected if expected == "me" else None
+
+        with mock.patch.multiple(session, chrome=self.fake_chrome, logged_in=lambda ctx: True, wrong_account=wrong):
+            status = session.session_status(expected="me")
+            self.assertFalse(status["logged_in"])
+            self.assertIn("@khac", status["reason"])
+            self.assertTrue(session.session_status(expected="khac")["logged_in"])
+            self.assertTrue(session.session_status()["logged_in"])  # nobody to compare with: the cookie is enough
+
+    def test_the_heartbeat_checks_every_enabled_account_against_its_own_name_and_names_the_ones_missing(self):
+        from trendvn_agent import publisher, server
+
+        accounts = [
+            {"id": "main", "username": "chinh", "enabled": True},
+            {"id": "pets", "username": "meo", "enabled": True},
+            {"id": "old", "username": "cu", "enabled": False},
+        ]
+        asked, beats = [], []
+
+        def status(account=None, expected=None, deep=False):
+            asked.append((account, expected))
+            return {"logged_in": account == "main"}
+
+        with (
+            mock.patch.multiple(
+                server,
+                worker_get=lambda path: {"accounts": accounts},
+                worker=lambda path, payload=None, timeout=900: beats.append(payload) or {},
+            ),
+            mock.patch.object(publisher, "session_status", status),
+        ):
+            result = server.session({})
+        self.assertEqual(
+            asked, [("main", "chinh"), ("pets", "meo")]
+        )  # the switched-off account is not opened, the others are matched by name
+        (beat,) = beats
+        self.assertEqual(beat["detail"]["login"], {"main": True, "pets": False})
+        self.assertFalse(beat["ok"])
+        self.assertIn("@meo", beat["detail"]["text"])
+        self.assertNotIn("@chinh", beat["detail"]["text"])
+        self.assertEqual(result["accounts"], {"main": True, "pets": False})
+
+    def test_login_is_only_done_when_the_window_is_signed_in_as_the_account_that_was_asked_for(self):
+        from types import SimpleNamespace
+
+        from trendvn_agent.publisher import session
+
+        page = SimpleNamespace(goto=lambda *a, **k: None, wait_for_timeout=lambda ms: None)
+        ctx = SimpleNamespace(pages=[page], new_page=lambda: page)
+        reported = []
+        answers = iter(["Đang đăng nhập @khac", "Đang đăng nhập @khac", None])  # the owner signs in wrongly twice, then correctly
+        clock = iter(range(0, 10_000))
+        fake_time = SimpleNamespace(time=lambda: next(clock))
+        with (
+            mock.patch.multiple(
+                session,
+                chrome=lambda *a, **k: self.fake_chrome(),
+                logged_in=lambda c: True,
+                wrong_account=lambda c, expected: next(answers),
+                time=fake_time,
+                _report=lambda account, ok: reported.append((account, ok)),
+            ),
+            mock.patch.object(session, "chrome", lambda *a, **k: _Window(ctx)),
+        ):
+            self.assertTrue(session.login(10, "pets", expected="meo"))
+        self.assertEqual(reported, [("pets", True)])  # reported once, after the right account was in
+        self.assertEqual(list(answers), [])  # (it looked three times)
+
+    def test_login_with_the_wrong_account_never_succeeds(self):
+        from types import SimpleNamespace
+
+        from trendvn_agent.publisher import session
+
+        page = SimpleNamespace(goto=lambda *a, **k: None, wait_for_timeout=lambda ms: None)
+        ctx = SimpleNamespace(pages=[page], new_page=lambda: page)
+        reported = []
+        clock = iter(range(0, 100_000, 30))
+        with (
+            mock.patch.multiple(
+                session,
+                logged_in=lambda c: True,
+                wrong_account=lambda c, expected: "Đang đăng nhập @khac",
+                time=SimpleNamespace(time=lambda: next(clock)),
+                _report=lambda account, ok: reported.append((account, ok)),
+            ),
+            mock.patch.object(session, "chrome", lambda *a, **k: _Window(ctx)),
+        ):
+            self.assertFalse(session.login(1, "pets", expected="meo"))
+        self.assertEqual(reported, [])  # a wrong sign-in is never reported as signed in
+
+
+class ChallengeWiringTests(unittest.TestCase):
+    """The account the CAPTCHA belongs to travels from the agent to the worker (a mutation of any of these links survived the suite)."""
+
+    def test_the_default_account_names_itself_when_it_clears_the_pause(self):
+        from types import SimpleNamespace
+
+        from trendvn_agent.publisher import session
+
+        page = SimpleNamespace(
+            goto=lambda *a, **k: None,
+            wait_for_timeout=lambda ms: None,
+            locator=lambda selector: SimpleNamespace(count=lambda: 1),
+        )
+        ctx = SimpleNamespace(pages=[page], new_page=lambda: page)
+        sent = []
+        with (
+            mock.patch.multiple(
+                session, has_challenge=lambda p: False, worker=lambda path, payload=None, timeout=900: sent.append((path, payload)) or {}
+            ),
+            mock.patch.object(session, "chrome", lambda *a, **k: _Window(ctx)),
+        ):
+            self.assertTrue(session.trust(1, None))
+            self.assertTrue(session.trust(1, "pets"))
+        # None would clear a pause held for ANY account (the macOS launcher always runs it for the main one): it says "main"
+        self.assertEqual(sent[0], ("/api/publisher/challenge", {"active": False, "account": "main"}))
+        self.assertEqual(sent[1], ("/api/publisher/challenge", {"active": False, "account": "pets"}))
+
+    def test_a_challenge_found_while_posting_names_the_account(self):
+        sent = []
+        claim = {"status": "claimed", "id": "j1", "lease": "L", "account": "pets", "target": "meo", "output_hash": "h", "caption": "c"}
+
+        def worker(path, payload=None, timeout=900):
+            sent.append((path, payload))
+            return claim if path.endswith("/claim") else {"ok": True}
+
+        with mock.patch.multiple(jobs, worker=worker, publish_one=lambda c, dry_run: ("challenge", "", "TikTok đòi xác minh")):
+            jobs.run_publish("j1")
+        self.assertIn(("/api/publisher/challenge", {"active": True, "account": "pets"}), sent)
+
+
+class _Window:
+    """A stand-in for the chrome() context manager that hands out a prepared context."""
+
+    def __init__(self, ctx):
+        self.ctx = ctx
+
+    def __enter__(self):
+        return self.ctx
+
+    def __exit__(self, *exc):
+        return False

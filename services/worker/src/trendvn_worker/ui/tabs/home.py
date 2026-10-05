@@ -10,11 +10,36 @@ def _accounts_text(d):
     return names[0] if len(names) == 1 else "%d tài khoản (%s)" % (len(names), ", ".join(names))
 
 
+def _banner_problem(view):
+    """Why the automation is not fully running by itself, in the owner's words, or '' when it is. Green means every part reports in."""
+    d = view.d
+    if view.key_rejected:
+        return "Khóa Gemini bị Google từ chối: vào Thêm → Cài đặt đổi khóa (các video vẫn nằm chờ, không mất)."
+    if not (d["gemini_configured"] and d["processing_enabled"] and d["publisher_enabled"]):
+        return "Hoàn tất danh sách thiết lập để bật tự động."
+    if view.attention:
+        return "Có %d việc cần bạn xem ở tab Cần xem." % view.attention
+    waiting = view.counts.get("awaiting_approval", 0)
+    if waiting:  # (also after the approval switch was turned off: the scheduler posts only videos that were released)
+        return "Có %d video đang chờ bạn duyệt ở tab Đăng bài; chưa duyệt thì chưa đăng." % waiting
+    parts = (("Bộ thu thập", d["discovery"]), ("Trình đăng TikTok", d["publisher"]))
+    erred = [name for name, state in parts if state == "error"]
+    if erred:
+        return "%s đang báo lỗi: xem dòng Tình trạng bên dưới hoặc chạy ./trendvn doctor." % ", ".join(erred)
+    silent = [name for name, state in parts if state != "connected"]
+    if silent:
+        return (
+            "%s chưa báo cáo gần đây: lịch tự động có thể đã tắt (chạy ./trendvn n8n activate) hoặc agent không chạy (./trendvn doctor)."
+            % ", ".join(silent)
+        )
+    return ""
+
+
 def banner(view):
-    if view.d["processing_enabled"] and view.d["publisher_enabled"] and not view.attention:
+    problem = _banner_problem(view)
+    if not problem:
         return '<div class="banner good"><b>Đang tự động hoàn toàn.</b> Thu thập, xử lý và đăng chạy theo lịch.</div>'
-    detail = "Có %d việc cần bạn xem ở tab Cần xem." % view.attention if view.attention else "Hoàn tất danh sách thiết lập để bật tự động."
-    return '<div class="banner warn"><b>Chưa tự động hoàn toàn.</b> %s</div>' % detail
+    return '<div class="banner warn"><b>Chưa tự động hoàn toàn.</b> %s</div>' % E(problem)
 
 
 def control(view):
@@ -91,14 +116,17 @@ def _disk_chip(free_mb):
 
 def numbers(view):
     d = view.d
-    total_views = sum(p["views"] or 0 for p in d["performance"])
+    read = [
+        p["views"] for p in d["performance"] if p["views"] is not None
+    ]  # None = never read from TikTok, which is not the same as 0 views
+    total_views = sum(read)
     tiles = (
         ("Đăng hôm nay", "%d / %d" % (d["published_today"], d["daily_limit"])),
         ("Chờ xử lý", view.waiting),
         ("Sẵn sàng đăng", view.ready_total),
         ("Cần xem", view.attention),
         ("Tổng đã đăng", view.counts.get("published", 0)),
-        ("Lượt xem (30 bài gần nhất)", num(total_views)),
+        ("Lượt xem (30 bài gần nhất)", num(total_views) if read else "—"),
     )
     return '<div class="kpis">%s</div>' % "".join('<div class="kpi"><small>%s</small><b>%s</b></div>' % (E(a), E(str(b))) for a, b in tiles)
 

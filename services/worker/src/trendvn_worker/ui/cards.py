@@ -3,8 +3,9 @@
 import re
 
 from ..domain import topics
+from ..domain.accounts import account_flag
 from .components import chip, platform_badge, state_chip
-from .format import escape as E, meta_of, num
+from .format import escape as E, headline, left_text, meta_of, num
 from .labels import ROUTE_LABEL, vi_reason
 
 CONFIRM_VISIBILITY = {"public": "CÔNG KHAI", "friends": "BẠN BÈ", "self": "CHỈ MÌNH TÔI"}
@@ -46,6 +47,9 @@ def _score_line(meta, with_views=True):
     return " · ".join(parts)
 
 
+FAILED_REST_SECONDS = 3600  # the scheduler skips a video that failed to post this recently (store/publishing.py::_best_ready_video)
+
+
 def _destination_line(view, job):
     """Which topic the video is about and which accounts take it; says so when none does."""
     topic = job.get("topic")
@@ -75,9 +79,15 @@ def _confirm_text(view, job):
     d, cfg = view.d, view.cfg
     account = view.destination(job.get("topic"))
     warnings = []
-    if d["published_today"] >= d["daily_limit"]:
-        warnings.append("Hôm nay đã đăng đủ %d/%d bài, bạn vẫn muốn đăng thêm?" % (d["published_today"], d["daily_limit"]))
-    if not d["in_window"]:
+    # the rules that apply are the account's own (its limit, its golden hours), not the channel's totals
+    today, limit, inside = (
+        (account["published_today"], account["daily_limit"], account["in_window"])
+        if account
+        else (d["published_today"], d["daily_limit"], d["in_window"])
+    )
+    if today >= limit:
+        warnings.append("Hôm nay đã đăng đủ %d/%d bài, bạn vẫn muốn đăng thêm?" % (today, limit))
+    if not inside:
         warnings.append("Đang ngoài giờ vàng.")
     shown = account["visibility"] if account else cfg["visibility"]
     visibility = CONFIRM_VISIBILITY.get(shown, shown)
@@ -86,6 +96,55 @@ def _confirm_text(view, job):
         visibility,
         " ".join(warnings),
     )
+
+
+def _account_hold(view, account):
+    """What keeps the schedule from posting on this account right now (from the dashboard's numbers, the same order the scheduler checks
+    them in), or None when nothing does."""
+    name = "@" + account["username"]
+    if account.get("logged_in") is False:
+        return "%s chưa đăng nhập TikTok (./trendvn tiktok login%s)" % (name, account_flag(account["id"]))
+    if view.unconfirmed_for(account):
+        return "%s có bài đăng chưa xác nhận (xử lý ở tab Cần xem)" % name
+    if not account.get("in_window", True):
+        return "%s ngoài giờ vàng, lần tới %s" % (name, account.get("next_window") or "?")
+    if account["published_today"] >= account["daily_limit"]:
+        return "%s đã đăng đủ %d/%d bài hôm nay" % (name, account["published_today"], account["daily_limit"])
+    wait = (account.get("next_post_at") or 0) - view.now
+    if wait > 0:
+        return "%s phải giãn cách giữa hai bài, còn %s" % (name, left_text(wait))
+    return None
+
+
+def _everyone_hold(view, job):
+    """What holds this video back whichever account would post it: a verification pause, a post in flight, a recent failure of this video."""
+    if view.challenge_on:
+        return "TikTok đang đòi xác minh (đăng tạm dừng cho tới khi bạn giải)"
+    if view.counts.get("publishing", 0):
+        return "một bài khác đang được đăng"
+    failed = job.get("last_publish_fail")
+    if failed and view.now - failed < FAILED_REST_SECONDS:
+        return "lần đăng trước lỗi nên video này nghỉ %s trước khi thử lại" % left_text(FAILED_REST_SECONDS - (view.now - failed))
+    return None
+
+
+def _waiting_line(view, job):
+    """Why the schedule has not posted this video yet, in words (the scheduler itself only tells n8n, in English)."""
+    if job["state"] == "awaiting_approval":
+        text = "Chờ bạn duyệt: duyệt xong thì lịch mới đăng video này."
+    elif not view.d["publisher_enabled"]:
+        text = "Công tắc Tự đăng đang tắt nên lịch chưa đăng video nào. Bật ở tab Tổng quan."
+    else:
+        takers = view.takers(job.get("topic"))
+        if not takers:
+            return ""  # the destination line says that no account takes this topic
+        everyone = _everyone_hold(view, job)
+        holds = [everyone] if everyone else [_account_hold(view, a) for a in takers]
+        if None in holds:
+            text = "Sẵn sàng: lịch sẽ đăng ở lần kiểm tra lịch kế tiếp nếu tới lượt."
+        else:
+            text = "Chưa đăng vì: " + "; ".join(holds) + "."
+    return '<div class="note small wait">%s</div>' % E(text)
 
 
 def ready_card(job, view, blocked):
@@ -123,7 +182,7 @@ def ready_card(job, view, blocked):
         '<div class="row">%(plat)s%(state)s</div>'
         '<div class="ttl">%(title)s</div>'
         '<div class="muted small">%(score)s</div>'
-        '<div class="facts">%(facts)s</div>%(why)s%(dest)s'
+        '<div class="facts">%(facts)s</div>%(why)s%(dest)s%(wait)s'
         '<label class="cap">Mô tả và hashtag sẽ đăng'
         '<textarea name="caption" rows="4" maxlength="2200" data-caption spellcheck="false">%(caption)s</textarea></label>'
         '<div class="row small"><span class="muted"><span data-len>%(length)d</span> ký tự · <span data-tags>%(ntags)d</span> hashtag%(edited)s</span></div>'
@@ -145,6 +204,7 @@ def ready_card(job, view, blocked):
         "facts": _fact_chips(job, info),
         "why": '<div class="muted small">%s</div>' % E(info["why"]) if info.get("why") else "",
         "dest": _destination_line(view, job),
+        "wait": _waiting_line(view, job),
         "caption": E(job["caption"]),
         "length": lint["length"],
         "ntags": lint["tags"],
@@ -179,7 +239,7 @@ def review_card(job, csrf):
         E(job["id"]),
         platform_badge(job["platform"]),
         state_chip(job["state"]),
-        E((job["title"] or "(không có tiêu đề)")[:120]),
+        headline(job, 120) or "(không có tiêu đề)",
         E(_score_line(meta_of(job), with_views=False)),
         E(vi_reason(job["reason"])),
         retry,

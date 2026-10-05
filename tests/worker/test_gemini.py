@@ -255,6 +255,60 @@ class GeminiResilienceTests(StoreCase):
             gemini_api.gemini = shaped(mime, payload)
             self.assertAlmostEqual(speech.tts(self.s, self.s.settings(), "Xin chào", out), 2.0, places=2)
 
+    def error_from_google(self, status, message):
+        import urllib.error
+        import urllib.request
+
+        def reject(req, timeout=0):
+            raise urllib.error.HTTPError(req.full_url, status, "x", {}, io.BytesIO(json.dumps({"error": {"message": message}}).encode()))
+
+        real = urllib.request.urlopen
+        urllib.request.urlopen = reject
+        try:
+            with self.assertRaises(ValueError) as caught:
+                self.real_gemini(self.s, "gemini-3.8-flash", {})
+        finally:
+            urllib.request.urlopen = real
+        return caught.exception
+
+    def test_a_key_google_does_not_accept_is_told_apart_from_a_bad_request(self):
+        """Every video fails the same way with a wrong key: that is the key's problem, not each video's, and no video should be blamed."""
+        for status, message in (
+            (400, "API key not valid. Please pass a valid API key."),
+            (401, "Request had invalid authentication credentials."),
+            (403, "Your API key was reported as leaked."),
+        ):
+            self.assertIsInstance(self.error_from_google(status, message), gemini_api.KeyRejected, (status, message))
+        for status, message in ((400, "Invalid JSON payload received."), (404, "models/x is not found"), (500, "Internal error")):
+            self.assertNotIsInstance(self.error_from_google(status, message), gemini_api.KeyRejected, (status, message))
+
+    def test_a_model_that_refuses_the_key_is_skipped_and_the_key_is_blamed_only_when_every_model_refuses(self):
+        """A key can lack access to ONE model (403) while the fallbacks work; it must not stop the whole queue as a wrong key would."""
+        calls = []
+
+        def only_the_first_refuses(store, model, body, endpoint=None):
+            calls.append(model)
+            if model == MODEL_FALLBACKS[0]:
+                raise gemini_api.KeyRejected("Gemini HTTP 403 (%s): permission denied for this model" % model)
+            return {"ok": model}
+
+        gemini_api.gemini = only_the_first_refuses
+        before = self.s.settings()["model"]
+        result = gemini_api.generate(self.s, dict(self.s.settings(), model=MODEL_FALLBACKS[0]), [{"text": "x"}])
+        self.assertEqual(result, {"ok": MODEL_FALLBACKS[1]})
+        self.assertEqual(self.s.settings()["model"], before)  # not rewritten: the model is not gone, only closed to this key
+
+        calls.clear()
+
+        def everyone_refuses(store, model, body, endpoint=None):
+            calls.append(model)
+            raise gemini_api.KeyRejected("Gemini HTTP 400 (%s): API key not valid" % model)
+
+        gemini_api.gemini = everyone_refuses
+        with self.assertRaises(gemini_api.KeyRejected):
+            gemini_api.generate(self.s, self.s.settings(), [{"text": "x"}])
+        self.assertEqual(len(calls), len(MODEL_FALLBACKS))  # each model asked once, nothing waited for
+
     def test_audio_with_no_samples_is_an_error_not_a_voice(self):
         buf = io.BytesIO()
         with wave.open(buf, "wb") as w:

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .ai.analyzer import analyze
 from .ai.condense import CONDENSE_ABOVE, condense
-from .ai.errors import RateLimited, Transient
+from .ai.errors import KeyRejected, RateLimited, Transient
 from .ai.prompts import PROMPT_VERSION
 from .ai.tts import make_voice
 from .domain.hardsubs import covered_spans, hard_subtitle_band
@@ -91,6 +91,12 @@ def process_one(store):
     except RateLimited as e:
         reason = str(e)
         return _settle(job, "rate_limited", reason, lambda: store.release(job["id"], job["lease"], reason))
+    except KeyRejected as e:
+        # every video would fail the same way: stop here, keep this one waiting, and tell the owner once (not once per video)
+        reason = "Khóa Gemini bị Google từ chối (sai, đã thu hồi hoặc thiếu quyền). Vào Cài đặt đổi khóa rồi chạy lại: " + str(e)[:160]
+        store.set_key_rejected(True)  # the dashboard shows it (the phone alert is optional and throttled to one per 6 hours)
+        store.emit("urgent", "🔑 " + reason, "gemini_key")
+        return _settle(job, "blocked", reason, lambda: store.release(job["id"], job["lease"], reason))
     except Exception as e:
         reason = str(e)[:REASON_LIMIT]
         return _settle(job, "needs_review", reason, lambda: store.finish(job["id"], job["lease"], "needs_review", reason=reason))

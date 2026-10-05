@@ -117,7 +117,8 @@ def start_task(app, payload):
 # ------------------------------------------------------------------ publishing
 @route("/api/publish/peek")
 def publish_peek(app, payload):
-    return app.store.publish_peek(_job_id(payload.get("job_id")))
+    account = payload.get("account")
+    return app.store.publish_peek(_job_id(payload.get("job_id")), account if isinstance(account, str) and account else None)
 
 
 @route("/api/publish/claim")
@@ -146,7 +147,8 @@ def publish_resolve(app, payload):
 
 @route("/api/publisher/challenge")
 def publisher_challenge(app, payload):
-    app.store.set_challenge(bool(payload.get("active")))
+    account = payload.get("account")
+    app.store.set_challenge(bool(payload.get("active")), account if isinstance(account, str) and account else None)
     return OK
 
 

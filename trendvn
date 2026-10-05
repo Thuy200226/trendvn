@@ -35,7 +35,7 @@ Agent trình duyệt (Chrome trên máy này)
   agent install|uninstall|start|stop|restart|status|logs|run|venv|update
   tiktok login [phút] [--account ID]   Đăng nhập TikTok một lần (bạn tự nhập trong cửa sổ Chrome); --account cho tài khoản thêm
   tiktok trust [phút] [--account ID]   Giải hình xác minh của TikTok một lần
-  tiktok dry-run          Chạy thử không đăng thật (ảnh chụp: data/worker/exports/)
+  tiktok dry-run [--account ID]   Chạy thử không đăng thật (ảnh chụp: data/worker/exports/); --account: diễn tập cho tài khoản đó
   tiktok status|verify|stats
 
 Dữ liệu và bàn giao

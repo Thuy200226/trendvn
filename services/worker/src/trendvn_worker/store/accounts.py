@@ -131,6 +131,9 @@ class AccountsMixin:
             if not db.execute("SELECT count(*) FROM accounts WHERE enabled=1 AND id<>?", (account_id,)).fetchone()[0]:
                 raise ValueError("Phải còn ít nhất một tài khoản đang bật")
             db.execute("DELETE FROM accounts WHERE id=?", (account_id,))
+            db.execute(
+                "UPDATE settings SET value='false' WHERE key='publisher_challenge' AND value=?", (json.dumps(account_id),)
+            )  # its CAPTCHA is moot
             self.event(db, "", "account_deleted", account_id)
 
     def set_default_username(self, username):

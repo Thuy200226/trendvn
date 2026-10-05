@@ -8,12 +8,21 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlsplit
 
 from .. import ui
+from ..ui.labels import vi_error
 from ..version import VERSION
 from . import api, forms, media_files
 from .log import log
 from .pages import dashboard_html
 from .responses import ResponseMixin
 from .security import SESSION_COOKIE, SESSION_SECONDS, same
+
+STALE_PAGE = (
+    '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Trang đã cũ</title>'
+    '<body style="font:16px/1.5 system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem">'
+    "<h1>Trang đã cũ</h1><p>Trang này được mở trước khi hệ thống cập nhật hoặc đã để quá lâu, nên lần bấm vừa rồi "
+    "<b>chưa được lưu</b>. Tải lại bảng điều khiển rồi làm lại thao tác.</p>"
+    '<p><a href="/">← Quay lại bảng điều khiển</a></p></body>'
+)
 
 MAX_BODY = 2 * 1024 * 1024
 LOGIN_FORM_MAX = 4096
@@ -159,11 +168,11 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
             return self.send(403, {"error": "Local form only"})
         form = parse_qs(self.rfile.read(length).decode(), keep_blank_values=True)
         if not same(form.get("csrf", [""])[0], self.app.csrf):
-            return self.send(403, {"error": "Refresh the page and retry"})
+            return self.send(403, STALE_PAGE, "text/html; charset=utf-8")  # (an open page that outlived an update: say what to do)
         try:
             result = forms.FORMS[path](self.app, form)
         except (ValueError, KeyError, TypeError, OSError, OverflowError) as error:
-            return self.redirect(err=str(error) or "Không thực hiện được")
+            return self.redirect(err=vi_error(str(error)) or "Không thực hiện được")
         return self.redirect(result.key, result.err, result.anchor)
 
     def api_post(self, path, payload):

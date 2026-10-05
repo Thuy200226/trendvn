@@ -61,8 +61,8 @@ cat <<MSG
 
 Xong. 5 việc còn lại, chỉ bạn làm được:
   1. Mở bảng điều khiển  http://localhost:$(worker_port)  (./trendvn open) → Thêm → Cài đặt: nhập khóa Gemini (https://aistudio.google.com/apikey), bật "Xử lý video".
-  2. Đăng nhập TikTok một lần (cửa sổ Chrome hiện ra, bạn tự nhập):  ./trendvn tiktok login
-  3. Cài đặt → Lịch đăng: đặt "Tài khoản TikTok đích" đúng kênh vừa đăng nhập.
+  2. Cài đặt → Lịch đăng: đặt "Tài khoản TikTok mặc định" là kênh của bạn (lúc mới cài là tài khoản mẫu; làm trước khi đăng nhập).
+  3. Đăng nhập TikTok một lần (cửa sổ Chrome hiện ra, bạn tự nhập):  ./trendvn tiktok login
   4. Bấm "Bắt đầu" ở Tổng quan (lần quét đầu chỉ ghi mốc; bấm lại sau vài giờ) tới khi tab Đăng bài có video, rồi chạy thử không đăng thật:
      ./trendvn tiktok dry-run   (ảnh chụp: data/worker/exports/; "idle" nghĩa là chưa có video dựng xong)
   5. Bật "Tự đăng" trên bảng điều khiển khi đã hài lòng.

@@ -38,8 +38,8 @@ Script tự kiểm tra máy, dựng container, sinh và nạp 6 workflow vào n8
 ## 4. Năm việc chỉ bạn làm được
 
 1. `./trendvn open` (hoặc http://localhost:5681) → **Thêm → Cài đặt**: dán khóa Gemini (tạo ở https://aistudio.google.com/apikey), bật "Xử lý video".
-2. Đăng nhập TikTok một lần (bạn tự nhập trong cửa sổ Chrome hiện ra): `./trendvn tiktok login` (hoặc nhấp đúp `macos/Dang-nhap-TikTok.command`).
-3. **Thêm → Cài đặt → Lịch đăng → "Tài khoản TikTok đích"**: đổi thành đúng kênh bạn vừa đăng nhập (mặc định là một tài khoản mẫu; nếu sai, mọi bài đăng sẽ không xác nhận được và việc đăng tự dừng).
+2. **Thêm → Cài đặt → Lịch đăng → "Tài khoản TikTok mặc định"**: đổi thành đúng kênh của bạn, **trước** khi đăng nhập (lệnh đăng nhập chỉ chấp nhận đúng tài khoản này) (mặc định là một tài khoản mẫu; nếu sai, mọi bài đăng sẽ không xác nhận được và việc đăng tự dừng).
+3. Đăng nhập TikTok một lần (bạn tự nhập trong cửa sổ Chrome hiện ra): `./trendvn tiktok login` (hoặc nhấp đúp `macos/Dang-nhap-TikTok.command`).
 4. Chờ có video để thử. Lần quét đầu chỉ **ghi mốc**, chưa tải gì; video chỉ xuất hiện từ lần quét thứ hai. Bấm **▶ Bắt đầu** ở Tổng quan, bấm lại sau vài giờ (hoặc chờ lịch 3 giờ) cho tới khi tab **Đăng bài** có video. Rồi chạy thử, **không đăng thật**; một cửa sổ Chrome thật sẽ hiện lên khoảng 1–2 phút, đừng đóng giữa chừng:
    ```bash
    ./trendvn tiktok dry-run
