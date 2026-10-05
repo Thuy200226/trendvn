@@ -65,7 +65,7 @@ Từ trên xuống:
 | Tải tối đa mỗi lần quét / Hàng chờ tối đa | 3 / 4 | Kiểm soát chi phí Gemini |
 | Ngưỡng thịnh hành | Douyin ≥ 150.000 tim; Kuaishou, TikTok ≥ 1.000.000 lượt xem | Video dưới ngưỡng không vào hàng đợi |
 | Độ chắc chắn tối thiểu của Gemini | 0.90 | Dưới mức này video vào "Cần duyệt" |
-| Hạn mức gọi Gemini / 24 giờ | 12 | Mỗi video tốn 1 lần phân tích (+1 nếu lồng tiếng). Tăng nếu gói Gemini của bạn cho phép |
+| Hạn mức gọi Gemini / 24 giờ | 12 | Mỗi video tốn 1 lần phân tích, cộng 1 đến 2 lần tạo giọng nếu lồng tiếng (lần thứ hai chỉ khi giọng đầu dài hơn cửa sổ lời quá 15%) và 1 lần viết ngắn lại nếu phụ đề còn quá nhanh. Tăng nếu gói Gemini của bạn cho phép |
 
 Mọi giá trị đều được kiểm tra khoảng hợp lệ ở worker (`validate_settings`), nhập sai sẽ báo lỗi chứ không lưu.
 

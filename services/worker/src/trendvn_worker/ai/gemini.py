@@ -11,6 +11,7 @@ from .errors import RateLimited, Transient
 
 TRANSIENT = (429, 500, 502, 503, 504)
 BASE = "https://generativelanguage.googleapis.com/v1beta/"
+DAILY_QUOTA = "daily quota"  # marker `gemini()` puts in a 429 message when Google's details name a per-day limit (the text is the same for a per-minute one)
 
 
 def gemini(store, model, body, endpoint=None):
@@ -41,7 +42,10 @@ def gemini(store, model, body, endpoint=None):
             with store.transaction() as db:  # a rejected request was not processed, so it does not use up the daily allowance
                 db.execute("DELETE FROM api_calls WHERE at=? AND model=?", (stamp, model))
         try:
-            message = json.loads(e.read().decode()).get("error", {}).get("message", "")[:220]  # Google's message never contains our key
+            error = json.loads(e.read().decode()).get("error", {})
+            message = error.get("message", "")[:220]  # Google's message never contains our key
+            if e.code == 429 and "perday" in re.sub(r"[_\s]", "", json.dumps(error.get("details", []))).lower():  # QuotaFailure quotaId
+                message += " [%s]" % DAILY_QUOTA
         except Exception:
             message = ""
         raise ValueError("Gemini HTTP %d (%s)%s" % (e.code, model, ": " + message if message else "")) from None
@@ -57,13 +61,17 @@ def gemini(store, model, body, endpoint=None):
 def call_with_fallback(store, cfg, key, chain_default, fn, rounds=4, waits=(10, 30, 60), budget=240):
     """Run fn(model) with the configured model, then the fallback chain when Google says a model is gone (404) or overloaded (429/5xx).
     Overload is retried after a short wait; if it persists, Transient is raised so the job is re-queued, never marked broken.
-    The first model that works is remembered so later calls go straight to it."""
+    A model that works instead of a configured one that is GONE (404) is remembered so later calls go straight to it; one that merely
+    worked while the configured model was busy is not (a passing 429 once left the analysis on a weaker model for good: it was the one
+    that wrote a runaway answer). When every model that failed has its day's quota used up (a 429 marked DAILY_QUOTA) the rounds are not
+    waited for: the wait would be for tomorrow. A per-minute 429 reads the same and is waited for like any other overload."""
     chain = [cfg[key]] + [m for m in chain_default if m != cfg[key]]
     last = None
-    transient = False
+    transient = busy = exhausted = False
+    gone = set()
     deadline = time.time() + budget  # one call never holds the worker (and n8n's HTTP request) longer than the budget
     for rnd in range(rounds):
-        transient = False
+        transient = busy = exhausted = False
         for model in chain:
             if time.time() > deadline and last is not None:
                 raise Transient("Gemini không phản hồi kịp (%ds), sẽ thử lại sau: %s" % (budget, last))
@@ -72,29 +80,38 @@ def call_with_fallback(store, cfg, key, chain_default, fn, rounds=4, waits=(10, 
             except ValueError as e:
                 text = str(e)
                 if "HTTP 404" in text:
+                    gone.add(model)
                     last = e
                     continue
                 if any("HTTP %d" % c in text for c in TRANSIENT):
                     last = e
                     transient = True
+                    if "HTTP 429" in text and DAILY_QUOTA in text:
+                        exhausted = True
+                    else:
+                        busy = True
                     continue
                 raise
-            if model != cfg[key]:
+            if model != cfg[key] and cfg[key] in gone:
                 with store.transaction() as db:
                     db.execute("UPDATE settings SET value=? WHERE key=?", (json.dumps(model), key))
                 cfg[key] = model
             return result
-        if not transient:
+        if not busy:  # nothing failed that waiting could mend
             break
         if rnd < rounds - 1:
             time.sleep(min(waits[rnd], max(0, deadline - time.time())))
     if transient:
-        raise Transient("Gemini đang quá tải, sẽ thử lại sau: " + str(last))
+        raise Transient(
+            ("Hạn mức Gemini của khóa đã hết, sẽ thử lại sau: " if exhausted and not busy else "Gemini đang quá tải, sẽ thử lại sau: ")
+            + str(last)
+        )
     raise last
 
 
-def generate(store, cfg, parts, schema=None):
-    """One structured Gemini call. If the API rejects the schema (HTTP 400) retry once without it; the strict local validator still applies."""
+def generate(store, cfg, parts, schema=None, rounds=4, budget=240):
+    """One structured Gemini call. If the API rejects the schema (HTTP 400) retry once without it; the strict local validator still applies.
+    `rounds` and `budget` bound how long a busy model is waited for (see call_with_fallback)."""
     # maxOutputTokens: a model stuck repeating itself would otherwise write until the API's own limit (hundreds of KB) into our validators
     gen = {"responseMimeType": "application/json", "temperature": 0.1, "maxOutputTokens": 16384}
     if schema:
@@ -110,4 +127,4 @@ def generate(store, cfg, parts, schema=None):
                 return gemini(store, model, body)
             raise
 
-    return call_with_fallback(store, cfg, "model", MODEL_FALLBACKS, attempt)
+    return call_with_fallback(store, cfg, "model", MODEL_FALLBACKS, attempt, rounds=rounds, budget=budget)

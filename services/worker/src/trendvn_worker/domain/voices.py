@@ -36,10 +36,11 @@ TONE_WORDS = {
     "gentle": "nhẹ nhàng, dịu dàng",
 }
 PACE_WORDS = {SLOW: "chậm rãi, nhấn nhá rõ ràng", NORMAL: "", FAST: "nhanh, gọn, dứt khoát"}
-# characters per second the narration needs to fit its window: below SLOW_BELOW a slow delivery fills the window, above FAST_ABOVE a fast
-# one is needed (measured with Kore: plain 16-19, slow 12, fast 24)
-SLOW_BELOW = 11.0
-FAST_ABOVE = 18.0
+# characters per second the narration needs to fit its window: below SLOW_BELOW a slow delivery fills the window (the analysis asks for
+# about 13 a second, which a plain delivery at 16-19 would finish early), above FAST_ABOVE a fast one is needed (measured with Kore:
+# plain 16-19, slow 12, fast 24)
+SLOW_BELOW = 14.5
+FAST_ABOVE = 19.0
 
 
 def pick_voice(cfg, speaker):
@@ -57,6 +58,12 @@ def pace_for(chars_per_second):
     if chars_per_second < SLOW_BELOW:
         return SLOW
     return FAST if chars_per_second > FAST_ABOVE else NORMAL
+
+
+def faster(pace):
+    """The next quicker delivery, one step at a time (slow to fast overshoots a window that needed about 14 characters a second), or None
+    when the delivery is already the fastest."""
+    return {SLOW: NORMAL, NORMAL: FAST}.get(pace)
 
 
 def style_for(speaker, pace):

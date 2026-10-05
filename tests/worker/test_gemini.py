@@ -2,6 +2,7 @@
 
 import base64
 import io
+import json
 import unittest
 import wave
 from pathlib import Path
@@ -51,6 +52,100 @@ class GeminiResilienceTests(StoreCase):
         calls.clear()
         gemini_api.generate(self.s, self.s.settings(), [{"text": "x"}])
         self.assertEqual(calls, ["gemini-flash-latest"])
+
+    def test_a_passing_overload_does_not_make_a_weaker_model_the_permanent_choice(self):
+        """gemini-3.5-flash was remembered after one 503 on the preferred model and later wrote a runaway answer for good."""
+        state = {"n": 0}
+
+        def busy_once(store, model, body):
+            state["n"] += 1
+            if model == self.s.settings()["model"] and state["n"] == 1:
+                raise ValueError("Gemini HTTP 503 (%s): high demand" % model)
+            return {"ok": model}
+
+        gemini_api.gemini = busy_once
+        before = self.s.settings()["model"]
+        result = gemini_api.generate(self.s, self.s.settings(), [{"text": "x"}])
+        self.assertNotEqual(result["ok"], before)  # this call was answered by a fallback ...
+        self.assertEqual(self.s.settings()["model"], before)  # ... and the next call asks the preferred model again
+
+    def error_429(self, quota_id):
+        """What `gemini()` makes of a 429 whose details carry this quota id: Google's text is the same for a per-minute and a per-day limit."""
+        import urllib.error
+        import urllib.request
+
+        body = {
+            "error": {
+                "code": 429,
+                "message": "You exceeded your current quota, please check your plan and billing details.",
+                "details": [{"@type": "type.googleapis.com/google.rpc.QuotaFailure", "violations": [{"quotaId": quota_id}]}],
+            }
+        }
+
+        def reject(req, timeout=0):
+            raise urllib.error.HTTPError(req.full_url, 429, "x", {}, io.BytesIO(json.dumps(body).encode()))
+
+        real = urllib.request.urlopen
+        urllib.request.urlopen = reject
+        try:
+            with self.assertRaises(ValueError) as caught:
+                self.real_gemini(self.s, "gemini-3.8-flash", {})
+        finally:
+            urllib.request.urlopen = real
+        return str(caught.exception)
+
+    def test_only_a_per_day_quota_is_marked_as_used_up_for_the_day(self):
+        self.assertIn(gemini_api.DAILY_QUOTA, self.error_429("GenerateRequestsPerDayPerProjectPerModel-FreeTier"))
+        self.assertNotIn(gemini_api.DAILY_QUOTA, self.error_429("GenerateRequestsPerMinutePerProjectPerModel-FreeTier"))
+
+    def test_a_per_minute_limit_is_still_waited_for(self):
+        slept = []
+        gemini_api.time.sleep = slept.append
+        gemini_api.gemini = lambda store, model, body: (_ for _ in ()).throw(
+            ValueError("Gemini HTTP 429 (%s): You exceeded your current quota, please check your plan and billing details." % model)
+        )
+        with self.assertRaises(gemini_api.Transient) as caught:
+            gemini_api.generate(self.s, self.s.settings(), [{"text": "x"}])
+        self.assertEqual(slept, [10, 30, 60])  # the same words as a day's quota, but nothing marks it as one: it may clear in seconds
+        self.assertIn("quá tải", str(caught.exception))
+
+    def test_a_model_that_is_out_of_quota_does_not_stop_the_waiting_for_one_that_is_only_busy(self):
+        slept = []
+        gemini_api.time.sleep = slept.append
+
+        def mixed(store, model, body):
+            if model == MODEL_FALLBACKS[0]:
+                raise ValueError("Gemini HTTP 429 (%s): quota [%s]" % (model, gemini_api.DAILY_QUOTA))
+            raise ValueError("Gemini HTTP 503 (%s): high demand" % model)
+
+        gemini_api.gemini = mixed
+        with self.assertRaises(gemini_api.Transient):
+            gemini_api.generate(self.s, dict(self.s.settings(), model=MODEL_FALLBACKS[0]), [{"text": "x"}])
+        self.assertEqual(slept, [10, 30, 60])
+
+    def test_a_key_out_of_quota_is_not_waited_for_in_rounds(self):
+        import time as time_module
+
+        slept = []
+        calls = []
+
+        def out_of_quota(store, model, body):
+            calls.append(model)
+            raise ValueError(
+                "Gemini HTTP 429 (%s): You exceeded your current quota, please check your plan. [%s]" % (model, gemini_api.DAILY_QUOTA)
+            )
+
+        gemini_api.gemini = out_of_quota
+        real_sleep = time_module.sleep
+        time_module.sleep = slept.append
+        try:
+            with self.assertRaises(gemini_api.Transient) as caught:
+                gemini_api.generate(self.s, self.s.settings(), [{"text": "x"}])
+        finally:
+            time_module.sleep = real_sleep
+        self.assertEqual(slept, [])  # tomorrow is not 10, 30 and 60 seconds away
+        self.assertEqual(len(calls), len(MODEL_FALLBACKS))  # every model tried once
+        self.assertIn("Hạn mức", str(caught.exception))
 
     def test_overload_retries_then_requeues_instead_of_breaking_the_job(self):
         gemini_api.gemini = lambda store, model, body: (_ for _ in ()).throw(ValueError("Gemini HTTP 503 (%s): high demand" % model))
@@ -159,6 +254,27 @@ class GeminiResilienceTests(StoreCase):
         for mime, payload in (("audio/wav", wav), ("audio/L16;codec=pcm;rate=24000", b"\x00\x00" * 48000), ("", wav)):
             gemini_api.gemini = shaped(mime, payload)
             self.assertAlmostEqual(speech.tts(self.s, self.s.settings(), "Xin chào", out), 2.0, places=2)
+
+    def test_audio_with_no_samples_is_an_error_not_a_voice(self):
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(24000)
+        audio = base64.b64encode(buf.getvalue()).decode()
+        gemini_api.gemini = lambda store, model, body, endpoint=None: {
+            "steps": [{"type": "model_output", "content": [{"type": "audio", "data": audio, "mime_type": "audio/wav"}]}]
+        }
+        with self.assertRaisesRegex(ValueError, "empty audio"):
+            speech.tts(self.s, self.s.settings(), "Xin chào", Path(self.tmp.name) / "v.wav")
+
+    def test_every_3x_tts_model_is_spoken_to_through_the_interactions_api_and_nothing_else_is(self):
+        """A 3.x TTS model on the plain path got its style spoken aloud as words before the text (gemini-3.1-flash-tts-preview, a listed
+        fallback, did not match the first pattern)."""
+        for model in ("gemini-3.1-flash-tts-preview", "gemini-3.5-flash-tts", "gemini-3.1-flash-lite-tts"):
+            self.assertTrue(speech.INTERACTION_MODEL.fullmatch(model), model)
+        for model in ("gemini-2.5-flash-preview-tts", "gemini-3.5-flash"):
+            self.assertFalse(speech.INTERACTION_MODEL.fullmatch(model), model)
 
     def test_the_text_is_sent_as_the_transcript_and_the_style_travels_apart(self):
         """gemini-3.x TTS reads the text VERBATIM: an instruction in front of it was spoken aloud (10 s of it, found 2026-10-02)."""

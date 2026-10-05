@@ -1,9 +1,11 @@
 """Video geometry, subtitles, voice-over mixing and the quality gates of the render."""
 
+import base64
 import shutil
 import subprocess
 import tempfile
 import unittest
+import wave
 from pathlib import Path
 
 from tests.support import TZ, StoreCase, at  # noqa: F401  (also puts the source folders on sys.path)
@@ -366,6 +368,18 @@ class RotationZonesAndSizeTests(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg/ffprobe not installed (runs inside the worker image)")
 class VoiceoverTests(StoreCase):
+    def test_a_compressed_reply_is_converted_to_wav_even_under_a_part_name(self):
+        """The voice is written under "<name>.wav.part" and renamed when finished: ffmpeg cannot choose a container from ".part"."""
+        raw = subprocess.run(
+            ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=f=440:d=1", "-c:a", "aac", "-f", "adts", "-"],
+            check=True,
+            stdout=subprocess.PIPE,
+        ).stdout
+        out = Path(self.tmp.name) / "voice-abc.wav.part"
+        speech._write_wav("audio/aac", base64.b64encode(raw).decode(), out)
+        with wave.open(str(out), "rb") as w:
+            self.assertGreater(w.getnframes(), 20000)  # about a second at 24 kHz
+
     def test_mix_and_subtitle_render(self):
 
         folder = Path(self.tmp.name) / "jobs" / "j"
@@ -405,12 +419,25 @@ class VoiceoverTests(StoreCase):
             "segments": [{"start": 1.0, "end": 5.0, "vi": "Xin chào các bạn"}],
         }
 
-        def fake_tts(store, cfg, text, out, voice=None, style=None):
-            subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=600:duration=4.4", str(out)], check=True)
-            return 4.4
+        def voice_of(seconds):
+            def fake_tts(store, cfg, text, out, voice=None, style=None, **limits):
+                # the voice is written under a ".part" name first, so the container must be named explicitly
+                subprocess.run(
+                    ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=600:duration=%s" % seconds, "-f", "wav", str(out)],
+                    check=True,
+                )
+                return seconds
+
+            return fake_tts
+
+        def fresh_voice(seconds):
+            # a voice is remembered in the job's folder by text, voice and style: each scenario starts without the previous one's
+            for kept in folder.glob("voice-*.wav"):
+                kept.unlink()
+            return voice_of(seconds)
 
         real = speech.tts
-        speech.tts = fake_tts
+        speech.tts = fresh_voice(4.4)
         try:
             voice = speech.make_voice(self.s, self.s.settings(), analysis, folder)
             self.assertAlmostEqual(voice["tempo"], 1.1, places=2)
@@ -419,14 +446,14 @@ class VoiceoverTests(StoreCase):
             dur, meta = ffmpeg_mod.probe(out)
             self.assertAlmostEqual(dur, 8.0, delta=0.6)
             self.assertTrue(any(s["codec_type"] == "audio" for s in meta["streams"]))
-            speech.tts = lambda *a, **k: 20.0  # voice far longer than the speech window: refuse, subtitles remain
+            speech.tts = fresh_voice(20.0)  # voice far longer than the speech window: refuse, subtitles remain
             with self.assertRaises(ai_errors.VoiceoverUnfit):
                 speech.make_voice(self.s, self.s.settings(), analysis, folder)
             long_text = dict(analysis, narration_vi="x" * 150, segments=[{"start": 1.0, "end": 14.0, "vi": "Xin chào"}])
-            speech.tts = lambda *a, **k: 4.0  # 37 characters a second: a voice that skipped words to hurry
+            speech.tts = fresh_voice(4.0)  # 37 characters a second: a voice that skipped words to hurry
             with self.assertRaisesRegex(ai_errors.VoiceoverUnfit, "bỏ sót"):
                 speech.make_voice(self.s, self.s.settings(), long_text, folder)
-            speech.tts = lambda *a, **k: 15.0  # 10 characters a second is the natural pace and passes
+            speech.tts = fresh_voice(15.0)  # 10 characters a second is the natural pace and passes
             self.assertEqual(speech.make_voice(self.s, self.s.settings(), long_text, folder)["delay"], 1.0)
         finally:
             speech.tts = real

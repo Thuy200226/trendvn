@@ -6,6 +6,7 @@ borrow from the pause after it; what still rushes is rewritten shorter here, in 
 API is overloaded). The answer is checked line by line and a line that does not pass keeps its original wording.
 """
 
+import hashlib
 import json
 
 from ..domain.readability import MAX_CPS, chars_per_second
@@ -44,7 +45,34 @@ def too_fast(segments):
     return [(i, max(8, int(MAX_CPS * (s["end"] - s["start"])))) for i, s in rushed[:MAX_LINES]]
 
 
-def condense(store, cfg, segments):
+WAIT_SECONDS = 25  # a busy model is waited for this long at most: shorter subtitles are not worth holding the video back
+
+
+def _answer(store, cfg, asked, folder):
+    """The model's rewritten lines for `asked`, or None. Remembered in the job's folder (named by what was asked) so a video that comes
+    back does not ask again."""
+    key = hashlib.sha1(json.dumps(asked, ensure_ascii=False).encode("utf-8")).hexdigest()
+    memory = folder / "condense.json" if folder else None
+    try:
+        saved = json.loads(memory.read_text()) if memory else None
+        if isinstance(saved, dict) and saved.get("key") == key:
+            return saved.get("lines")
+    except (OSError, ValueError):
+        pass
+    data = generate(
+        store, cfg, [{"text": INSTRUCTION + "\n" + json.dumps(asked, ensure_ascii=False)}], SCHEMA, rounds=1, budget=WAIT_SECONDS
+    )
+    parts = (data.get("candidates") or [{}])[0].get("content", {}).get("parts") or []
+    lines = json.loads("".join(p.get("text", "") for p in parts if isinstance(p, dict)))["lines"]
+    if memory:
+        try:
+            memory.write_text(json.dumps({"key": key, "lines": lines}, ensure_ascii=False))
+        except OSError:
+            pass
+    return lines
+
+
+def condense(store, cfg, segments, folder=None):
     """`segments` with the too-fast lines rewritten shorter; unchanged when nothing is too fast, when the call fails or is refused, or
     for any line whose rewrite is not a shorter, non-empty line of the allowed length."""
     wanted = dict(too_fast(segments))
@@ -52,13 +80,10 @@ def condense(store, cfg, segments):
         return segments
     asked = [{"i": i, "vi": segments[i]["vi"], "max_chars": limit} for i, limit in wanted.items()]
     try:
-        data = generate(store, cfg, [{"text": INSTRUCTION + "\n" + json.dumps(asked, ensure_ascii=False)}], SCHEMA)
-        parts = (data.get("candidates") or [{}])[0].get("content", {}).get("parts") or []
-        answer = json.loads("".join(p.get("text", "") for p in parts if isinstance(p, dict)))
-        lines = answer["lines"]
+        lines = _answer(store, cfg, asked, folder)
     except RateLimited:
         return segments  # busy: the subtitles go out as they are rather than holding the video back
-    except (ValueError, KeyError, TypeError):
+    except (ValueError, KeyError, TypeError, AttributeError, IndexError):
         return segments
     out = [dict(s) for s in segments]
     for line in lines if isinstance(lines, list) else []:

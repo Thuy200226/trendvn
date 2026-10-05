@@ -27,7 +27,7 @@ Cùng một câu 134 ký tự, giọng Kore, mọi từ đều được đọc (
 | "nghiêm túc như bản tin thời sự" | 8,3 s | 15,9 |
 | "nhanh, hào hứng, đầy năng lượng" | 5,6 s | 23,6 |
 
-Vì vậy `make_voice` chọn nhịp theo số ký tự cần nói mỗi giây trong cửa sổ lời (dưới 11: chậm; trên 18: nhanh), gọi TTS, nếu dài hơn cửa sổ quá 15% thì gọi **một lần nữa** với nhịp nhanh, rồi chỉ chỉnh tốc độ tối đa +25% (không bao giờ chậm quá 8%). Dài hơn cửa sổ 25% sau đó, ngắn hơn một nửa cửa sổ, hoặc nhanh quá 24 ký tự/giây thì từ chối và video giữ phụ đề. Nhịp tự nhiên giữ chất lượng giọng tốt hơn kéo giãn âm thanh.
+Vì vậy `make_voice` chọn nhịp theo số ký tự cần nói mỗi giây trong cửa sổ lời (dưới 14,5: chậm; trên 19: nhanh), gọi TTS, nếu dài hơn cửa sổ quá 15% thì gọi **một lần nữa, nhanh hơn một bậc** (chậm → thường → nhanh; nhảy thẳng từ chậm lên nhanh vượt quá cửa sổ nên bản thứ hai không bao giờ gần hơn bản đầu). Lần gọi thứ hai chỉ cải thiện bản đã có nên chỉ chờ Google bận một vòng (tối đa 25 giây) và lỗi gì cũng giữ bản đầu; bản nào gần cửa sổ hơn thì được dùng. Sau đó chỉ chỉnh tốc độ tối đa +25% (không bao giờ chậm quá 8%). Từ chối và video giữ phụ đề khi: dài hơn cửa sổ 25%, ngắn hơn một nửa cửa sổ, nhanh quá 24 ký tự/giây, giọng kéo dài quá hết video hơn 0,3 giây (chỉ xảy ra với cửa sổ lời ngắn hơn 2 giây ở cuối video), hoặc giọng im lặng (dưới -50 LUFS; file đó bị xóa để lần chạy lại tạo giọng mới thay vì đọc lại đúng đoạn im lặng). Giọng đã tạo được nhớ trong thư mục việc theo (lời, giọng, nhịp): video quay lại hàng đợi hoặc được duyệt tay không phải tạo, không phải trả phí lại. Lời đưa cho giọng đọc đã lọc như chú thích (không liên kết, số điện thoại, emoji, thẻ `{an8}`, ngắt dòng `\N`). Nhịp tự nhiên giữ chất lượng giọng tốt hơn kéo giãn âm thanh.
 
 ## 3. Chọn giọng theo người nói
 
@@ -52,7 +52,7 @@ Gemini nay báo thêm `speaker` (giới tính, sắc thái, số người nói) 
 
 ## 5. Âm thanh khi lồng tiếng
 
-Bản cũ: giọng lồng trộn với tiếng gốc hạ cố định còn 18% **suốt cả video**. Nay: giọng được cân riêng (-16 LUFS) rồi mới trộn; tiếng gốc chỉ hạ còn 14% (khoảng -17 dB) **đúng lúc giọng nói** (vào mềm 0,3 s trước, ra mềm 0,5 s sau) và giữ nguyên ở đoạn đầu, đoạn nghỉ và đoạn cuối; cả bản trộn vẫn đưa về -14 LUFS như mọi video. Đo bằng ffmpeg thật: tiếng gốc (300 Hz) thấp hơn **trên 8 dB** dưới giọng so với trước và sau giọng (`test_the_bed_is_lower_under_the_voice_than_outside_it`).
+Bản cũ: giọng lồng trộn với tiếng gốc hạ cố định còn 18% **suốt cả video**. Nay: giọng được cân riêng (-16 LUFS) rồi mới trộn; tiếng gốc chỉ hạ còn 14% (khoảng -17 dB) **trong cả cửa sổ lời gốc** (từ 0,3 s trước giọng đến hết cửa sổ hoặc hết giọng, cái nào muộn hơn, rồi ra mềm 0,5 s; một giọng ngắn hơn lời gốc không trả tiếng gốc về âm lượng đầy khi người gốc còn đang nói) và giữ nguyên ở đoạn đầu, đoạn nghỉ và đoạn cuối; cả bản trộn vẫn đưa về -14 LUFS như mọi video. Đo bằng ffmpeg thật: tiếng gốc (300 Hz) thấp hơn **trên 8 dB** dưới giọng so với trước và sau giọng (`test_the_bed_is_lower_under_the_voice_than_outside_it`). Sau bản trộn có thêm bộ giới hạn đỉnh (`alimiter`, -1,5 dBFS) vì người phản biện đo được đỉnh vượt 0 dBTP sau AAC trên nền nhạc xung (+3,9 dBTP khi không có, +0,3 khi có). **Giới hạn của phép đo:** trên 7 nền nhạc tôi tự dựng (xung thưa/dày, vuông, đá trống, cắt cứng, to rồi nhỏ) bộ giới hạn đổi đỉnh không quá 0,3 dB theo cả hai hướng và mọi đỉnh đều dưới -2,7 dBTP, nên **không có test nào phân biệt được có hay không có nó** (chỉ có test kiểm nó nối đúng chỗ); và nó chưa bảo đảm không vượt 0 dBTP (nền của người phản biện vẫn ra +0,3).
 
 ## 6. Làm mờ phụ đề gốc: chỉ khi cần, chỉ lúc cần
 
@@ -68,7 +68,7 @@ Hệ quả hình học (có test): video **ngang** đưa vào khung dọc đặt
 
 ## 7. Phụ đề: bớt lời bịa và bớt quá nhanh
 
-- **Dòng bịa**: một video tiểu phẩm 53 giây trả về 11 dòng thật rồi 11 dòng nữa với mốc 1,0–2,1 giây (mô hình "đặt lại đồng hồ" và viết tiếp); sắp xếp theo thời gian thì dòng thật đầu tiên bị cắt ngắn và một dòng bịa hiện ở giây 1,6. Nay phát hiện đồng hồ bị đặt lại và phần đuôi toàn dòng dài trong chưa đầy nửa giây thì bỏ cả đuôi; dòng lẻ "20 ký tự trở lên trong dưới 0,5 giây" cũng bỏ (`domain/analysis.py`). Nhóm dòng theo người nói (hợp lệ) vẫn được giữ.
+- **Dòng bịa**: một video tiểu phẩm 53 giây trả về 11 dòng thật rồi 11 dòng nữa với mốc 1,0–2,1 giây (mô hình "đặt lại đồng hồ" và viết tiếp); sắp xếp theo thời gian thì dòng thật đầu tiên bị cắt ngắn và một dòng bịa hiện ở giây 1,6. Nay phát hiện đồng hồ bị đặt lại và phần đuôi toàn dòng dài trong chưa đầy nửa giây thì bỏ cả đuôi; dòng lẻ "hơn 20 ký tự trong dưới 0,5 giây" cũng bỏ, và một đuôi từ 4 dòng trở lên dồn trong một khoảng ngắn đến mức cộng lại hơn 30 ký tự/giây cũng bỏ nốt (kiểm bằng dữ liệu của người phản biện: 11 dòng bịa dài 0,6 giây vẫn bị loại) (`domain/analysis.py`). Nhóm dòng theo người nói (hợp lệ) vẫn được giữ.
 - **Quá nhanh**: Gemini hay viết 25 ký tự/giây cho các câu qua lại nhanh (mục tiêu 16). Sau khi mượn thời gian từ quãng nghỉ, dòng còn nhanh hơn 20 ký tự/giây được viết ngắn lại bằng **một lần gọi văn bản** (hoạt động cả khi API video quá tải), mỗi dòng được kiểm riêng, dòng nào không đạt giữ nguyên lời cũ (`ai/condense.py`).
 
 ## 8. Mã hóa và tốc độ dựng: đo xong, không đổi
@@ -84,7 +84,7 @@ Hệ quả hình học (có test): video **ngang** đưa vào khung dọc đặt
 | fast, crf 22, 6 Mb/s | 13,5 s (+78%) | 13,5 MB | 0,9952 |
 | veryfast, crf 24, `-tune film` | 10,0 s (+31%) | 8,5 MB | 0,9927 |
 
-Chênh SSIM chỉ 0,001–0,002 (mắt không phân biệt được) trong khi dung lượng tăng 30–70% và thời gian tăng đến 78%; nguồn Douyin chỉ 1–2 Mb/s nên thêm bit không lấy lại được chi tiết đã mất. **Giữ nguyên.** Thông số TikTok khuyến nghị (1080×1920, H.264, 30 fps, tối thiểu 720×1280) đã đạt; bản dựng chạy nhanh khoảng 4 lần thời gian thực. Các thay đổi ở bản này không thêm lượt dựng nào: việc làm mờ nay còn ít hơn (bỏ khi không cần), bộ lọc giọng thêm một `loudnorm` trên đoạn thoại vài giây.
+Chênh SSIM chỉ 0,001–0,002 (mắt không phân biệt được) trong khi dung lượng tăng 30–70% và thời gian tăng đến 78%; nguồn Douyin chỉ 1–2 Mb/s nên thêm bit không lấy lại được chi tiết đã mất. **Giữ nguyên.** Thông số TikTok khuyến nghị (1080×1920, H.264, 30 fps, tối thiểu 720×1280) đã đạt; bản dựng chạy nhanh khoảng 4 lần thời gian thực. Đo lại bằng ffmpeg thật (người phản biện, video 60 giây, trung vị 3 lần): dựng Vietsub 21,5 s → 20,5 s, dựng lồng tiếng 21,9 s → 22,0 s; riêng nhánh âm thanh +1 s (thêm `loudnorm` cho giọng và bộ giới hạn đỉnh). Việc làm mờ vẫn chạy bộ lọc mờ mỗi khung hình (chỉ phần dán lên được bật/tắt theo thời gian), nên tiết kiệm nằm ở chỗ video ngang và dải thấp không còn bị dán gì, không phải ở thời gian lọc.
 
 ## 9. Giới hạn của các phép đo này
 

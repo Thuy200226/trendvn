@@ -15,7 +15,7 @@ REASONS = {
     "speech_in_music": "Video nhạc có kèm lời nói: thêm phụ đề cho phần lời nói, giữ nhạc",
     "narration": "Người dẫn kể lại: thay bằng thuyết minh tiếng Việt",
     "monologue": "Một người nói, giọng đọc tiếng Việt thay được: lồng tiếng",
-    "narration_no_voice": "Người dẫn kể lại, chưa bật lồng tiếng: dùng phụ đề tiếng Việt",
+    "narration_no_voice": "Video hợp lồng tiếng nhưng chưa bật lồng tiếng: dùng phụ đề tiếng Việt",
     "voice_failed": "Không tạo được giọng đọc: dùng phụ đề tiếng Việt",
 }
 

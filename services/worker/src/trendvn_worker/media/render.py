@@ -16,6 +16,9 @@ UNLEVELLED = (
 QUIET_LUFS = -35  # a render quieter than this is flagged on the dashboard
 BLUR_MAX_RADIUS = 20
 COVER_SLACK = 0.015  # the strip counts as overlapped when our caption comes this close (fraction of the height), not only when it touches
+# a voice-over mix has a different loudness shape over time (low under the voice, full outside it): the final levelling alone left peaks
+# above 0 dBTP after AAC on loud music beds (measured by the independent review), so a limiter at -1.5 dBFS follows it
+LIMITER = ",alimiter=limit=0.84:attack=3:release=40:level=disabled"
 VOICE_LUFS = -16  # the voice-over is levelled on its own first, then the whole mix to -14: the voice always stands clear of the bed
 BED_UNDER_VOICE = 0.14  # the original sound's gain while the voice speaks (about -17 dB); outside that window it is untouched
 COPY_MAX_BITRATE = 6_000_000  # a source above this is re-encoded to the 4 Mb/s cap instead of being kept bit for bit
@@ -175,7 +178,9 @@ def _audio_chain(has_audio, voice, levelled=True):
     if voice:
         start = float(voice["delay"])
         delay = int(start * 1000)
-        end = start + float(voice.get("seconds", 10**6))  # an unknown length means "the whole video"
+        end = float(
+            voice.get("until", start + float(voice.get("seconds", 10**6)))
+        )  # to the end of the speech window; unknown: the whole video
         own = "loudnorm=I=%d:TP=-1.5:LRA=7," % VOICE_LUFS if levelled else ""
         chain = ["[1:a]atempo=%.3f,%saresample=44100,adelay=%d|%d[vo]" % (voice["tempo"], own, delay, delay)]
         if has_audio:
@@ -184,7 +189,7 @@ def _audio_chain(has_audio, voice, levelled=True):
             source = "mix"
         else:
             source = "vo"
-        chain.append("[%s]%s[a]" % (source, level))
+        chain.append("[%s]%s%s[a]" % (source, level, LIMITER if levelled else ""))
         return chain, ["-map", "[a]"]
     if has_audio:
         return ["[0:a]%s[a]" % level], ["-map", "[a]"]

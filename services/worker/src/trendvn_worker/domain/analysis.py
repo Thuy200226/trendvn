@@ -18,6 +18,18 @@ def _invented(line):
     return line["end"] - line["start"] < RUSHED_SECONDS and len(str(line.get("vi", "")).strip()) > RUSHED_CHARS
 
 
+UNREADABLE_TAIL_CPS = 30.0  # a tail whose lines together carry more characters per second of its own span than a person can read
+UNREADABLE_TAIL_MIN_LINES = 4
+
+
+def _unreadable(tail):
+    """Several lines crowded into a short stretch: together more text per second than anyone reads, whatever each single line looks like."""
+    if len(tail) < UNREADABLE_TAIL_MIN_LINES:
+        return False
+    span = max(line["end"] for line in tail) - min(line["start"] for line in tail)
+    return sum(len(str(line.get("vi", "")).strip()) for line in tail) / max(span, 0.5) > UNREADABLE_TAIL_CPS
+
+
 def _drop_restarted_tail(items):
     """In the model's own order, a late line that starts long before earlier ones ended means the model restarted its clock and went on
     writing; when most of what follows is such inventions (long text in a fraction of a second) the whole tail is dropped. Measured:
@@ -27,7 +39,7 @@ def _drop_restarted_tail(items):
     for index, line in enumerate(items):
         if line["start"] < latest - RESTART_BACK:
             tail = items[index:]
-            if sum(1 for t in tail if _invented(t)) >= 0.6 * len(tail):
+            if sum(1 for t in tail if _invented(t)) >= 0.6 * len(tail) or _unreadable(tail):
                 return items[:index]
             return items
         latest = max(latest, line["end"])

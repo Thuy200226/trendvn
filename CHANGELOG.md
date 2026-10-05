@@ -6,11 +6,19 @@
 
 **Lồng tiếng được ưu tiên khi phù hợp.** Gemini báo thêm `speaker` (giới tính, sắc thái, số người nói) và `dub_ok`: video thuyết minh **và video một người nói mà thay giọng không mất gì** được lồng tiếng; hài, kịch, nhiều người nói giữ giọng gốc + Vietsub. Giọng theo người nói (đã nghe kiểm bằng một model khác: Kore, Aoede, Leda nữ; Orus nam), nhịp chọn bằng lời theo số ký tự cần nói mỗi giây, rồi chỉ chỉnh tốc độ nhỏ. Google bận thì video quay lại hàng đợi (phân tích đã nhớ trong `jobs/<id>/analysis.json`, không tốn thêm lượt gọi video; phê duyệt tay cũng không gọi lại), tối đa 4 lần rồi ra với Vietsub. Cài đặt mới: "Lồng tiếng cho", "Chọn giọng đọc", công tắc "Lồng tiếng Việt" bật mặc định.
 
-**Âm thanh lồng tiếng.** Giọng cân riêng -16 LUFS; tiếng gốc chỉ hạ (còn 14%) đúng lúc giọng nói, vào/ra mềm, giữ nguyên ngoài đó (trước đây hạ cố định 18% suốt video). Đo: thấp hơn trên 8 dB dưới giọng.
+**Âm thanh lồng tiếng.** Giọng cân riêng -16 LUFS; tiếng gốc chỉ hạ (còn 14%) trong cả cửa sổ lời gốc, vào/ra mềm, giữ nguyên ngoài đó (trước đây hạ cố định 18% suốt video); sau bản trộn có bộ giới hạn đỉnh. Đo: thấp hơn trên 8 dB dưới giọng.
 
 **Làm mờ phụ đề gốc theo điều kiện.** Cài đặt "Làm mờ phụ đề gốc": Tự động (mặc định: chỉ khi phụ đề Việt sẽ đè lên chữ gốc, so bằng hình học thật), Luôn, Không bao giờ; luôn chỉ trong lúc phụ đề Việt hiện. Video ngang (phụ đề Việt nằm dưới khung hình) không còn bị làm mờ gì.
 
 **Phụ đề.** Bỏ các dòng bịa khi mô hình "đặt lại đồng hồ" (một tiểu phẩm 53 giây có 11 dòng bịa hiện ở giây 1,6); dòng quá nhanh (>20 ký tự/giây) được viết ngắn lại bằng một lần gọi văn bản, kiểm từng dòng.
+
+**Sau hai vòng rà soát độc lập (2026-10-02 và 2026-10-05; chi tiết ở docs/ROADMAP.md, Phase F).**
+- Giọng đã tạo và lời viết ngắn lại được nhớ trong thư mục việc: video quay lại hàng đợi hoặc được duyệt tay không trả phí lại. Bản phân tích đã nhớ chỉ giữ khi hợp lệ về cấu trúc, ghi nguyên tử, và khóa gồm cả kiểu mô tả lẫn model (file của bản trước, chưa có hai trường này, vẫn dùng được để không trả thêm một lần gọi video cho mỗi video đang chờ).
+- Giọng bị từ chối khi kéo dài quá hết video hoặc im lặng (file im lặng bị xóa); lời đưa cho giọng đọc bỏ emoji, thẻ `{an8}`, ngắt dòng `\N`.
+- Lần tạo giọng thứ hai (khi giọng đầu quá dài) nhanh hơn **một bậc** thay vì nhảy từ chậm lên nhanh, chỉ chờ Google bận một vòng, và lỗi gì của nó cũng giữ bản đầu.
+- Gemini: model chạy được lúc model cấu hình chỉ đang bận không còn bị ghi nhớ thay model cấu hình; chỉ 429 theo **ngày** (đọc từ chi tiết lỗi) mới bỏ qua việc chờ vòng, 429 theo phút vẫn chờ.
+- **Lỗi nặng đã sửa:** video đã duyệt tay bị xếp lại hàng đợi mãi khi Google bận lúc tạo giọng (bộ đếm lần hoãn bị đặt về 0 ở mỗi lần chạy vì cờ `approved` ở lại trên dòng); nay bộ đếm chỉ đặt lại một lần, lúc duyệt.
+- Nhánh chuyển mp3/ogg sang WAV hỏng vì tên file `.part` (ffmpeg không chọn được định dạng): đã chỉ định `-f wav`.
 
 **Đã đo và không đổi:** mã hóa (crf, preset, tune: SSIM chỉ chênh 0,001–0,002 mà dung lượng +30–70%, thời gian +31–78%). Hiệu năng giữ nguyên hoặc tốt hơn (ít làm mờ hơn).
 

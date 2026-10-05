@@ -151,6 +151,18 @@ class InventedLinesTests(unittest.TestCase):
         ]
         self.assertEqual(len(normalize_segments(self.lines(rows), 20.0)), 4)
 
+    def test_a_restarted_tail_of_lines_just_long_enough_to_look_real_is_still_dropped(self):
+        """The independent review: 11 clock-restart lines each 0.5-0.9 s long (so not individually 'rushed') crowded into 1.5 seconds."""
+        tail = [(1.0 + 0.1 * n, 1.0 + 0.1 * n + 0.6, "Một dòng bịa vừa đủ dài để trông thật số %d" % n) for n in range(11)]
+        out = normalize_segments(self.lines(self.REAL + tail), 53.0)
+        self.assertEqual([(s["start"], s["end"]) for s in out], [(a, b) for a, b, _ in self.REAL])
+
+    def test_a_real_group_of_lines_is_not_an_unreadable_tail(self):
+        rows = [(0.0, 3.0, "Người A nói câu một"), (10.0, 14.0, "Người A nói câu hai")] + [
+            (float(i) * 4, i * 4 + 3.0, "Người B câu số %d" % i) for i in range(1, 5)
+        ]
+        self.assertEqual(len(normalize_segments(self.lines(rows), 30.0)), 6)
+
     def test_short_real_lines_are_not_mistaken_for_inventions(self):
         rows = [(0.0, 0.4, "Ừ"), (1.0, 1.4, "Được thôi"), (2.0, 2.4, "Đi nào")]  # short text in short time
         self.assertEqual(len(normalize_segments(self.lines(rows), 10.0)), 3)

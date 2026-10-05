@@ -11,7 +11,7 @@ JOB_COLUMNS = "id,platform,title,state,reason,route,meta,url,updated,first_seen,
 DASHBOARD_SETTINGS = (
     "daily_limit", "min_publish_gap", "post_windows", "max_age_days", "max_duration", "max_candidates_per_scan", "max_backlog",
     "min_views", "min_likes", "audio_confidence", "gemini_daily_limit", "require_approval", "voiceover_enabled", "target", "voice",
-    "timezone", "model", "tts_model", "visibility", "caption_style", "voiceover_scope", "voice_mode", "hard_sub_mask", "voiceover_enabled",
+    "timezone", "model", "tts_model", "visibility", "caption_style", "voiceover_scope", "voice_mode", "hard_sub_mask",
 )  # fmt: skip
 # the collector's thresholds, exposed through /api/status
 THRESHOLD_SETTINGS = ("min_views", "min_likes", "max_duration", "max_candidates_per_scan", "max_backlog", "max_age_days")

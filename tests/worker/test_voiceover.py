@@ -48,7 +48,10 @@ class VoiceChoiceTests(unittest.TestCase):
 
     def test_pace_is_chosen_from_the_characters_the_window_needs_per_second(self):
         self.assertEqual(voices.pace_for(8), voices.SLOW)
-        self.assertEqual(voices.pace_for(14), voices.NORMAL)
+        self.assertEqual(
+            voices.pace_for(13), voices.SLOW
+        )  # what the analysis asks for (about 13 a second): the plain voice would end early
+        self.assertEqual(voices.pace_for(17), voices.NORMAL)
         self.assertEqual(voices.pace_for(21), voices.FAST)
 
     def test_the_style_text_names_the_tone_and_the_pace_and_is_none_when_empty(self):
@@ -101,26 +104,51 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(analysis["speaker"]["gender"], "unknown")
 
 
+def write_wav(path, seconds, rate=8000):
+    import wave
+
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(b"\x00\x00" * int(seconds * rate))
+
+
 class MakeVoiceTests(StoreCase):
     """The voice is fitted to its window with words first (pace), a little speed second, and refused when it cannot fit."""
 
-    def analysis(self, text="x" * 160):
+    def setUp(self):
+        super().setUp()
+        patch = mock.patch.object(speech, "decode_check", lambda path, with_audio: {"lufs": -20.0})  # (no ffmpeg on the test host)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def analysis(self, text="x" * 160, start=2.0, end=12.0):
         return {
-            "segments": [{"start": 2.0, "end": 12.0, "vi": "a"}],
+            "segments": [{"start": start, "end": end, "vi": "a"}],
             "narration_vi": text,
             "speaker": {"gender": "male", "tone": "serious"},
         }
 
-    def make(self, lengths, text="x" * 160):
+    def make(self, lengths, text="x" * 160, duration=None, analysis=None, fail_after=None, folder=None, fail_with=None):
         calls = []
+        self.limits = []  # what each call was allowed to spend waiting (the optional second try must not wait for long)
+        folder = folder or Path(tempfile.mkdtemp(dir=self.tmp.name))  # (a fresh job folder: what was synthesised is remembered in it)
         spoken = iter(lengths)
 
-        def fake(store, cfg, text, out, voice=None, style=None):
-            calls.append((voice, style))
-            return next(spoken)
+        def fake(store, cfg, text, out, voice=None, style=None, **limits):
+            calls.append((voice, style, text))
+            self.limits.append(limits)
+            if fail_after is not None and len(calls) > fail_after:
+                from trendvn_worker.ai.errors import Transient
+
+                raise fail_with or Transient("busy")
+            seconds = next(spoken)
+            write_wav(out, seconds)
+            return seconds
 
         with mock.patch.object(speech, "tts", fake):
-            result = speech.make_voice(self.s, self.s.settings(), self.analysis(text), Path(self.tmp.name))
+            result = speech.make_voice(self.s, self.s.settings(), analysis or self.analysis(text), folder, duration)
         return result, calls
 
     def test_a_voice_that_nearly_fits_is_used_as_it_is(self):
@@ -138,6 +166,40 @@ class MakeVoiceTests(StoreCase):
         self.assertIn("nhanh", calls[1][1])
         self.assertAlmostEqual(result["tempo"], 1.05)  # only a small speed change closes the rest
 
+    def test_a_failed_second_try_keeps_the_first_audio_and_a_worse_second_try_is_ignored(self):
+        result, calls = self.make([12.0], fail_after=1)  # the faster try finds Google busy: the first audio (ratio 1.2) is still usable
+        self.assertEqual(len(calls), 2)
+        self.assertAlmostEqual(result["tempo"], 1.2)
+        result, _ = self.make([11.8, 12.5])  # a second try that is further from the window than the first is not taken
+        self.assertAlmostEqual(result["tempo"], 1.18)
+
+    def test_the_optional_second_try_does_not_wait_for_a_busy_google_the_first_one_is_patient(self):
+        _, calls = self.make([13.0, 10.5])
+        self.assertEqual(self.limits[0], {})  # the first synthesis is the one the video needs: it waits as long as any call does
+        self.assertEqual(self.limits[1], speech.OPTIONAL_CALL)  # the second only improves on it: one round, a short budget
+        self.assertEqual(speech.OPTIONAL_CALL["rounds"], 1)
+
+    def test_a_slow_delivery_that_runs_long_is_retried_one_step_faster_not_at_the_fastest(self):
+        """Jumping from slow (12 characters a second) to fast (24) overshoots a window that needed about 14: the second audio could never be
+        the closer one, so the call was paid for nothing."""
+        _, calls = self.make([11.8, 9.9], text="x" * 140)  # 14 characters a second asked of a 10 second window: slow
+        self.assertEqual(len(calls), 2)
+        self.assertIn("chậm", calls[0][1])
+        self.assertNotIn("nhanh", calls[1][1])  # normal pace, not fast
+        self.assertNotIn("chậm", calls[1][1])
+        _, calls = self.make([13.0, 10.5], text="x" * 160)  # a normal delivery that runs long still goes to fast
+        self.assertIn("nhanh", calls[1][1])
+        _, calls = self.make([12.0], text="x" * 250)  # already the fastest (25 characters a second asked): no second try
+        self.assertEqual(len(calls), 1)
+
+    def test_any_failure_of_the_optional_second_try_keeps_the_first_audio(self):
+        import wave as wave_module
+
+        for error in (wave_module.Error("bad header"), EOFError(), OSError("disk"), ValueError("empty")):
+            result, calls = self.make([12.0], fail_after=1, fail_with=error)
+            self.assertEqual(len(calls), 2, error)
+            self.assertAlmostEqual(result["tempo"], 1.2)
+
     def test_a_small_overrun_is_closed_by_speed_not_by_another_call(self):
         result, calls = self.make([11.0])
         self.assertEqual(len(calls), 1)
@@ -153,9 +215,52 @@ class MakeVoiceTests(StoreCase):
         with self.assertRaises(VoiceoverUnfit):
             self.make([5.0, 5.0], text="x" * 140)  # 28 characters a second
 
-    def test_a_short_voice_is_slowed_only_a_little(self):
+    def test_a_short_voice_is_slowed_only_a_little_and_the_original_stays_low_to_the_end_of_the_window(self):
         result, _ = self.make([7.0])
         self.assertAlmostEqual(result["tempo"], 0.92)  # never more than 8% slower: it simply ends early
+        self.assertAlmostEqual(result["until"], 12.0)  # but the original speech goes on to 12.0: its sound stays low until then
+        chain, _ = render_mod._audio_chain(True, result, True)
+        self.assertIn("(12.50-t)/0.5", ";".join(chain))  # (a voice that had ended at 9.6 s used to let the original back at full volume)
+
+    def test_a_voice_that_would_run_past_the_end_of_the_video_is_refused(self):
+        with self.assertRaisesRegex(VoiceoverUnfit, "quá hết video"):
+            self.make([10.0], duration=11.0)  # starts at 2.0, ends at 12.0
+        self.assertAlmostEqual(self.make([10.0], duration=12.2)[0]["until"], 12.0)
+
+    def test_a_short_last_window_near_the_end_of_the_video_cannot_hold_a_voice_that_needs_two_seconds(self):
+        """A window shorter than two seconds is treated as two: the only way the voice can outlast a video whose timestamps are valid."""
+        late = self.analysis(text="x" * 30, start=29.0, end=29.5)
+        with self.assertRaisesRegex(VoiceoverUnfit, "quá hết video"):
+            self.make([2.0], duration=30.0, analysis=late)  # 29.0 + 2.0 is past the end by a second
+        self.assertAlmostEqual(self.make([2.0], duration=31.0, analysis=late)[0]["delay"], 29.0)
+
+    def test_what_was_synthesised_is_remembered_for_the_job(self):
+        folder = Path(tempfile.mkdtemp(dir=self.tmp.name))
+        _, first = self.make([10.0], folder=folder)
+        _, second = self.make([10.0], folder=folder)
+        self.assertEqual((len(first), len(second)), (1, 0))  # the same text, voice and style: the file in the job folder is used
+
+    def test_subtitle_line_breaks_are_not_read_as_the_letter_n(self):
+        _, calls = self.make([10.0], text="Chào các bạn\\Nrất vui\\n được gặp\\h lại " + "x" * 120)
+        spoken = calls[0][2]
+        self.assertNotIn("\\", spoken)
+        self.assertNotRegex(spoken, r"\bN\b")  # "\N" is an ASS line break, not a word
+        self.assertIn("các bạn rất vui", spoken)
+
+    def test_the_text_that_is_read_aloud_has_no_links_phone_numbers_or_emoji(self):
+        _, calls = self.make([10.0], text="Xem tại https://evil.test hoặc gọi 0912 345 678 nhé 😂 {an8} " + "x" * 120)
+        spoken = calls[0][2]
+        for forbidden in ("http", "evil", "0912", "😂", "{"):
+            self.assertNotIn(forbidden, spoken)
+
+    def test_a_silent_voice_is_no_voice_and_is_not_kept_to_be_found_again(self):
+        folder = Path(tempfile.mkdtemp(dir=self.tmp.name))
+        with mock.patch.object(speech, "decode_check", lambda path, with_audio: {"lufs": -90.0}):
+            with self.assertRaisesRegex(VoiceoverUnfit, "im lặng"):
+                self.make([10.0], folder=folder)
+        self.assertEqual(
+            list(folder.glob("voice-*.wav")), []
+        )  # a run that comes back synthesises afresh instead of reading the same silence
 
 
 class AnalysisMemoryTests(StoreCase):
@@ -209,6 +314,36 @@ class AnalysisMemoryTests(StoreCase):
         self.run_analyze(asked)
         self.assertEqual(len(asked), 1)
 
+    def test_a_new_caption_style_or_model_asks_again_because_the_answer_was_written_for_the_old_one(self):
+        asked = []
+        self.run_analyze(asked, cfg={"caption_style": "hook", "model": "m1"})
+        self.run_analyze(asked, cfg={"caption_style": "hook", "model": "m1"})
+        self.assertEqual(len(asked), 1)
+        self.run_analyze(asked, cfg={"caption_style": "factual", "model": "m1"})  # the caption was written in the other style
+        self.run_analyze(asked, cfg={"caption_style": "factual", "model": "m2"})
+        self.assertEqual(len(asked), 3)
+
+    def test_an_answer_remembered_before_the_key_knew_the_style_and_model_is_still_used(self):
+        """Videos waiting for the owner or for a busy Google hold an analysis.json written by the earlier release: asking again would pay
+        one more video call for each of them, on the API that is the scarce one."""
+        asked = []
+        old_key = {"prompt_version": analyzer.PROMPT_VERSION, "duration": 10.0, "size": 1000}
+        (self.folder / "analysis.json").write_text(json.dumps({"key": old_key, "answer": self.answer}))
+        a, _ = self.run_analyze(asked)
+        self.assertEqual((asked, a["caption_vi"]), ([], "Hay"))
+        (self.folder / "analysis.json").write_text(json.dumps({"key": dict(old_key, prompt_version="older"), "answer": self.answer}))
+        self.run_analyze(asked)  # but an older prompt is still asked again
+        self.assertEqual(len(asked), 1)
+
+    def test_an_answer_that_is_broken_is_not_remembered(self):
+        asked = []
+        self.answer = dict(self.answer, kind="dialogue")  # speech but no transcript: timestamps cannot be trusted
+        for _ in range(2):
+            with self.assertRaises(ValueError):
+                self.run_analyze(asked)
+        self.assertEqual(len(asked), 2)  # asked again, not served from memory
+        self.assertFalse((self.folder / "analysis.json").exists())
+
 
 class CondenseTests(StoreCase):
     """Rushed subtitle lines are rewritten shorter, checked line by line; any doubt keeps the original wording."""
@@ -224,7 +359,7 @@ class CondenseTests(StoreCase):
 
         calls = []
 
-        def fake_generate(store, cfg, parts, schema):
+        def fake_generate(store, cfg, parts, schema, **kwargs):
             calls.append(parts[0]["text"])
             if isinstance(reply, Exception):
                 raise reply
@@ -242,6 +377,22 @@ class CondenseTests(StoreCase):
         self.assertEqual(out[0]["vi"], "Xin chào các bạn")  # untouched
         self.assertIn('"max_chars": 17', calls[0])
         self.assertNotIn("Xin chào", calls[0])  # lines that read fine are not even sent
+
+    def test_a_rewrite_that_was_asked_for_before_is_not_asked_for_again(self):
+        from trendvn_worker.ai import condense as condense_mod
+
+        folder = Path(self.tmp.name)
+        calls = []
+
+        def fake_generate(store, cfg, parts, schema, **kwargs):
+            calls.append(kwargs)
+            return {"candidates": [{"content": {"parts": [{"text": json.dumps({"lines": [{"i": 1, "vi": "Mục tiêu lần này"}]})}]}}]}
+
+        with mock.patch.object(condense_mod, "generate", fake_generate):
+            first = condense_mod.condense(self.s, {}, self.lines(), folder)
+            second = condense_mod.condense(self.s, {}, self.lines(), folder)  # the video came back: same lines, same question
+        self.assertEqual((len(calls), first, second), (1, first, first))
+        self.assertEqual(calls[0], {"rounds": 1, "budget": condense_mod.WAIT_SECONDS})  # and the one call never waits long
 
     def test_nothing_rushed_means_no_call(self):
         from trendvn_worker.ai import condense as condense_mod
@@ -296,6 +447,16 @@ class AudioMixTests(unittest.TestCase):
         )  # eased in before the voice, out after it, untouched elsewhere
         self.assertIn("0.86", text)  # 1 - BED_UNDER_VOICE
         self.assertEqual(maps, ["-map", "[a]"])
+        self.assertIn("alimiter", text)  # a mix that was levelled as a whole also gets the peak limiter after it
+
+    def test_the_peak_limiter_follows_only_a_levelled_mix(self):
+        """Measured by running it on 7 loud beds in the worker image the limiter changed the true peak by at most 0.3 dB either way, so no
+        bed-based test can tell it from its absence; its worth was shown on the independent review's burst beds (+3.9 to +0.3 dBTP). This
+        guards the wiring instead: levelled mixes carry it, unlevelled (silent source) ones and a voice-less render do not."""
+        voice = {"delay": 0.0, "tempo": 1.0, "seconds": 5.0}
+        self.assertIn("alimiter", ";".join(render_mod._audio_chain(True, voice, True)[0]))
+        self.assertNotIn("alimiter", ";".join(render_mod._audio_chain(True, voice, False)[0]))
+        self.assertNotIn("alimiter", ";".join(render_mod._audio_chain(True, None, True)[0]))
 
     def test_without_levelling_or_without_original_sound_the_chain_stays_valid(self):
         plain, _ = render_mod._audio_chain(True, {"delay": 0.0, "tempo": 1.0}, False)
@@ -374,6 +535,54 @@ class RealMixTests(unittest.TestCase):
         self.assertAlmostEqual(
             before, after, delta=6
         )  # roughly the same before and after (the final levelling eases back over a few seconds)
+
+
+@unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg/ffprobe (runs in the worker image)")
+class LoudBedTests(unittest.TestCase):
+    """The independent review: over a loud music bed the voice-over mix came out at +1.5..+2.5 dBTP after AAC (clipping), where the
+    subtitle-only mix of the same bed stays below -2.6."""
+
+    def test_a_loud_bed_under_a_voice_over_does_not_clip(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        src, wav = tmp / "s.mp4", tmp / "v.wav"
+        loud = "anoisesrc=color=pink:amplitude=0.7:d=15:r=44100[n];sine=f=220:d=15,volume=0.7[t1];sine=f=3300:d=15,volume=0.4[t2];[n][t1][t2]amix=inputs=3:normalize=0[a]"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=s=360x640:d=15:r=25",
+                "-filter_complex",
+                loud,
+                "-map",
+                "0:v",
+                "-map",
+                "[a]",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                str(src),
+            ],
+            check=True,
+        )
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=500:d=9:sample_rate=24000", "-ac", "1", str(wav)], check=True
+        )
+        folder = tmp / "out"
+        folder.mkdir()
+        analysis = {"kind": "narration", "segments": [{"start": 0.0, "end": 9.0, "vi": "Xin chào"}]}
+        voice = {"wav": wav, "tempo": 1.0, "delay": 0.0, "seconds": 9.0, "until": 9.0}
+        out = render_mod.render(src, folder, analysis, "voiceover", ffmpeg_mod.probe(src)[0], voice)
+        measured = ffmpeg_mod.decode_check(out, True)
+        self.assertLessEqual(measured["peak"], -0.5, measured)  # true peak after AAC, with headroom
 
 
 class MaskDecisionTests(unittest.TestCase):

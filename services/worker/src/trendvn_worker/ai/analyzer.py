@@ -37,36 +37,56 @@ def parse_analysis(text):
     return a
 
 
-def _key(path, duration):
-    """What a remembered answer must match to be reused: the same prompt, and the same file."""
-    return {"prompt_version": PROMPT_VERSION, "duration": round(duration, 2), "size": path.stat().st_size}
+KEY_ADDED_LATER = ("caption_style", "model")  # fields of the key that analysis.json files of the previous release do not have
 
 
-def _remembered(folder, path, duration):
+def _key(path, duration, cfg):
+    """What a remembered answer must match to be reused: the same prompt (its version and the caption style written into it), the same
+    model and the same file."""
+    return {
+        "prompt_version": PROMPT_VERSION, "caption_style": cfg.get("caption_style", "hook"), "model": cfg.get("model"),
+        "duration": round(duration, 2), "size": path.stat().st_size,
+    }  # fmt: skip
+
+
+def _remembered(folder, path, duration, cfg):
     """The model's answer for this very video from an earlier run of this job, or None. A run that fails later (the voice, the render, a
     stale lease) or an owner's approval would otherwise pay for the same video call again, and the video API is the scarce one."""
     try:
         saved = json.loads((folder / "analysis.json").read_text())
     except (OSError, ValueError):
         return None
-    if isinstance(saved, dict) and saved.get("key") == _key(path, duration) and isinstance(saved.get("answer"), dict):
-        return saved["answer"]
-    return None
+    if not isinstance(saved, dict) or not isinstance(saved.get("answer"), dict) or not isinstance(saved.get("key"), dict):
+        return None
+    wanted = _key(path, duration, cfg)
+    for field in KEY_ADDED_LATER:  # a file from before the key knew them was written for the style and model of its day: used, not re-paid
+        saved["key"].setdefault(field, wanted[field])
+    return saved["answer"] if saved["key"] == wanted else None
 
 
-def _remember(folder, path, duration, answer):
+def _remember(folder, path, duration, cfg, answer):
     try:
-        (folder / "analysis.json").write_text(json.dumps({"key": _key(path, duration), "answer": answer}, ensure_ascii=False))
+        target = folder / "analysis.json"
+        partial = folder / "analysis.json.part"
+        partial.write_text(json.dumps({"key": _key(path, duration, cfg), "answer": answer}, ensure_ascii=False))
+        partial.replace(target)  # all or nothing: a crash never leaves half an answer under the real name
     except OSError:
         pass  # a missing cache only costs a call later
 
 
 def analyze(store, path, duration, cfg, folder, lenient=False):
     """(analysis, route): the model's answer (asked once per job and prompt version), validated against this run's settings."""
-    answer = _remembered(folder, path, duration)
+    answer = _remembered(folder, path, duration, cfg)
     if answer is None:
         answer = _ask(store, path, duration, cfg, folder)
-        _remember(folder, path, duration, answer)
+        try:
+            # Remembered only when the answer is structurally sound: validated with the owner's judgement checks waived (sensitive, topic,
+            # confidence stay the owner's call and cost nothing to re-decide). A broken one (timestamps unreliable, speech without
+            # transcript) is not worth keeping: the next run asks again.
+            validate_analysis(copy.deepcopy(answer), duration, 0.0, strict=True, lenient=True, voiceover_scope="narration")
+            _remember(folder, path, duration, cfg, answer)
+        except ValueError:
+            pass
     a = copy.deepcopy(answer)  # validation edits the analysis (repaired timestamps, cleaned lines): the remembered answer stays raw
     route = validate_analysis(
         a, duration, cfg["audio_confidence"], strict=True, lenient=lenient, accepted_topics=store.wanted_topics(),

@@ -1,4 +1,4 @@
-# Lộ trình 1.4 và 1.5 (đã phát hành): các phase và nhật ký rà soát
+# Lộ trình 1.4 đến 1.6 (đã phát hành): các phase và nhật ký rà soát
 
 Tài liệu làm việc: ghi lại yêu cầu, thiết kế từng phase và kết quả 3 vòng rà soát của mỗi phase (để không mất khi làm nhiều phiên).
 Quy ước mỗi phase: (1) làm, (2) **rà soát vòng 1 — tĩnh** (đọc lại mã, lint, tài liệu khớp mã), (3) **vòng 2 — động** (chạy thật, đo thật),
@@ -12,6 +12,7 @@ Quy ước mỗi phase: (1) làm, (2) **rà soát vòng 1 — tĩnh** (đọc l�
 | C | Tìm kiếm và tổng hợp theo chủ đề, đăng nhiều tài khoản theo nhiều chủ đề | xong |
 | D | Hiệu suất và tốc độ | xong |
 | E | Nội dung theo yêu cầu chủ kênh + rà soát chất lượng, hiệu năng, bảo mật, mở rộng (bản 1.5) | xong (3 vòng) |
+| F | Chất lượng đầu ra: lồng tiếng, âm thanh, làm mờ phụ đề gốc, phụ đề (bản 1.6) | xong (3 vòng, 2 lần rà soát độc lập); còn một việc chưa kiểm chứng, xem cuối mục |
 
 ## Phase 0 — Chuyển hẳn sang thư mục mới (xong)
 
@@ -100,3 +101,26 @@ Yêu cầu của chủ kênh: nội dung càng nhạy cảm, càng giật tít c
 - Tác tử C (phản biện các bản sửa): ~1.000 chuỗi ngẫu nhiên cho dọn đĩa, 20 CSDL cũ + 400 lần mở đồng thời, 288 yêu cầu ác ý vào cổng đăng nhập (0 lần lọt), 150 kết nối đồng thời, 53+53+36+25 URL SSRF, 100.000 lần chạy bộ lọc văn bản, 120 bộ dữ liệu so sánh giao diện cũ/mới, 100 chuỗi thao tác hàng đợi, và phát hiện **2 lỗi + 11 rủi ro** do chính các bản sửa gây ra hoặc bỏ sót: `/login` đọc không giới hạn khi `Content-Length` âm; phiên đăng nhập không thể thu hồi; dọn đĩa xóa nhầm tệp dùng chung, xóa theo `mtime` do yt-dlp đặt, `source_file` dị dạng xóa cả `inbox/`, ghi "đã xong" cho lần xóa thất bại; regex bậc hai làm treo worker 3–31 giây; khởi động lỗi vòng lặp khi một dòng CSDL hỏng; quét TikTok bỏ cả lượt vì một chip trống; reverse proxy nginx mở bảng điều khiển không mật khẩu; chuyển hướng tải video không bị kiểm; cảnh báo đĩa im lặng; và các lỗi nhỏ của bộ lọc văn bản (ngày, giờ mở cửa, "Mr.Co" bị coi là số điện thoại/tên miền). **Tất cả đã sửa và có test hồi quy**, ngoại trừ các mục ghi ở docs/SECURITY.md mục 7 (tấn công nhỏ giọt từng byte vào máy chủ chỉ giảm nhẹ bằng giới hạn 48 luồng; bộ lọc văn bản là heuristic).
 
 **Chưa làm / chưa kiểm chứng được (nói thẳng).** (1) Gemini thật nhận diện phụ đề cứng của video hài: API video báo 503 "quá tải" suốt hai ngày; chỉ video hòa nhạc được phân tích thật (mô tả giật tít, chủ đề, chủ đề âm nhạc đúng). (2) Nguồn Mỹ (TikTok, Instagram): chưa có IP Mỹ. (3) Đăng thật nhiều tài khoản: chỉ có một tài khoản thật và chưa bật tự đăng; mô hình ngẫu nhiên và test kịch bản đã kiểm bằng giả lập. (4) macOS, Docker Desktop (địa chỉ nguồn kết nối có thể khác cổng cầu nối Docker: có `TRENDVN_TRUSTED_PEERS` và thông báo lỗi nêu đúng địa chỉ). (5) yt-dlp đọc proxy qua biến môi trường: chưa chạy với proxy thật. (6) CI GitHub: file đã có, chưa chạy trên GitHub. (7) Chạy dài nhiều ngày liên tục với lịch bật. (8) "Nội dung chắc chắn viral/không bao giờ bị gỡ": không có cách nào bảo đảm; nội dung càng gây tranh cãi thì rủi ro bị gỡ/giảm phân phối càng cao (docs/SECURITY.md mục 1).
+
+## Phase F — Bản 1.6: chất lượng đầu ra (2026-10-02 đến 2026-10-05)
+
+Làm gì: sửa lỗi lớn nhất (giọng đọc đọc luôn câu hướng dẫn), lồng tiếng được ưu tiên khi phù hợp và chọn giọng theo người nói, cân âm thanh lồng tiếng, làm mờ phụ đề gốc có điều kiện, bỏ dòng phụ đề bịa. Số đo và lý do: `docs/QUALITY.md`; thay đổi: `CHANGELOG.md` mục 1.6.
+
+**Rà soát 1 — tĩnh.** Đọc lại toàn bộ thay đổi sau lần rà soát độc lập đầu (20 file, +374 dòng). Xác nhận thứ tự `except Transient` trước `except RateLimited` đúng (`Transient` là lớp con của `RateLimited`). Lint, ruff, black (bản ghim), doclint sạch.
+**Rà soát 2 — động.** `./trendvn update` trên hệ thống thật: worker 1.5 → 1.6 (`doctor`: "Worker đúng phiên bản của mã"), các lịch n8n vẫn tắt. Ổ đĩa chỉ trống 1,8 GB và Dockerfile đã đổi thứ tự `ARG` (lớp ffmpeg 450 MB phải tải lại), nên xóa cache build Docker (897 MB, chỉ cache) trước khi dựng. `./trendvn test all` bắt **hai lỗi của test mà vòng test trên máy chủ bỏ qua vì không có ffmpeg**: giả lập TTS ghi ra `*.wav.part` (ffmpeg không chọn được định dạng), và test dùng chung một thư mục cho nhiều kịch bản nên dính bộ nhớ đệm giọng mới. Đã sửa cả hai.
+**Rà soát 3 — độc lập, hai lần.**
+- Lần 1 (2026-10-02): các phát hiện và bản sửa nằm trong `docs/QUALITY.md` mục 7 và 8 (dòng bịa, giọng im lặng/kéo dài, đỉnh âm thanh vượt 0 dBTP trên nền nhạc to).
+- Lần 2 (2026-10-05, tác tử chỉ đọc, chạy thử trong container tắt mạng, kèm thử đột biến từng bản sửa): **2 lỗi thật, 6 rủi ro, 8 bản sửa chưa có test nào chặn lại**. Tất cả đã xử lý. Mục 1 đến 6: test mới được chạy trên mã chưa sửa và thất bại trước khi sửa (riêng `-f wav`: bỏ nó thì test lỗi muxer). Mục 7: kiểm đột biến, bỏ từng bản sửa (khóa phân tích, cổng hợp lệ, bộ nhớ và giới hạn chờ của lời viết ngắn lại, regex model TTS 3.x, kiểm âm thanh rỗng, bộ giới hạn đỉnh, `\\N`) thì 8/8 đều có test thất bại. Ghi chú:
+  1. **Video đã duyệt tay bị xếp lại hàng đợi mãi khi Google bận lúc tạo giọng**: bộ đếm lần hoãn bị đặt về 0 ở mỗi lần chạy vì cờ `approved` ở lại trên dòng. Nay đặt lại một lần, lúc duyệt (`Store.decide`). Tái hiện trước khi sửa: 8 lần chạy liên tiếp đều `rate_limited`.
+  2. Nhánh chuyển mp3/ogg sang WAV hỏng với tên `.part`: thêm `-f wav` (test chỉ chạy trong container; đã kiểm đột biến: bỏ `-f wav` thì test lỗi muxer).
+  3. Lần tạo giọng thứ hai: chờ tối đa một vòng (25 giây) thay vì 100 giây và 12 lần gọi; nhanh hơn một bậc thay vì nhảy từ chậm lên nhanh (bản thứ hai không thể gần cửa sổ hơn bản đầu, tốn một lần gọi trong hạn mức ngày); mọi lỗi của nó giữ bản đầu (trước đây `wave.Error`, `EOFError` làm hỏng cả bản lồng tiếng).
+  4. Gemini: chỉ 429 mà chi tiết lỗi nêu hạn mức **theo ngày** mới bỏ qua việc chờ, và chỉ khi mọi model lỗi đều vậy. 429 theo phút vẫn chờ (trước đây mọi 429 có chữ "quota" bị coi là hết ngày, mỗi lần như vậy tiêu một trong 4 lần hoãn giọng).
+  5. File phân tích của bản trước (chưa có kiểu mô tả và model trong khóa) vẫn dùng được: không thì mỗi video đang chờ duyệt hoặc chờ giọng tốn thêm một lần gọi video sau khi triển khai.
+  6. File giọng im lặng bị xóa khi từ chối; `\N` (ngắt dòng ASS) không còn bị đọc thành chữ "N".
+  7. Test mới cho các bản sửa trước đó chưa có test: khóa phân tích theo kiểu mô tả và model, không nhớ câu trả lời hỏng, bộ nhớ lời viết ngắn lại, regex model TTS 3.x, âm thanh rỗng, trường hợp giọng kéo dài quá hết video (cửa sổ lời dưới 2 giây ở cuối video; trạng thái test cũ không xảy ra được).
+  8. Tài liệu lệch mã (ngưỡng nhịp 14,5/19, xử lý 429, cửa sổ hạ tiếng gốc, bộ nhớ đệm, bộ giới hạn đỉnh, chi phí gọi API) và CHANGELOG thiếu các bản sửa: đã cập nhật.
+- **Bộ giới hạn đỉnh (`alimiter`) chưa có test động nào phân biệt được nó.** Thử 7 nền nhạc tự dựng trong image worker: đổi đỉnh không quá 0,3 dB theo cả hai hướng, mọi đỉnh dưới -2,7 dBTP. Giá trị đo được chỉ ở nền xung của người phản biện (+3,9 → +0,3 dBTP, vẫn chưa bảo đảm dưới 0). Chỉ có test kiểm nó nối đúng chỗ.
+
+Kết quả cuối: `./trendvn test all` xanh, gồm 511 test trên máy (16 bỏ qua vì không có ffmpeg), 511 test trong container có ffmpeg thật (không bỏ qua), bước dựng video thật bằng ffmpeg, 82 kiểm tra Chrome thật.
+
+**Chưa làm / chưa kiểm chứng được (nói thẳng).** (1) Chạy trọn một video lồng tiếng từ đầu tới cuối trên Gemini thật (phân tích, giọng, dựng): cần bật `voiceover_enabled` (đang `false` trong cài đặt thật) và gọi Gemini, Douyin thật, nên chờ chủ đồng ý. (2) Giọng nam ngoài Orus (hạn mức ngày của khóa hết khi đang nghe thử). (3) Dạng chi tiết lỗi 429 theo ngày chưa đối chiếu với phản hồi thật của Google; nếu sai, hệ thống chỉ chờ đủ vòng (chậm hơn), không sai kết quả. (4) Khóa bộ nhớ đệm giọng không gồm `tts_model`: đổi model giữa hai lần chạy dùng lại giọng của model cũ (ghi nhận, rủi ro nhỏ). (5) Nghe bằng tai người: "Nghe thử giọng đọc" ở Thêm → Cài đặt.

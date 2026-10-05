@@ -27,7 +27,7 @@ def _fact_chips(job, info):
     if info.get("hard_subs_blurred"):
         facts.append(chip("làm mờ phụ đề gốc khi có phụ đề Việt", "mute"))
     elif info.get("hard_subs"):
-        facts.append(chip("phụ đề gốc giữ nguyên (không bị đè)", "mute"))
+        facts.append(chip("phụ đề gốc giữ nguyên", "mute"))
     if info.get("warning"):
         facts.append(chip(info["warning"], "warn"))
     return "".join(facts)

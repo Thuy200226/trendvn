@@ -110,6 +110,8 @@ class QueueMixin:
                     "UPDATE jobs SET state='queued',approved=1,publish_fails=0,last_publish_fail=NULL,reason='Approved by operator; reprocessing',updated=? WHERE id=?",
                     (now, jid),
                 )
+                # the owner's decision starts the voice's busy-Google allowance afresh (once: `approved` stays on the row for good)
+                (self.root / "jobs" / jid / "voice_retries").unlink(missing_ok=True)
             else:
                 raise ValueError("Nothing to approve in this state")
             self.event(db, jid, "operator_" + action)

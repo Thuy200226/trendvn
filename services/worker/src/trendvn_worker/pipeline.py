@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .ai.analyzer import analyze
 from .ai.condense import CONDENSE_ABOVE, condense
-from .ai.errors import RateLimited
+from .ai.errors import RateLimited, Transient
 from .ai.prompts import PROMPT_VERSION
 from .ai.tts import make_voice
 from .domain.hardsubs import covered_spans, hard_subtitle_band
@@ -127,8 +127,8 @@ def _process(store, cfg, job):
     if (
         route != "original" and fastest > CONDENSE_ABOVE
     ):  # still rushing after borrowing the pauses: shorten the worst lines (one text call)
-        a["segments"], fastest = fit_reading_speed(condense(store, cfg, a["segments"]), duration)
-    voice, route, why, note = _voice_or_subtitles(store, cfg, a, route, folder)
+        a["segments"], fastest = fit_reading_speed(condense(store, cfg, a["segments"], folder), duration)
+    voice, route, why, note = _voice_or_subtitles(store, cfg, a, route, folder, duration)
     out = render(path, folder, a, route, duration, voice, mask=cfg.get("hard_sub_mask", "auto"))
     info, geo = _checked_output(out, path, route, folder, duration)
     info["why"] = why
@@ -183,7 +183,7 @@ def _source(job, cfg):
     return path, duration
 
 
-def _voice_or_subtitles(store, cfg, a, route, folder):
+def _voice_or_subtitles(store, cfg, a, route, folder, duration=None):
     """Turn the analysis' route into what will really be rendered. Returns (voice or None, route, why, note): `why` is the reason
     shown on the dashboard, `note` the detail appended to the job's status. A voice-over that cannot be made falls back to subtitles
     alone, which are a complete and safe result."""
@@ -193,14 +193,18 @@ def _voice_or_subtitles(store, cfg, a, route, folder):
     if not cfg["voiceover_enabled"]:
         return None, "vietsub", REASONS["narration_no_voice"], ""
     try:
-        return make_voice(store, cfg, a, folder), "voiceover", why, ""
-    except RateLimited as e:
+        voice = make_voice(store, cfg, a, folder, duration)
+        (folder / "voice_retries").unlink(missing_ok=True)  # it worked: a later busy spell starts counting afresh
+        return voice, "voiceover", why, ""
+    except Transient as e:
         # Google is busy or throttling: the video goes back in the queue (its analysis is remembered, so waiting costs nothing) instead
         # of losing its voice, but not for ever: after VOICE_RETRIES busy answers it goes out with subtitles
         tries = _count_try(folder / "voice_retries")
-        if tries < VOICE_RETRIES:
+        if tries <= VOICE_RETRIES:
             raise
         return None, "vietsub", REASONS["voice_failed"], " (lồng tiếng bỏ qua: Google bận %d lần, %s)" % (tries, str(e)[:80])
+    except RateLimited:
+        raise  # our own daily budget is used up: it refills, the video waits (not counted against the voice)
     except Exception as e:
         return None, "vietsub", REASONS["voice_failed"], " (lồng tiếng bỏ qua: %s)" % str(e)[:120]
 

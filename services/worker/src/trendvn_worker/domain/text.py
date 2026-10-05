@@ -83,3 +83,12 @@ def clean_subtitle(text):
     text = HTML_TAG.sub("", text)
     text = clean_caption(EMOJI.sub("", text))
     return text.replace("{", "(").replace("}", ")").strip()
+
+
+def clean_spoken(text):
+    """Text for a voice to read aloud: like a caption (no links, handles, phone numbers, invisible characters) and no emoji or markup
+    either, which a voice would spell out or skip. Returns "" when nothing speakable is left."""
+    text = re.sub(r"\{[^{}]{0,80}\}", " ", HTML_TAG.sub(" ", str(text)))  # markup and subtitle override tags such as {an8}
+    text = re.sub(r"\\[Nnh]", " ", text)  # subtitle line breaks and hard spaces: left alone the backslash goes and the letter is read
+    text = re.sub(r"[{}\\]", " ", EMOJI.sub(" ", text))
+    return re.sub(r"\s+", " ", clean_caption(text)).strip()

@@ -4,11 +4,8 @@
 #   docker buildx imagetools inspect python:3.12-slim    -> copy the new "Digest:" here, then ./trendvn test container && ./trendvn update
 FROM python:3.12-slim@sha256:dddfd7e07f9d15aeeca61529320492139d21cac7f0070c00609243e51e4e0016
 
-ARG VERSION=dev
-LABEL org.opencontainers.image.title="trendvn-worker" \
-      org.opencontainers.image.description="TrendVN worker: queue, rules, Gemini, ffmpeg, dashboard" \
-      org.opencontainers.image.version="${VERSION}"
-
+# The version label comes AFTER the slow layers: a changed build argument invalidates every layer after its ARG, and putting it first made
+# each version bump re-download ffmpeg (450 MB) instead of reusing the cached layer (found 2026-10-02 on a nearly full disk).
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
@@ -20,6 +17,11 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY src/ /app/
+
+ARG VERSION=dev
+LABEL org.opencontainers.image.title="trendvn-worker" \
+      org.opencontainers.image.description="TrendVN worker: queue, rules, Gemini, ffmpeg, dashboard" \
+      org.opencontainers.image.version="${VERSION}"
 
 # Runs as the host user's uid/gid (compose sets `user:`) so files in ./data/worker stay yours; 1000 is the fallback.
 USER 1000:1000

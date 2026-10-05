@@ -34,7 +34,7 @@ class PipelineTests(StoreCase):
             fingerprint=lambda path, duration: [1, 2, 3],
             similar=lambda a, b: a == b,
             analyze=lambda store, path, duration, cfg, folder, lenient=False: (dict(ANALYSIS), "vietsub"),
-            make_voice=lambda store, cfg, analysis, folder: {"wav": "v.wav", "delay": 0, "tempo": 1.0},
+            make_voice=lambda store, cfg, analysis, folder, duration=None: {"wav": "v.wav", "delay": 0, "tempo": 1.0},
             render=render,
             qc=lambda out, audio: ({"w": 720, "h": 1280, "duration": 30.0}, []),
             make_poster=lambda out, poster, duration: None,
@@ -106,12 +106,62 @@ class PipelineTests(StoreCase):
             mock.patch.object(pipeline, "analyze", lambda *a, **k: (dict(ANALYSIS), "voiceover")),
             mock.patch.object(pipeline, "make_voice", busy),
         ):
-            for attempt in range(pipeline.VOICE_RETRIES - 1):
+            for attempt in range(pipeline.VOICE_RETRIES):
                 self.assertEqual(pipeline.process_one(self.s)["status"], "rate_limited", attempt)
                 self.assertEqual(self.row()["state"], "queued")  # back in the line, not marked broken, no attempt burned
-            result = pipeline.process_one(self.s)
+            result = pipeline.process_one(self.s)  # the fifth run: the voice has been put off four times
         self.assertEqual(result["route"], "vietsub")
         self.assertIn("Google bận", self.row()["reason"])
+
+    def test_the_owners_approval_starts_the_voice_allowance_once_not_on_every_run(self):
+        """`approved` stays on the row for good, so a count reset in every run of an approved video would never reach its limit and the
+        video would go back in the queue for ever while Google stays busy."""
+        from trendvn_worker.ai.errors import Transient
+
+        def busy(*a, **k):
+            raise Transient("Gemini đang quá tải")
+
+        folder = self.s.root / "jobs" / "j1"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "voice_retries").write_text("3")  # busy answers from before the owner's decision
+        with self.s.transaction() as db:
+            db.execute("UPDATE jobs SET state='needs_review' WHERE id='j1'")
+        self.s.decide("j1", "approve")
+        self.assertFalse((folder / "voice_retries").exists())  # the decision gives a fresh allowance...
+        with (
+            mock.patch.object(pipeline, "analyze", lambda *a, **k: (dict(ANALYSIS), "voiceover")),
+            mock.patch.object(pipeline, "make_voice", busy),
+        ):
+            for attempt in range(pipeline.VOICE_RETRIES):
+                self.assertEqual(pipeline.process_one(self.s)["status"], "rate_limited", attempt)
+            result = pipeline.process_one(self.s)  # ...and only that one: the fifth run ships with subtitles
+        self.assertEqual(result["route"], "vietsub")
+
+    def test_a_voice_that_worked_clears_the_count_and_an_exhausted_local_budget_is_not_held_against_it(self):
+        from trendvn_worker.ai.errors import RateLimited, Transient
+
+        folder = self.s.root / "jobs" / "j1"
+
+        def raising(error):
+            def fail(*a, **k):
+                raise error
+
+            return fail
+
+        with mock.patch.object(pipeline, "analyze", lambda *a, **k: (dict(ANALYSIS), "voiceover")):
+            with mock.patch.object(pipeline, "make_voice", raising(Transient("busy"))):
+                for _ in range(3):
+                    pipeline.process_one(self.s)
+            self.assertEqual((folder / "voice_retries").read_text(), "3")
+            pipeline.process_one(self.s)  # (the voice from setUp works this time)
+            self.assertFalse((folder / "voice_retries").exists())  # a later busy spell starts counting from zero
+            self.job("j2", "queued", source_file=str(self.source), content_hash=file_hash(self.source), approved=1)
+            with mock.patch.object(pipeline, "make_voice", raising(RateLimited("Local rolling 24-hour limit"))):
+                for _ in range(pipeline.VOICE_RETRIES + 2):
+                    self.assertEqual(
+                        pipeline.process_one(self.s)["status"], "rate_limited"
+                    )  # our own budget: waits, never ships without a voice
+                    self.assertEqual(self.row("j2")["state"], "queued")
 
     def test_voice_over_route_falls_back_to_subtitles_when_the_voice_fails(self):
         self.s.update_settings({"voiceover_enabled": True})

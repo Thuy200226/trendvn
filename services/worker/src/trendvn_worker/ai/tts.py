@@ -8,13 +8,16 @@ second with every word still spoken (recall 1.00), so pace is chosen with words,
 """
 
 import base64
+import hashlib
+import os
 import re
 import wave
 from pathlib import Path
 
 from ..domain import voices
 from ..domain.settings import TTS_FALLBACKS
-from ..media.ffmpeg import ffmpeg
+from ..domain.text import clean_spoken
+from ..media.ffmpeg import decode_check, ffmpeg
 from . import gemini as client
 from .errors import VoiceoverUnfit
 
@@ -23,10 +26,15 @@ MAX_CHARS_PER_SECOND = 24
 # How much the finished audio may be sped up to fit its window (a natural voice sped up more than this sounds hurried), and the shortest
 # it may be compared with the window (a much shorter voice leaves the picture talking without anyone).
 MAX_TEMPO = 1.25
-MIN_TEMPO = 0.92  # never slowed down: a voice that finishes early simply finishes early
+MIN_TEMPO = (
+    0.92  # slowed by 8% at most: a voice that finishes early simply finishes early (the original sound stays low until the window ends)
+)
+SILENT_LUFS = -50  # a voice quieter than this is no voice (a failed or garbled synthesis): refused
+OVERRUN_ALLOWED = 0.3  # seconds the voice may run past the end of the video before it is refused
 MIN_FILL = 0.5
+OPTIONAL_CALL = {"rounds": 1, "budget": 25}  # what a call that only improves on audio already in hand may spend waiting for a busy model
 TRY_AGAIN_ABOVE = 1.15  # longer than the window by more: ask once more with a faster delivery before stretching
-INTERACTION_MODEL = re.compile(r"gemini-3\.\d+-flash(-lite)?-tts")
+INTERACTION_MODEL = re.compile(r"gemini-3\.\d+-.*tts.*")  # every 3.x TTS model: the text is a transcript, never to be preceded by words
 
 
 def _interaction_body(model, text, voice, style):
@@ -69,7 +77,8 @@ def _audio_of_candidate(data):
 
 def _write_wav(mime, encoded, out):
     raw = base64.b64decode(encoded, validate=True)
-    if "audio/L16" in mime or "audio/pcm" in mime or (not mime and raw[:4] != b"RIFF"):
+    mime = mime.lower()
+    if "audio/l16" in mime or "audio/pcm" in mime or (not mime and raw[:4] != b"RIFF"):
         rate_match = re.search(r"rate=(\d+)", mime)
         rate = int(rate_match.group(1)) if rate_match else 24000
         with wave.open(str(out), "wb") as w:
@@ -83,17 +92,18 @@ def _write_wav(mime, encoded, out):
         src = Path(str(out) + ".src")
         src.write_bytes(raw)  # mp3, ogg, ...: let ffmpeg normalise it to WAV
         try:
-            ffmpeg("-i", str(src), "-ar", "24000", "-ac", "1", str(out))
+            ffmpeg("-i", str(src), "-ar", "24000", "-ac", "1", "-f", "wav", str(out))  # (named: `out` may end in ".part")
         finally:
             src.unlink(missing_ok=True)
     else:
         raise ValueError("Unexpected TTS audio format: " + mime[:40])
 
 
-def tts(store, cfg, text, out, voice=None, style=None):
+def tts(store, cfg, text, out, voice=None, style=None, **limits):
     """Speak `text` (exactly this text, nothing added) with `voice` in the delivery `style` into the WAV file `out`. Returns its length in
     seconds. The newest models are asked through the Interactions API; if that is refused (HTTP 400/404) the same model gets a plain
-    generateContent request WITHOUT any instruction text, and older models get the style as words before the text."""
+    generateContent request WITHOUT any instruction text, and older models get the style as words before the text. `limits` (rounds,
+    budget) bound how long a busy model is waited for (see client.call_with_fallback)."""
     if not isinstance(text, str) or not text.strip() or len(text) > 6000:
         raise ValueError("Invalid Vietnamese narration")
     voice = voice or cfg["voice"]
@@ -110,31 +120,65 @@ def tts(store, cfg, text, out, voice=None, style=None):
                 return _audio_of_candidate(client.gemini(store, model, _legacy_body(text, voice, None)))
         return _audio_of_candidate(client.gemini(store, model, _legacy_body(text, voice, style)))
 
-    mime, encoded = client.call_with_fallback(store, cfg, "tts_model", TTS_FALLBACKS, attempt)
+    mime, encoded = client.call_with_fallback(store, cfg, "tts_model", TTS_FALLBACKS, attempt, **limits)
     _write_wav(mime, encoded, out)
     with wave.open(str(out), "rb") as w:
+        if not w.getnframes():
+            raise ValueError("TTS returned empty audio")
         return w.getnframes() / w.getframerate()
 
 
-def make_voice(store, cfg, a, folder):
+def _voiced(store, cfg, text, folder, voice, style, **limits):
+    """(wav path, seconds) for this exact text, voice and style. Remembered in the job's folder under a name made from all three, so a
+    video that comes back (Google was busy later, the owner approved it) is not synthesised, or paid for, twice."""
+    name = "voice-%s.wav" % hashlib.sha1(("%s|%s|%s" % (voice, style, text)).encode("utf-8")).hexdigest()[:12]
+    path = folder / name
+    try:
+        with wave.open(str(path), "rb") as w:
+            if w.getnframes():
+                return path, w.getnframes() / w.getframerate()
+    except (OSError, wave.Error, EOFError):
+        pass
+    partial = folder / (name + ".part")
+    seconds = tts(store, cfg, text, partial, voice, style, **limits)
+    os.replace(partial, path)  # only a finished file carries the name
+    return path, seconds
+
+
+def make_voice(store, cfg, a, folder, duration=None):
     """Vietnamese narration audio fitted to the time window the original speech occupies. The voice follows the speaker (a man's speech
     gets a man's voice), the delivery follows the tone, and the pace is asked for in words to land close to the window; whatever
     remains is closed with a small speed change, never a big one. Raises VoiceoverUnfit when it cannot fit (the video then keeps subtitles).
     """
-    text = (a.get("narration_vi") or "").strip() or " ".join(s["vi"] for s in a["segments"])
-    wav = folder / "voice.wav"
+    text = clean_spoken((a.get("narration_vi") or "").strip() or " ".join(s["vi"] for s in a["segments"]))
+    if not text:
+        raise VoiceoverUnfit("Không có lời nào để đọc")
     start, end = a["segments"][0]["start"], a["segments"][-1]["end"]
     span = max(2.0, end - start)
     voice = voices.pick_voice(cfg, a.get("speaker"))
     pace = voices.pace_for(len(text) / span)
-    seconds = tts(store, cfg, text, wav, voice, voices.style_for(a.get("speaker"), pace))
-    if seconds / span > TRY_AGAIN_ABOVE and pace != voices.FAST:
-        pace = voices.FAST  # one more try, delivered faster, before the audio is sped up
-        seconds = tts(store, cfg, text, wav, voice, voices.style_for(a.get("speaker"), pace))
+    wav, seconds = _voiced(store, cfg, text, folder, voice, voices.style_for(a.get("speaker"), pace))
+    quicker = voices.faster(pace)
+    if seconds / span > TRY_AGAIN_ABOVE and quicker:
+        # one more try, delivered one step faster, before the audio is sped up; the closer of the two to the window is kept. It only
+        # improves on audio already in hand, so it waits briefly for a busy Google and any failure of it keeps the first audio
+        try:
+            wav2, seconds2 = _voiced(store, cfg, text, folder, voice, voices.style_for(a.get("speaker"), quicker), **OPTIONAL_CALL)
+            if abs(seconds2 / span - 1) < abs(seconds / span - 1):
+                wav, seconds, pace = wav2, seconds2, quicker
+        except (ValueError, OSError, wave.Error, EOFError):
+            pass
     if len(text) / seconds > MAX_CHARS_PER_SECOND:
         raise VoiceoverUnfit("Giọng đọc %.1fs quá ngắn cho %d ký tự: có thể bị bỏ sót chữ" % (seconds, len(text)))
     ratio = seconds / span
     if ratio > MAX_TEMPO or ratio < MIN_FILL:
         raise VoiceoverUnfit("Giọng đọc %.1fs không khớp cửa sổ lời %.1fs" % (seconds, span))
     tempo = min(MAX_TEMPO, max(MIN_TEMPO, ratio))
-    return {"wav": wav, "tempo": tempo, "delay": start, "seconds": seconds / tempo, "voice": voice, "pace": pace}
+    spoken = seconds / tempo
+    if duration and start + spoken > duration + OVERRUN_ALLOWED:
+        raise VoiceoverUnfit("Giọng đọc kéo dài quá hết video (%.1fs vào giây %.1f)" % (spoken, start))
+    if decode_check(wav, True).get("lufs", -120.0) < SILENT_LUFS:
+        wav.unlink(missing_ok=True)  # not kept: a run that comes back must synthesise afresh, not read the same silence
+        raise VoiceoverUnfit("Giọng đọc im lặng (tạo giọng hỏng)")
+    # `until`: the original sound stays low to the end of the window the original speech occupied, not only to the end of the voice
+    return {"wav": wav, "tempo": tempo, "delay": start, "seconds": spoken, "until": max(start + spoken, end), "voice": voice, "pace": pace}
