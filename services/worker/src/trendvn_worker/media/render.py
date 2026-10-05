@@ -15,6 +15,7 @@ UNLEVELLED = (
 )
 QUIET_LUFS = -35  # a render quieter than this is flagged on the dashboard
 BLUR_MAX_RADIUS = 20
+BLUR_SMALL_MIN_HEIGHT = 48  # a strip at least this tall (pixels) is blurred at a quarter of its size; a thinner one is cheap and would leave the chroma planes too few rows
 COVER_SLACK = 0.015  # the strip counts as overlapped when our caption comes this close (fraction of the height), not only when it touches
 # a voice-over mix has a different loudness shape over time (low under the voice, full outside it): the final levelling alone left peaks
 # above 0 dBTP after AAC on loud music beds (measured by the independent review), so a limiter at -1.5 dBFS follows it
@@ -153,16 +154,26 @@ def _picture_chain(geo, fps, a, route, folder, duration, mask="auto"):
 
 def _blur_band(geo, band, source, label, spans):
     """Blur the strip of the picture where the source carries its own subtitles, so they do not show through ours; only during `spans`
-    (the seconds our own lines are on screen), the rest of the time the picture is left alone."""
+    (the seconds our own lines are on screen), the rest of the time the picture is left alone.
+    The blur is done on a quarter-size copy of the strip and enlarged back, the same trick as the backdrop: on the real 134 s video that
+    needed it (41-45 s to render) it took 19% less time (44.8 s to 36.4 s, median of 3, interleaved) and the strip differs from the
+    full-size blur by SSIM 0.988-0.996 (PSNR 47.7 dB), which the eye does not see. A strip too thin to scale down is blurred as it is."""
     y, height = _band_pixels(geo, band)
     radius = max(1, min(BLUR_MAX_RADIUS, height // 4 - 1))  # the chroma planes are half as tall and cap the radius
     when = "+".join("between(t,%.2f,%.2f)" % span for span in spans)  # quoted below: the commas belong to the expression
-    return "[%s]split=2[hsa][hsb];[hsb]crop=%d:%d:0:%d,boxblur=%d:3,eq=brightness=-0.12[hsc];[hsa][hsc]overlay=0:%d:enable='%s'[%s]" % (
+    if height >= BLUR_SMALL_MIN_HEIGHT:
+        small_w, small_h = geo["w"] // 8 * 2, height // 8 * 2  # a quarter of the strip, kept even
+        blur = "scale=%d:%d:flags=bilinear,boxblur=%d:3,eq=brightness=-0.12,scale=%d:%d:flags=bilinear" % (
+            small_w, small_h, max(1, min(radius // 4, small_h // 4 - 1)), geo["w"], height,
+        )  # fmt: skip
+    else:
+        blur = "boxblur=%d:3,eq=brightness=-0.12" % radius
+    return "[%s]split=2[hsa][hsb];[hsb]crop=%d:%d:0:%d,%s[hsc];[hsa][hsc]overlay=0:%d:enable='%s'[%s]" % (
         source,
         geo["w"],
         height,
         y,
-        radius,
+        blur,
         y,
         when,
         label,

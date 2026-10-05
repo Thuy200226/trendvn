@@ -103,6 +103,10 @@ class Feed:
             if waited >= floor_ms and self.last > since and time.time() - self.last >= quiet_ms / 1000:
                 return
 
+    def answer_after(self, mark):
+        """For the log: how long after `mark` the last matching answer arrived (what the waits are tuned against), or 'no answer'."""
+        return "answer after %.1fs" % (self.last - mark) if self.last > mark else "no answer"
+
     def drain(self, quiet_ms, ceiling_ms=6000):
         """Let the previous category's late answers arrive before the next click, so they are not filed under the next one."""
         waited = 0
@@ -114,10 +118,14 @@ class Feed:
         """Scroll down for more; stop after two scrolls in a row that bring nothing new (the feed is exhausted; one empty scroll can just
         be a slow answer or a page that needs a longer scroll)."""
         empty = 0
-        for _ in range(times):
+        for n in range(1, times + 1):
             before, mark = self.count(), time.time()
             self.page.mouse.wheel(0, 1400)
             self.settle(750, 3000, 1000, mark)
+            log(
+                "scroll %d/%d: +%d videos, %s, settled after %.1fs"
+                % (n, times, self.count() - before, self.answer_after(mark), time.time() - mark)
+            )
             empty = empty + 1 if self.count() == before else 0
             if empty == 2:
                 return
@@ -217,6 +225,7 @@ def capture_once_streams(ctx, url, match, parse, streams, route=None, wait_ms=12
                     mark = time.time()
                     enter(page)
                     feed.settle(2000, settle_ms, 1500, mark)
+                    log("tab %s entered: %s, settled after %.1fs" % (name, feed.answer_after(mark), time.time() - mark))
                 feed.scroll(scrolls)
                 if index == 0 and not feed.count() and looks_blocked(page):
                     raise Blocked("verification or login wall shown")
