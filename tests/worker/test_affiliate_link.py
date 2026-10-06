@@ -131,10 +131,17 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual([c["label"] for c in result["checks"]], ["Mã sản phẩm"])
 
     def test_a_plain_product_link_is_flagged_as_not_a_commission_link(self):
-        result = affiliate.verdict({"product_id": PID}, found(markers={}, tracked=False), known=[])
+        result = affiliate.verdict({"product_id": PID}, found(markers={}, tracked=False, input=LONG.split("?")[0]), known=[])
         self.assertEqual(result["kind"], "plain")
         self.assertTrue(result["needs_confirmation"])
         self.assertEqual(states(result)["Dấu hiệu nhà sáng tạo"], "warn")
+
+    def test_a_short_share_link_with_no_visible_marks_is_not_called_plain_because_its_marks_may_be_on_tiktoks_side(self):
+        result = affiliate.verdict({"product_id": PID}, found(markers={}, tracked=False), known=[])
+        self.assertEqual((result["kind"], result["needs_confirmation"]), ("short", True))
+        self.assertIn("phía TikTok", [c for c in result["checks"] if c["label"] == "Dấu hiệu nhà sáng tạo"][0]["detail"])
+        long = found(markers={}, tracked=False, input=LONG.split("?")[0])
+        self.assertEqual(affiliate.verdict({"product_id": PID}, long, known=[])["kind"], "plain")
 
     def test_the_first_link_of_an_account_sets_the_mark_and_asks_the_owner_once(self):
         result = affiliate.verdict({"product_id": PID}, found(), known=[])

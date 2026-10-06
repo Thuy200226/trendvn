@@ -35,7 +35,7 @@ Khi dán, hệ thống làm theo thứ tự:
 | **Sản phẩm khác** | Mã hoặc model/biến thể khác | Không dùng; không thể xác nhận |
 | **Không hợp lệ** | Không đọc được mã sản phẩm | Dán lại link chia sẻ đầy đủ |
 
-Điều kiện để tin: **chính xác = cùng mã sản phẩm**. Tên giống nhau không bao giờ cho kết luận "đúng". Hệ thống **không thể chứng minh** link thuộc tài khoản nào: lần đầu tiên (hoặc khi dấu hiệu nhà sáng tạo khác các link đã xác nhận) bạn phải bấm "Đây đúng là link hoa hồng của tôi", và chỉ nên bấm khi chính bạn sao chép nó từ Showcase. Link thường (không có dấu hiệu nhà sáng tạo) được báo là **không tính hoa hồng**. Link đã lưu hiện kèm nút **Chép link**.
+Điều kiện để tin: **chính xác = cùng mã sản phẩm**. Tên giống nhau không bao giờ cho kết luận "đúng". Hệ thống **không thể chứng minh** link thuộc tài khoản nào: lần đầu tiên (hoặc khi dấu hiệu nhà sáng tạo khác các link đã xác nhận) bạn phải bấm "Đây đúng là link hoa hồng của tôi", và chỉ nên bấm khi chính bạn sao chép nó từ Showcase. Một link **đầy đủ không có dấu hiệu nhà sáng tạo** được báo là **không tính hoa hồng**; một **link rút gọn** (`vt.tiktok.com/…`) không thấy dấu hiệu thì hệ thống nói thẳng là không kiểm được (mã người chia sẻ có thể nằm ở phía TikTok) và để bạn tự xác nhận. Link đã lưu hiện kèm nút **Chép link**.
 
 ## Nhận diện sản phẩm
 

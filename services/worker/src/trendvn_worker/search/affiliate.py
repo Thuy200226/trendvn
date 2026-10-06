@@ -80,9 +80,23 @@ def _identity_check(identity, found):
     return ("likely" if match["level"] == "candidate" and match["score"] >= LIKELY_FROM else "unknown"), checks
 
 
+def link_kind(found):
+    """affiliate: the address carries a sharer's marks. short: a share short link whose marks, if any, live on TikTok's side where they
+    cannot be seen. plain: a full product address with no marks at all."""
+    if found["tracked"]:
+        return "affiliate"
+    return "short" if (classify(found["input"]) or {}).get("kind") == "short" else "plain"
+
+
 def _creator_checks(found, known):
     """(checks, settled): whether the link carries the owner's creator marks, and whether those agree with links already confirmed."""
-    if not found["tracked"]:
+    kind = link_kind(found)
+    if kind == "short":
+        detail = (
+            "Link rút gọn: mã người chia sẻ (nếu có) nằm phía TikTok nên mình không thấy được. Chỉ xác nhận nếu bạn sao chép nó từ Showcase"
+        )
+        return [_check("Dấu hiệu nhà sáng tạo", "warn", detail)], False
+    if kind == "plain":
         return [_check("Dấu hiệu nhà sáng tạo", "warn", "Không có mã nhà sáng tạo: link thường, bấm vào không tính hoa hồng")], False
     names = ", ".join(sorted(found["markers"]))
     checks = [_check("Dấu hiệu nhà sáng tạo", "ok", "Có tham số của người chia sẻ (%s)" % names)]
@@ -116,6 +130,6 @@ def verdict(identity, found, known=()):
     checks += creator
     needs = result in ("likely", "unknown") or (result in ("exact", "found") and not settled)
     return {
-        "verdict": result, "summary": SUMMARY[result], "kind": "affiliate" if found["tracked"] else "plain",
+        "verdict": result, "summary": SUMMARY[result], "kind": link_kind(found),
         "needs_confirmation": needs, "checks": checks, "product_id": found["product_id"], "title": found["title"],
     }  # fmt: skip

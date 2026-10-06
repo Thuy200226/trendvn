@@ -58,6 +58,25 @@ class WordsTests(StoreCase):
             result = identify(self.s, photo("bàn phím mchose ace68"))
         self.assertEqual((result["image_conflict"], result["warnings"]), (False, []))
 
+    def test_a_picture_is_read_on_its_own_so_the_model_cannot_copy_the_words_and_hide_a_disagreement(self):
+        with mock.patch(GEN, return_value=answer()) as ai:
+            identify(self.s, photo("bàn phím kzzi k68"))
+        sent = json.dumps(ai.call_args.args[2], ensure_ascii=False)
+        self.assertNotIn("kzzi k68", sent)
+        self.assertNotIn("Reference text", sent)
+        long_words = validate_input({"text": "mô tả rất dài " * 20})
+        with mock.patch(GEN, return_value=answer()) as ai:
+            identify(self.s, long_words)
+        self.assertIn("Reference text", json.dumps(ai.call_args.args[2], ensure_ascii=False))  # no files: the words are all there is
+
+    def test_what_a_model_reads_off_a_picture_marks_its_variant_as_a_description_not_a_filter(self):
+        with mock.patch(GEN, return_value=answer(variant="Magnetic")):
+            result = identify(self.s, photo())
+        self.assertTrue(result["variant_soft"])
+        with mock.patch(GEN, return_value=answer()):
+            owner = identify(self.s, photo("bàn phím mchose ace68 air"))
+        self.assertNotIn("variant_soft", owner)  # the owner's own variant stays a hard requirement
+
     def test_words_that_name_no_brand_or_model_do_not_override_what_the_photo_shows(self):
         with mock.patch(GEN, return_value=answer()):
             result = identify(self.s, photo("tìm cho tôi cái này"))

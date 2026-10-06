@@ -35,6 +35,16 @@ class ExclusionTests(unittest.TestCase):
             (found["level"], found["evidence"][0]), ("different", {"facet": "Thương hiệu", "state": "different", "value": "Apple"})
         )
 
+    def test_a_variant_a_model_read_from_a_picture_is_noted_but_never_excludes_a_video(self):
+        identity = {"name": "MCHOSE ACE68 Magnetic Gaming Keyboard", "brand": "MCHOSE", "model": "ACE68", "variant": "Magnetic"}
+        title = "MCHOSE ACE68 review sau 1 tháng"
+        self.assertEqual(match_identity(identity, title)["level"], "different")  # said by the owner: it must be there
+        soft = match_identity(dict(identity, variant_soft=True), title)
+        self.assertEqual(soft["level"], "candidate")
+        self.assertIn({"facet": "Biến thể", "state": "unverified", "value": "Magnetic"}, soft["evidence"])
+        other = match_identity(dict(identity, variant_soft=True), "MCHOSE ACE68 Air review")
+        self.assertEqual(other["level"], "different")  # a different model line is still a different product
+
     def test_nothing_to_compare_is_unverified_not_a_match(self):
         self.assertEqual(match_identity({}, "anything")["level"], "unverified")
 

@@ -761,8 +761,12 @@ def main():
             pg.wait_for_function(
                 "() => !document.querySelector('#chat-thread > .msg.bot:last-child article button[data-chat-act=pick]')", timeout=10000
             )
-            with FakeAgent.store.connect() as db:
-                selected = db.execute("SELECT state,search_account FROM jobs WHERE source_id='1234567890'").fetchone()
+            for _ in range(50):  # the download is a background task: the page shows the pick at once, the queue a moment later
+                with FakeAgent.store.connect() as db:
+                    selected = db.execute("SELECT state,search_account FROM jobs WHERE source_id='1234567890'").fetchone()
+                if selected and selected[0] == "queued":
+                    break
+                pg.wait_for_timeout(200)
             check("Chat: the picked video enters the processing queue for that account", selected and tuple(selected) == ("queued", "main"))
             # the seeded failed search offers the owner's own verification window; it asks again with the Chinese words kept
             FakeAgent.calls.clear()

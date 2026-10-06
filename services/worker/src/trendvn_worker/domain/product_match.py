@@ -47,14 +47,19 @@ def match_identity(identity, title, product_id=""):
     wanted, seen = tokens(asked), tokens(title)
     facets = {key: tokens(identity.get(key, "")) for key, _ in FACETS}
     facets["model"] |= {t for t in wanted if any(c.isdigit() for c in t)}  # a word with a digit in it is a model code
+    soft = {"variant"} if identity.get("variant_soft") else set()  # said by a model, not by the owner: noted, never a reason to exclude
     evidence = [
-        {"facet": label, "state": "ok" if facets[key] <= seen else "different", "value": identity.get(key, "")}
+        {
+            "facet": label,
+            "state": "ok" if facets[key] <= seen else ("unverified" if key in soft else "different"),
+            "value": identity.get(key, ""),
+        }
         for key, label in FACETS
         if facets[key] and key != "model"
     ]
     if facets["brand"] and not facets["brand"] <= seen:
         return _result("different", 0, "Chưa khớp thương hiệu đã xác định", evidence)
-    if facets["variant"] and not facets["variant"] <= seen:
+    if facets["variant"] and not facets["variant"] <= seen and "variant" not in soft:
         return _result("different", 0, "Chưa khớp biến thể đã xác định", evidence)
     model = facets["model"]
     if model and ((seen & VARIANT_WORDS) - wanted - facets["variant"] or _versions(title) - _versions(asked)):

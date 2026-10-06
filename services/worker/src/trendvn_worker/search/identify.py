@@ -54,7 +54,10 @@ def read_links(links):
 def recognise(store, text, pages, files):
     """What a model reads of the text, pages and attached files: one validated dict. Any failure is a ValueError (a busy model, a refused
     key, an answer that is not the schema), so the caller can fall back to the owner's own words."""
-    parts = [{"text": "Reference text: " + text + "\nPublic pages: " + json.dumps(pages, ensure_ascii=False)}]
+    # With files the picture is read on its own: told what the product "is", a model copies the words and hides a disagreement the
+    # owner needs to hear about (measured on a real call: a photo of an MCHOSE box with the words "kzzi k68" was read as KZZI K68).
+    note = "" if files else "Reference text: " + text + "\n"
+    parts = [{"text": note + "Public pages: " + json.dumps(pages, ensure_ascii=False)}]
     for f in files:
         parts.append({"text": "Document: " + f["text"]} if "text" in f else {"inline_data": {"mime_type": f["mime"], "data": f["data"]}})
     parts.append({"text": PROMPT})
@@ -68,6 +71,7 @@ def recognise(store, text, pages, files):
         if not isinstance(found.get(key), str) or len(found[key]) > 500:
             raise ValueError("Không nhận diện được sản phẩm đáng tin cậy; hãy nhập thêm tên/model")
     found["query"] = found["query"][:120].strip()
+    found["variant_soft"] = True  # a variant a model read off a picture is a description, not a reason to exclude other videos
     return found
 
 
