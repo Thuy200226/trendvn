@@ -82,13 +82,13 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
      -d '{"daily_limit": 1, "post_windows": [[19, 22]]}' localhost:5681/api/settings
 ```
 
-## Tìm sản phẩm theo tài khoản
+## Khung chat tìm sản phẩm
 
-Form nội bộ `POST /search-input` nhận JSON `{csrf, account, mode: videos|products, text, files:[{name,data}]}` với dữ liệu tệp base64; giới hạn thân 12 MiB, dữ liệu tệp 8 MiB. Trả ID tìm kiếm/tác vụ. `/search-select`, `/search-pair`, `/shop-connect`, `/shop-sync` là form có CSRF và kiểm nguồn trang. Không có API nhập catalog từ nguồn công khai.
+Các điểm cuối này chỉ dành cho trang bảng điều khiển của chính máy này (cùng nguồn, kèm `csrf` của trang); không có token API cho chúng.
 
-Agent nhận các POST xác thực `/api/search` (`account,query,links`), `/api/search/download` (`account,job_id,item`) và `/api/shop/search` (`account,query,product_id?`). Kết quả tìm tối đa20; download chỉ gọi sau lựa chọn. Claim/peek của video tìm kiếm bổ sung `search_account` và `product` nếu đã ghép giỏ. Video không chuyển tài khoản theo chủ đề.
+- `POST /chat/send` (JSON, thân tối đa 12 MiB): `{csrf, account, text, files:[{name,data}]}` với `data` là base64 (tối đa 3 tệp, 4 MiB/tệp, tổng 8 MiB). Tin chứa link sản phẩm/link rút gọn của TikTok (không kèm tệp) được kiểm như link chia sẻ; còn lại được nhận diện thành sản phẩm. Trả `{id}` của câu trả lời đang chạy.
+- `POST /chat/act` (JSON, thân tối đa 16 KiB): `{csrf, action, id, ...}` với `action` là `find` (`id` của tin sản phẩm, `source` là `tiktok|douyin|auto`, `human` có thể là `true` cho cửa sổ tự xác minh, `account` tùy chọn), `pick` (`id` của tin video, `source_id`, `platform`, `confirmed: true`) hoặc `confirm` (`id` của tin link).
+- `GET /fragment/chat`: phần HTML của luồng tin (trang hỏi lại mỗi 2,5 giây khi còn việc đang chạy).
 
+Agent nhận các POST xác thực `/api/search` (`account,query,queries,source,links`), `/api/search/open` (như trên, mở cửa sổ cho chủ tự xác minh, tối đa 4 phút) và `/api/search/download` (`account,job_id,item`). Mỗi tìm kiếm trả tối đa 20 ứng viên; chỉ tải sau khi chủ chọn. Một nguồn lỗi (ở chế độ `auto`) được ghi vào `note` thay vì làm hỏng cả kết quả. Video tìm kiếm có `search_account` và không bao giờ được lịch chuyển sang tài khoản khác.
 
-### Tìm lại và kết nối nhà sáng tạo (1.8)
-
-Form cục bộ có CSRF/Origin: `/search-retry` (search/name/source, action retry/open), `/account-login` (account), `/shop-app` (account/app_key/app_secret), `/shop-authorize` (account). `/search-input` nhận thêm source auto/tiktok/douyin. Tìm lại tạo phiên riêng; action open chỉ một nguồn. Agent được xác thực, chia sẻ khóa trình duyệt: `/api/search/open`, `/api/account/login`, `/api/shop/authorize`; cửa sổ tự thao tác tối đa 4 phút. GET `/shop-callback` chỉ loopback/peer tin cậy, nhận state/code một lần; không dành cho API token từ xa.

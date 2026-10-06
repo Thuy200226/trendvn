@@ -111,8 +111,9 @@ class VideoPickTests(StoreCase):
             self.s.videos_select(mid, "1234567890", True)
 
     def test_an_unfinished_or_foreign_message_cannot_be_picked_from(self):
-        running = self.s.chat_add("bot", "videos", {"results": [result()], "account_username": "x"}, state="running", account="main")
-        said = self.s.chat_add("user", "say", {"text": "x"}, account="main")
+        name = self.s.account("main")["username"]
+        running = self.s.chat_add("bot", "videos", {"results": [result()], "account_username": name}, state="running", account="main")
+        said = self.s.chat_add("user", "say", {"results": [result()], "account_username": name}, account="main")
         for mid in (running, said):
             with self.assertRaises(ValueError):
                 self.s.videos_select(mid, "1234567890", True)

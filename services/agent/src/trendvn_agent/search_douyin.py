@@ -1,11 +1,11 @@
 """Douyin product keyword search in a persistent source profile; human verification is never automated."""
 
-import json
 import re
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote
 
 from .browser import chrome
 from .collector.sources.douyin import parse_douyin
+from .search_capture import Capture, wait_for_results
 
 VIDEO = re.compile(r"https://www\.douyin\.com/video/(\d{6,25})")
 
@@ -23,51 +23,34 @@ def blocked(page):
     return any(nodes.nth(i).is_visible() for i in range(nodes.count()))
 
 
+def check(page):
+    if blocked(page):
+        raise ValueError("Douyin yêu cầu xác minh. Bấm Mở cửa sổ để tự xác minh/đăng nhập, rồi tìm lại.")
+
+
+def payload_videos(data):
+    """A search answer or a single video's detail, as videos."""
+    if isinstance(data.get("aweme_detail"), dict):
+        data = {"aweme_list": [data["aweme_detail"]]}
+    return video_items(data)
+
+
 def search(account, query, links=(), human=False):
     direct = [u for u in links[:3] if isinstance(u, str) and VIDEO.fullmatch(u)]
     urls = direct or ["https://www.douyin.com/search/" + quote(query) + "?type=video"]
-    seen = {}
+    capture = Capture(("/search/", "/aweme/detail/"), payload_videos, direct)
     with chrome("search-cn-" + account["id"], locale="zh-CN", region="CN", headless=not human) as ctx:
         for url in urls:
             page = ctx.new_page()
-
-            def response(r):
-                path = urlsplit(r.url).path
-                if r.status != 200 or not ("/search/" in path or "/aweme/detail/" in path):
-                    return
-                try:
-                    raw = r.body()
-                    if len(raw) > 4 << 20:
-                        return
-                    data = json.loads(raw)
-                    if isinstance(data.get("aweme_detail"), dict):
-                        data = {"aweme_list": [data["aweme_detail"]]}
-                    for item in video_items(data):
-                        if not direct or item["url"] in direct:
-                            seen[item["source_id"]] = item
-                except Exception:
-                    return  # an unreadable browser response is never a guessed video
-
-            page.on("response", response)
+            page.on("response", capture.on_response)
             try:
                 page.goto(url, wait_until="domcontentloaded", timeout=45000)
-                for _ in range(120 if human else 6):
-                    if page.is_closed():
-                        break
-                    page.wait_for_timeout(2000)
-                    if blocked(page):
-                        if human:
-                            continue
-                        raise ValueError("Douyin yêu cầu xác minh. Bấm Mở cửa sổ để tự xác minh/đăng nhập, rồi tìm lại.")
-                    if seen:
-                        break
-                if page.is_closed():
-                    break
+                wait_for_results(page, capture, human, check, rounds=6)
             finally:
                 if not page.is_closed():
                     page.close()
-    if not seen:
+    if not capture.seen:
         raise ValueError(
             "Douyin chưa trả video. Có thể cần đăng nhập/xác minh hoặc không có kết quả; không tự thay bằng video khác sản phẩm."
         )
-    return {"items": list(seen.values())[:20], "note": "Đã tìm Douyin bằng từ khóa tiếng Trung; cần xem đúng model và biến thể."}
+    return {"items": list(capture.seen.values())[:20], "note": "Đã tìm Douyin bằng từ khóa tiếng Trung; cần xem đúng model và biến thể."}

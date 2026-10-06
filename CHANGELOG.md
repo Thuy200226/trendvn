@@ -1,18 +1,16 @@
 # Lịch sử thay đổi
 
-## 1.8 — 2026-10-06 (sửa tìm sản phẩm và kết nối nhà sáng tạo)
+## 1.7 — 2026-10-06 (tìm sản phẩm trong một khung chat: docs/PRODUCT-SEARCH.md)
 
-Giữ tên/model/biến thể người dùng nhập khi ảnh được AI nhận thành sản phẩm khác; báo riêng xung đột và vẫn tìm theo tên nếu nhận diện ảnh quá tải. Tạo từ khóa từng nguồn, ví dụ MCHOSE ACE68 → 迈从 ACE68 磁轴键盘, giữ model/biến thể khi dịch. Thêm chọn TikTok/Douyin hoặc cả hai, xem từ khóa, sửa tên và tìm lại trong cửa sổ tự xác minh; nguồn bị chặn không làm mất kết quả nguồn còn lại. Chọn video giữ cả nguồn và ID, tải đúng video đó vào luồng xử lý/duyệt cũ.
+**Một khung chat cho mọi thứ về sản phẩm** (tab mới **Tìm**, thay cho mục "Tìm sản phẩm" nằm trong Thêm): gửi tên/model, ảnh, PDF/DOCX/TXT hoặc link; hệ thống nhận diện sản phẩm, tìm video ngay trong phiên TikTok/Douyin của tài khoản bạn chọn, và kiểm tra link chia sẻ bạn dán từ ứng dụng TikTok. Mọi câu trả lời hiện trong cùng luồng tin, có nút cho bước tiếp theo; tiến độ tự cập nhật, không tải lại trang.
 
-Thêm nút đăng nhập TikTok đúng hồ sơ/username. Luồng Shop phân biệt rõ tài khoản nhà sáng tạo với quyền ứng dụng: chỉ có tài khoản thì có hướng dẫn kiểm tra hoa hồng trong TikTok; tự đồng bộ vẫn cần ứng dụng Shop được duyệt. Với ứng dụng đã được cấp quyền: đăng nhập/cấp quyền trong cửa sổ thật, callback cục bộ dùng một lần, kiểm token nhà sáng tạo/username/scopes và tự làm mới token đúng creator. Không lấy trạng thái đăng nhập làm bằng chứng hoa hồng/quyền giỏ hàng.
+**Link hoa hồng.** Hệ thống không đăng nhập Shop/Affiliate nên không tự lấy link; bạn sao chép link trong Showcase của ứng dụng TikTok và dán vào chat. Hệ thống đi theo chuyển hướng (chỉ gọi host `tiktok.com`), đọc mã sản phẩm và tên trang, rồi kết luận: đúng sản phẩm (cùng mã) / có vẻ đúng / chưa rõ / sản phẩm khác / không hợp lệ, kèm từng bằng chứng. Link thường không có dấu hiệu nhà sáng tạo được báo là không tính hoa hồng. Chủ xác nhận link đầu tiên; dấu hiệu nhà sáng tạo của các link đã xác nhận được dùng để so các link sau. Không bao giờ khẳng định "đúng 100%": chắc chắn duy nhất là mã sản phẩm trùng.
 
-## 1.7 — 2026-10-05 (tìm video và sản phẩm: docs/PRODUCT-SEARCH.md)
+**Nhận diện bền hơn.** Lời bạn gõ thắng ảnh; lời không chứa hãng/model ("tìm cái này") không ghi đè điều đọc được từ ảnh/trang; mọi kiểu lỗi của Gemini (quá tải, trả lời hỏng, sai lược đồ) đều quay về tìm theo tên bạn nhập (trước đây chỉ bắt lỗi gọi API). Quy tắc từ khóa riêng cho một sản phẩm (MCHOSE ACE68) thành bảng dữ liệu `LINE_HINTS`.
 
-Thêm tìm kiếm theo tài khoản bằng văn bản, ảnh, PDF, DOCX, TXT hoặc link HTTPS; hỗ trợ dán/kéo tệp. Kết quả đi qua lựa chọn và xác nhận rồi mới tải vào hàng đợi xử lý. Video luôn cần duyệt và giữ đúng tài khoản thực từ lúc tìm; khác model/thương hiệu/biến thể rõ ràng bị loại. Điểm khớp từ khóa không phải độ chắc chắn sản phẩm.
+**Agent.** Một nguồn lỗi bất kỳ (kể cả hết thời gian chờ của trình duyệt) không còn làm mất kết quả của nguồn kia ở chế độ TikTok + Douyin (trước đây chỉ bắt `ValueError`). Ở cửa sổ tự xác minh, tên đăng nhập của phiên được kiểm lại sau khi có kết quả, kể cả khi cửa sổ vừa bị đóng.
 
-Kết nối TikTok Shop API của nhà sáng tạo trong bảng điều khiển: xác minh username/quyền, đọc showcase và marketplace, đối chiếu mã sản phẩm/hoa hồng/tồn kho. Sản phẩm marketplace chưa vào showcase không được gắn giỏ. Khi chủ ghép sản phẩm và bấm đăng, API kiểm lại quyền và sản phẩm, kiểm MD5 tệp tải lên rồi gửi một lệnh đăng; phản hồi không rõ được giữ để kiểm tra, không tự gửi lại. Chạy thử dừng trước lệnh đăng. Hiện hỗ trợ video kèm sản phẩm tối đa 10 MiB và công khai; token hết hạn cần nhập lại.
-
-Ảnh/PDF dùng Gemini; URL công khai được kiểm DNS và chuyển hướng, tài liệu gốc được xóa khỏi yêu cầu khi hoàn tất. Bí mật kết nối chỉ lưu tại máy với quyền 0600, không hiển thị lại. Kiểm chứng tài khoản Shop thật cần chủ nhập kết nối và cung cấp sản phẩm mẫu; không tuyên bố tìm đúng mọi sản phẩm.
+**Dọn.** Gỡ tích hợp TikTok Shop API và đăng kèm giỏ hàng (cần ứng dụng Shop Partner được duyệt; còn nguyên ở commit `3d48f41`). Bảng kết quả cũ thay bằng nhật ký chat và bảng link đã xác nhận (migration 6 viết lại: chưa từng chạy trên CSDL thật). Việc nền của tìm kiếm tách khỏi `tasks.py` sang `search/runner.py`; phần đọc trang tìm kiếm của agent dùng chung một khung. Ảnh/tài liệu chỉ nằm trong bộ nhớ đến khi nhận diện xong (không còn ghi vào CSDL). Thanh điều hướng điện thoại có bảy mục, nhãn 10 px ở màn hình rộng tới 370 px.
 
 ## 1.6 — 2026-10-02 (chất lượng đầu ra: docs/QUALITY.md)
 

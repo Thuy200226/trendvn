@@ -34,7 +34,7 @@ def inspect(url, follow=fetch.follow, page_title=fetch.page_title):
             markers.setdefault(name, value)
     final = onsite[-1] if onsite else url
     title = ""
-    if product_id and not trail["stopped"]:
+    if product_id:
         try:
             title = page_title(final)[0]
         except (ValueError, OSError):

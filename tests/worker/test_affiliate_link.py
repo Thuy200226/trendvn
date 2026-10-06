@@ -52,6 +52,19 @@ class InspectTests(unittest.TestCase):
         result = self.inspect([SHARE, LONG], fail_title=True)
         self.assertEqual((result["product_id"], result["title"]), (PID, ""))
 
+    def test_a_product_page_that_sends_on_to_another_site_still_gives_its_id_and_never_requests_that_site(self):
+        def follow(url, allow=None, hops=6):
+            return {"chain": [LONG, "https://evil.example/x"], "status": 302, "stopped": "evil.example"}
+
+        fetched = []
+
+        def page_title(url):
+            fetched.append(url)
+            return "Bàn phím", url
+
+        result = affiliate.inspect(LONG, follow=follow, page_title=page_title)
+        self.assertEqual((result["product_id"], result["stopped"], result["final"], fetched), (PID, "evil.example", LONG, [LONG]))
+
     def test_a_link_that_leaves_tiktok_is_not_followed_further_and_gives_no_product(self):
         def follow(url, allow=None, hops=6):
             return {"chain": [SHARE, "https://evil.example/x"], "status": 302, "stopped": "evil.example"}
@@ -90,6 +103,12 @@ class VerdictTests(unittest.TestCase):
             identity, found(title="Bàn phím cơ MCHOSE ACE68 Magnetic"), known=[{"share_creator_id": "7000000000000000001"}]
         )
         self.assertEqual((result["verdict"], result["needs_confirmation"]), ("likely", True))
+
+    def test_a_title_that_shares_little_with_a_plain_name_is_unknown_not_likely(self):
+        identity = {"name": "Samsung Galaxy Buds Pro Case Black"}
+        result = affiliate.verdict(identity, found(title="Galaxy phone"), known=[])
+        self.assertEqual(result["verdict"], "unknown")
+        self.assertEqual(states(result)["Tên sản phẩm"], "warn")
 
     def test_a_title_of_another_model_is_different(self):
         identity = {"name": "MCHOSE ACE68", "brand": "MCHOSE", "model": "ACE68"}

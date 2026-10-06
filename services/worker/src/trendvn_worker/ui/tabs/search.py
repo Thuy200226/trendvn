@@ -218,9 +218,8 @@ def composer(view):
 
 
 def render(view):
-    return '<div class="card chat stack" data-chat data-csrf="%s"><div class="row"><h2>Tìm sản phẩm</h2>%s</div>%s%s</div>' % (
+    return '<div class="card chat stack" data-chat data-csrf="%s"><h2>Tìm sản phẩm</h2>%s%s</div>' % (
         E(view.csrf),
-        chip("1 khung chat cho mọi thứ", "info"),
         chat_thread(view.d.get("chat") or EMPTY, view.now),
         composer(view),
     )

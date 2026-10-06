@@ -220,7 +220,86 @@ def seed(root):
     s.record_stats([{"video_id": "7690000000000000001", "views": 15400, "likes": 1200}])
     for i in range(5):
         add("baseline", "douyin", "baseline %d" % i)
+    seed_chat(s)
     return ids
+
+
+def seed_chat(s):
+    """A conversation that shows every kind of answer: long names, a different model, a failed search, a saved link and one still to confirm."""
+    from trendvn_worker.domain.search_queries import explicit, query_plan
+
+    username = s.account("main")["username"]
+    identity = explicit("bàn phím mchose ace68")
+    identity.update(
+        queries=query_plan(identity), warnings=["Ảnh được nhận là KZZI K68; không khớp tên bạn nhập. Giữ nguyên tên bạn nhập."], links=[]
+    )
+    long_name = "Bàn phím cơ không dây MCHOSE ACE68 Air 8K polling rate hot-swap switch từ tính siêu dài để thử việc xuống dòng"
+    s.chat_ask(
+        "main",
+        {
+            "text": "bàn phím mchose ace68 " + "rất dài " * 12,
+            "files": [{"name": "anh-ban-phim-ten-tep-rat-dai-de-thu-xuong-dong.png", "kind": "image"}],
+            "link": False,
+        },
+        "product",
+        {},
+    )
+    product = s.chat_thread()[-1]["id"]
+    s.chat_set(product, "done", identity=identity)
+    results = [
+        {"source_id": "7300000000000000001", "platform": "tiktok", "title": long_name, "url": "https://www.tiktok.com/@a/video/7300000000000000001",
+         "match": {"level": "candidate", "score": 100, "reason": "Khớp 100%; cần xem video và biến thể"}},
+        {"source_id": "7300000000000000002", "platform": "tiktok", "title": "MCHOSE ACE68 Air", "url": "https://www.tiktok.com/@a/video/7300000000000000002",
+         "match": {"level": "different", "score": 0, "reason": "Có biến thể khác với sản phẩm yêu cầu"}},
+    ]  # fmt: skip
+    body = {
+        "identity": identity,
+        "source": "tiktok",
+        "account_username": username,
+        "product": product,
+        "results": results,
+        "note": "Ứng viên từ TikTok",
+    }
+    s.chat_add("bot", "videos", body, account="main")
+    failed = s.chat_add(
+        "bot",
+        "videos",
+        body | {"results": [], "error": "TikTok yêu cầu xác minh; hãy tự xác minh rồi tìm lại"},
+        state="error",
+        account="main",
+    )
+    assert failed
+    found = {
+        "input": "https://vt.tiktok.com/ZSe2eSaved/",
+        "product_id": "1729384756102938475",
+        "title": long_name,
+        "markers": {"share_creator_id": "7"},
+        "tracked": True,
+    }
+    checks = [
+        {"label": "Mã sản phẩm", "state": "ok", "detail": "Mã 1729384756102938475 trùng với sản phẩm đang tìm"},
+        {"label": "Dấu hiệu nhà sáng tạo", "state": "ok", "detail": "Có tham số của người chia sẻ (share_creator_id)"},
+        {
+            "label": "Mã nhà sáng tạo",
+            "state": "info",
+            "detail": "Đây là link đầu tiên của tài khoản: xác nhận để lưu làm mốc cho các link sau",
+        },
+    ]
+    verdict = {
+        "verdict": "exact",
+        "summary": "Đúng sản phẩm: cùng mã sản phẩm.",
+        "kind": "affiliate",
+        "needs_confirmation": True,
+        "checks": checks,
+    }
+    s.chat_add("bot", "link", {"url": found["input"], "found": found, "verdict": verdict, "saved": True}, account="main")
+    todo = dict(found, input="https://vt.tiktok.com/ZSe2eNew/", product_id="1729384756102938999")
+    s.chat_add(
+        "bot",
+        "link",
+        {"url": todo["input"], "found": todo, "verdict": verdict | {"verdict": "found", "summary": "Đã đọc được sản phẩm từ link."}},
+        account="main",
+    )
 
 
 AUDIT_JS = r"""
@@ -233,7 +312,9 @@ async () => {
   scrollTo(0, 0);
   await frame();
   if (scrollY !== 0) issues.push('page did not rest at the top: scrollY ' + scrollY);
-  const vis = e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); if (e.closest('details:not([open])') && !e.matches('summary') && !e.closest('summary')) return false; return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+  // a chat thread scrolls inside itself: only the part of a message that shows inside it counts
+  const box = e => { const r = e.getBoundingClientRect(), t = e.closest('.thread'); if (!t || t === e) return r; const c = t.getBoundingClientRect(); return { left: Math.max(r.left, c.left), right: Math.min(r.right, c.right), top: Math.max(r.top, c.top), bottom: Math.min(r.bottom, c.bottom), width: Math.min(r.right, c.right) - Math.max(r.left, c.left), height: Math.min(r.bottom, c.bottom) - Math.max(r.top, c.top) }; };
+  const vis = e => { const r = box(e), s = getComputedStyle(e); if (e.closest('details:not([open])') && !e.matches('summary') && !e.closest('summary')) return false; return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
   const desc = e => (e.tagName.toLowerCase() + (e.className && typeof e.className === 'string' ? '.' + e.className.trim().split(/\s+/)[0] : '') + ' "' + (e.innerText || e.value || '').trim().slice(0, 28).replace(/\n/g, ' ') + '"');
   if (document.documentElement.scrollWidth > innerWidth + 1) issues.push('horizontal overflow: scrollWidth ' + document.documentElement.scrollWidth + ' > ' + innerWidth);
   const nav = document.querySelector('.bottomnav');
@@ -243,7 +324,7 @@ async () => {
   for (let i = 0; i < els.length; i++) for (let j = i + 1; j < els.length; j++) {
     const a = els[i], b = els[j];
     if (a.contains(b) || b.contains(a)) continue;
-    const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+    const ra = box(a), rb = box(b);
     const w = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left), h = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
     if (w > 2 && h > 2) issues.push('overlap ' + Math.round(w) + 'x' + Math.round(h) + ': ' + desc(a) + '  <->  ' + desc(b));
   }
@@ -253,14 +334,14 @@ async () => {
     if (c.top >= p.bottom - 1 && c.top - p.bottom < 6 && Math.abs(c.left - p.left) < 4) issues.push('cards touch (gap ' + Math.round(c.top - p.bottom) + 'px): ' + desc(cards[i - 1]) + ' / ' + desc(cards[i]));
   }
   [...document.querySelectorAll('button,select,input:not([type=hidden]),.bottomnav a,.topnav a')].filter(vis).forEach(e => {
-    const r = e.getBoundingClientRect();
+    const r = e.getBoundingClientRect();  // the whole control, even where a scrolling thread cuts it off
     if (r.height < 43.5 && !e.closest('.fs > summary')) issues.push('small tap target ' + Math.round(r.width) + 'x' + Math.round(r.height) + ': ' + desc(e));
   });
   [...document.querySelectorAll('body *')].filter(vis).forEach(e => {
     const s = getComputedStyle(e);
     if (e.scrollWidth > e.clientWidth + 2 && ['hidden', 'clip'].includes(s.overflowX) && !['VIDEO', 'SELECT', 'TEXTAREA', 'INPUT', 'BUTTON'].includes(e.tagName) && e.clientWidth > 0) issues.push('clipped text: ' + desc(e));
-    if (parseFloat(s.fontSize) < (innerWidth <= 340 && e.closest('.bottomnav') ? 10 : 11) && (e.innerText || '').trim() && e.children.length === 0 && !e.closest('svg')) issues.push('tiny font ' + s.fontSize + ': ' + desc(e));
-    const r = e.getBoundingClientRect();
+    if (parseFloat(s.fontSize) < (innerWidth <= 370 && e.closest('.bottomnav') ? 10 : 11) && (e.innerText || '').trim() && e.children.length === 0 && !e.closest('svg')) issues.push('tiny font ' + s.fontSize + ': ' + desc(e));
+    const r = box(e);
     if (r.right > innerWidth + 1 && s.position !== 'fixed' && !e.closest('.tablewrap')) issues.push('sticks out right by ' + Math.round(r.right - innerWidth) + 'px: ' + desc(e));
   });
   if (navVisible) {
@@ -275,7 +356,7 @@ async () => {
     });
     scrollTo(0, document.documentElement.scrollHeight);
     const navTop = nav.getBoundingClientRect().top;
-    const last = [...document.querySelectorAll('main *')].filter(vis).map(e => e.getBoundingClientRect().bottom).reduce((m, v) => Math.max(m, v), 0);
+    const last = [...document.querySelectorAll('main *')].filter(vis).map(e => box(e).bottom).reduce((m, v) => Math.max(m, v), 0);
     if (last > navTop - 2) issues.push('bottom nav covers the end of the page: content ends at ' + Math.round(last) + ', nav starts at ' + Math.round(navTop));
     scrollTo(0, 0);
   }
@@ -369,7 +450,7 @@ def main():
             for w, h, mobile in sizes:
                 ctx, pg = new_ctx(w, h, mobile)
                 go(pg, base + "/")
-                for tab in ("home", "queue", "publish", "attention", "posted", "more"):
+                for tab in ("home", "search", "queue", "publish", "attention", "posted", "more"):
                     pg.evaluate("t => { location.hash = '#' + t; }", tab)
                     pg.wait_for_timeout(250)
                     if tab == "more":
@@ -530,8 +611,8 @@ def main():
             )
             check("Hàng đợi tab lists the waiting videos", all("Video chờ xử lý %d" % i in rows for i in range(3)), rows[:120])
             check(
-                "Bottom nav has six entries and Hàng đợi carries the waiting count",
-                pg.evaluate("() => document.querySelectorAll('.bottomnav a').length") == 6
+                "Bottom nav has seven entries and Hàng đợi carries the waiting count",
+                pg.evaluate("() => document.querySelectorAll('.bottomnav a').length") == 7
                 and pg.inner_text('.bottomnav a[data-go="queue"] i') == "3",
             )
             check(
@@ -640,73 +721,106 @@ def main():
                 "Adding without a topic is refused with a message", Store(tmp).account("no_topics") is None and pg.is_visible(".flash.bad")
             )
 
-            # Reference input and explicit selection, through the real HTTP worker and isolated fake agent.
+            # The product chat, through the real HTTP worker and the isolated fake agent.
             go(pg, base + "/#search")
-            pg.fill('[data-search-form] textarea[name="text"]', "Samsung Galaxy S24")
-            pg.select_option('[data-search-form] select[name="source"]', "douyin")
+            check("Chat: the file picker stays hidden behind the attach button", not pg.is_visible('[data-chat-form] input[type="file"]'))
+            if SHOTS:
+                pg.locator("[data-chat]").screenshot(path=str(SHOTS / "chat_375.png"))
+            find = pg.locator('button[data-chat-act="find"][data-source="douyin"]')
+            asked = find.count()
+            pg.fill('[data-chat-form] textarea[name="text"]', "Samsung Galaxy S24")
+            pg.click("[data-chat-form] button.send")
+            pg.wait_for_function(
+                "n => document.querySelectorAll('button[data-chat-act=find][data-source=douyin]').length > n", arg=asked, timeout=10000
+            )
+            check(
+                "Chat: the message and the recognised product appear without a reload",
+                "Samsung Galaxy S24" in pg.inner_text("#chat-thread"),
+            )
+            check("Chat: the composer is cleared after sending", pg.input_value('[data-chat-form] textarea[name="text"]') == "")
             FakeAgent.calls.clear()
-            pg.click("[data-search-form] button.go")
-            pg.wait_for_selector('.search-session form[action="/search-select"]', timeout=10000)
-            cards = pg.locator(".search-session article")
-            check("Search excludes different model from selection", cards.nth(1).locator("button").is_disabled())
-            check("Search pins selected account in browser request", FakeAgent.calls[0][1]["account"] == "main")
-            check("Search source selection reaches browser agent", FakeAgent.calls[0][1]["source"] == "douyin")
-            check("Query preview is visible before selection", "TikTok:" in pg.locator(".search-session").first.inner_text())
-            cards.first.locator('input[name="confirmed"]').check()
-            cards.first.locator("button").click()
-            pg.wait_for_timeout(1200)
+            find.last.click()
+            pg.wait_for_selector('#chat-thread > .msg.bot:last-child[data-state="done"] article', timeout=10000)
+            cards = pg.locator("#chat-thread > .msg.bot:last-child article")
+            check("Chat: a candidate of another model cannot be picked", cards.nth(1).locator('button[data-chat-act="pick"]').count() == 0)
+            check("Chat: the search is pinned to the chosen account", FakeAgent.calls[0][1]["account"] == "main")
+            check("Chat: the chosen source reaches the browser agent", FakeAgent.calls[0][1]["source"] == "douyin")
+            check(
+                "Chat: the search words are shown before any pick",
+                "Douyin:" in pg.locator('#chat-thread .msg.bot:has(button[data-chat-act="find"])').last.inner_text(),
+            )
+            cards.first.locator('button[data-chat-act="pick"]').click()
+            check("Chat: a pick without the owner's tick is refused in words", "tích ô xác nhận" in pg.inner_text("[data-chat-message]"))
+            with FakeAgent.store.connect() as db:
+                check(
+                    "Chat: nothing was queued by the refused pick",
+                    db.execute("SELECT count(*) FROM jobs WHERE source_id='1234567890'").fetchone()[0] == 0,
+                )
+            cards.first.locator("[data-chat-confirm]").check()
+            cards.first.locator('button[data-chat-act="pick"]').click()
+            pg.wait_for_function(
+                "() => !document.querySelector('#chat-thread > .msg.bot:last-child article button[data-chat-act=pick]')", timeout=10000
+            )
             with FakeAgent.store.connect() as db:
                 selected = db.execute("SELECT state,search_account FROM jobs WHERE source_id='1234567890'").fetchone()
-            check("Selected video enters existing processing queue", selected and tuple(selected) == ("queued", "main"))
-            go(pg, base + "/#search")
-            retry = pg.locator('form[action="/search-retry"]').first
-            retry.locator('input[name="name"]').fill("bàn phím mchose ace68")
-            retry.locator('select[name="source"]').select_option("douyin")
+            check("Chat: the picked video enters the processing queue for that account", selected and tuple(selected) == ("queued", "main"))
+            # the seeded failed search offers the owner's own verification window; it asks again with the Chinese words kept
             FakeAgent.calls.clear()
-            retry.locator('button[value="open"]').click()
-            pg.wait_for_timeout(1200)
+            pg.locator('button[data-human="true"]').first.click()
+            pg.wait_for_timeout(1500)
             check(
-                "Manual verification uses Chinese query and retained product model",
+                "Chat: the verification window searches with the Chinese words and the product model kept",
                 any(
                     path == "/api/search/open" and payload["queries"]["douyin"] == "迈从 ACE68 磁轴键盘"
                     for path, payload in FakeAgent.calls
                 ),
             )
-            go(pg, base + "/#search")
+            # a pasted link that is still to be confirmed: the owner confirms, then can copy it
+            copies = pg.locator("[data-copy]").count()
+            pg.locator('button[data-chat-act="confirm"]').first.click()
+            pg.wait_for_function("n => document.querySelectorAll('[data-copy]').length > n", arg=copies, timeout=10000)
+            check("Chat: a confirmed link is kept for the account", Store(tmp).commission_get("main", "1729384756102938999") is not None)
+            pg.locator("[data-copy]").last.click()
+            pg.wait_for_timeout(400)  # the browser may refuse the clipboard first and the script then copies another way
+            check("Chat: the copy button says it copied", pg.locator("[data-copy]").last.inner_text() == "Đã chép")
+            # files stay in memory, are sent as content, and can be removed
             captured = []
 
             def intercept(route):
                 captured.append(route.request.post_data_json)
-                route.fulfill(status=200, content_type="application/json", body='{"task":"test"}')
+                route.fulfill(status=200, content_type="application/json", body='{"id":1}')
 
-            pg.route("**/search-input", intercept)
+            pg.route("**/chat/send", intercept)
             pg.set_input_files(
-                '[data-search-form] input[type="file"]',
-                {"name": "reference.txt", "mimeType": "text/plain", "buffer": b"Samsung Galaxy S24"},
+                '[data-chat-form] input[type="file"]', {"name": "reference.txt", "mimeType": "text/plain", "buffer": b"Samsung Galaxy S24"}
             )
-            check("File picker displays attachment name safely", pg.locator("[data-search-files]").inner_text().startswith("reference.txt"))
-            pg.click("[data-search-form] button.go")
-            pg.wait_for_timeout(500)
+            check("Chat: the attached file's name is shown", pg.locator("[data-chat-files]").inner_text().startswith("📎 reference.txt"))
+            pg.fill('[data-chat-form] textarea[name="text"]', "ghi chú")
+            pg.press('[data-chat-form] textarea[name="text"]', "Control+Enter")
+            pg.wait_for_timeout(600)
             check(
-                "Attachment submits actual content, not filename",
-                captured and captured[-1]["files"][0]["data"] == "U2Ftc3VuZyBHYWxheHkgUzI0",
+                "Chat: Ctrl+Enter sends the real content, not the file name",
+                captured and captured[-1]["files"][0]["data"] == "U2Ftc3VuZyBHYWxheHkgUzI0" and captured[-1]["text"] == "ghi chú",
             )
-            go(pg, base + "/#search")
-            pg.locator("[data-search-drop]").evaluate(
-                "e => { const d=new DataTransfer(); d.setData('text/plain','https://shop.tiktok.com/view/product/123456'); e.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:d})); }"
+            check("Chat: sending clears the attachments", not pg.locator("[data-chat-files]").inner_text())
+            pg.set_input_files('[data-chat-form] input[type="file"]', {"name": "gone.txt", "mimeType": "text/plain", "buffer": b"x"})
+            pg.click("[data-chat-files] button")
+            check("Chat: an attachment can be removed before sending", not pg.locator("[data-chat-files]").inner_text())
+            pg.locator("[data-chat]").evaluate(
+                "e => { const d=new DataTransfer(); d.setData('text/plain','https://vt.tiktok.com/ZSdropped/'); e.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:d})); }"
             )
-            check("Dragged URL enters reference text", "123456" in pg.input_value('[data-search-form] textarea[name="text"]'))
-            pg.locator("[data-search-drop]").evaluate(
-                "e => { const d=new DataTransfer(); d.setData('text/plain','Samsung S24'); e.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,clipboardData:d})); }"
+            check("Chat: a dragged link lands in the message", "ZSdropped" in pg.input_value('[data-chat-form] textarea[name="text"]'))
+            pg.locator('[data-chat-form] textarea[name="text"]').evaluate(
+                "e => { const d=new DataTransfer(); d.items.add(new File(['%PDF-1.7\\n'], 'pasted.pdf',{type:'application/pdf'})); e.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:d})); }"
             )
-            check("Pasted text on drop area enters reference", "Samsung S24" in pg.input_value('[data-search-form] textarea[name="text"]'))
-            pg.locator("[data-search-drop]").evaluate(
-                "e => { const d=new DataTransfer(); d.items.add(new File(['%PDF-1.7\\n'], 'reference.pdf',{type:'application/pdf'})); e.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,clipboardData:d})); }"
-            )
-            check("Pasted file enters attachment list", "reference.pdf" in pg.locator("[data-search-files]").inner_text())
-            pg.click("[data-search-clear]")
-            check("Clear attachments removes transient files", not pg.locator("[data-search-files]").inner_text())
-            pg.unroute("**/search-input", intercept)
+            check("Chat: a pasted file joins the attachments", "pasted.pdf" in pg.locator("[data-chat-files]").inner_text())
+            pg.evaluate("() => { document.querySelector('[data-chat-form] input[type=file]').dispatchEvent(new Event('change')); }")
+            for number in range(4):
+                pg.set_input_files(
+                    '[data-chat-form] input[type="file"]', {"name": "f%d.txt" % number, "mimeType": "text/plain", "buffer": b"x"}
+                )
+            check("Chat: more than three files are refused in words", "Tối đa 3 tệp" in pg.inner_text("[data-chat-message]"))
+            pg.unroute("**/chat/send", intercept)
 
             check("No console or page errors during flows", not errors, "; ".join(errors[:3]))
             ctx.close()

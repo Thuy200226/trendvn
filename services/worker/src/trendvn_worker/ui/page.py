@@ -28,7 +28,7 @@ $sections
 # A new tab = a module in ui/tabs/ with `render(view)` plus one line here.
 TABS = (
     ("home", "Tổng quan", "home", home.render, lambda view: 0),
-    ("search", "Tìm kiếm", "search", search.render, lambda view: 0),
+    ("search", "Tìm", "search", search.render, lambda view: 0),
     ("queue", "Hàng đợi", "list", queue.render, lambda view: view.waiting),
     ("publish", "Đăng bài", "send", publish.render, lambda view: view.ready_total),
     ("attention", "Cần xem", "bell", attention.render, lambda view: view.attention),

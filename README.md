@@ -78,4 +78,4 @@ data/                   (tự tạo, không đóng gói) dữ liệu: worker/ ag
 - **Bản quyền và điều khoản nền tảng là trách nhiệm của bạn.** Hệ thống chỉ chặn trùng lặp và nội dung nhạy cảm theo quy tắc, không kiểm tra bản quyền.
 - Mặc định tất cả chỉ mở trên chính máy này (`127.0.0.1`). Xem từ xa: dùng đường hầm SSH/VPN ([docs/DEPLOY.md](docs/DEPLOY.md)).
 
-Tìm video/sản phẩm theo ảnh, tài liệu hoặc đường dẫn ở **Thêm → Tìm sản phẩm**. Chọn tài khoản, xem kết quả rồi đưa video vào xử lý như trước. Có lựa chọn TikTok/Douyin và từ khóa tiếng Trung giữ đúng model. Đăng nhập nhà sáng tạo từ trang; đồng bộ Shop tự động cần ứng dụng được cấp quyền; xem [hướng dẫn và giới hạn](docs/PRODUCT-SEARCH.md).
+**Tìm sản phẩm** (tab **Tìm**): một khung chat nhận tên/model, ảnh, PDF/DOCX/TXT hoặc link; hệ thống nhận diện sản phẩm, tìm video trong phiên TikTok/Douyin của tài khoản bạn chọn rồi đưa video bạn chọn vào xử lý như trước, và kiểm tra link hoa hồng bạn dán từ ứng dụng TikTok có đúng sản phẩm không. Xem [hướng dẫn và giới hạn](docs/PRODUCT-SEARCH.md).

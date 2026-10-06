@@ -1,38 +1,59 @@
-# Tìm video và sản phẩm theo tài khoản
+# Tìm sản phẩm: một khung chat cho văn bản, ảnh, tài liệu và link
 
-Đầu vào tùy chọn: văn bản, ảnh PNG/JPEG/WebP, PDF, DOCX, TXT hoặc đường dẫn HTTPS. Có thể dán hoặc kéo tệp vào ô tìm kiếm. Không nhập yêu cầu thì luồng thu thập theo chủ đề cũ vẫn chạy.
+Tab **Tìm** (thanh điều hướng, giữa Tổng quan và Hàng đợi) là một khung chat duy nhất. Bạn gửi bất cứ thứ gì bạn có về sản phẩm; mỗi câu trả lời của hệ thống hiện ngay trong khung, kèm nút cho bước tiếp theo. Không còn biểu mẫu riêng cho video, sản phẩm hay link.
 
-Luồng: chọn tài khoản → nhập yêu cầu → nhận diện thông tin sản phẩm → tìm ứng viên → chủ chọn video và sản phẩm → tải video → hàng đợi xử lý hiện tại → duyệt → diễn tập → đăng khi chủ bấm Đăng.
+## Dùng thế nào
 
-## Quyết định thiết kế
+1. Chọn **tài khoản** ở dưới khung (mọi việc trong tin nhắn đó gắn với tài khoản này).
+2. Gửi một trong các thứ sau (Ctrl/⌘+Enter để gửi; kéo thả hoặc dán ảnh vào khung):
+   - **Tên/model/biến thể**, ví dụ `bàn phím mchose ace68`;
+   - **Ảnh** (PNG/JPEG/WebP), **PDF, DOCX, TXT** (tối đa 3 tệp, 4 MiB mỗi tệp, tổng 8 MiB);
+   - **Link**: video TikTok/Douyin, trang web bất kỳ (đọc như tài liệu), hoặc **link chia sẻ sản phẩm TikTok Shop** (xem dưới).
+3. Hệ thống trả lời **sản phẩm nhận diện được** (hãng, model, biến thể, từ khóa sẽ dùng cho TikTok và Douyin). Bấm **Tìm video trên TikTok** hoặc **… Douyin**; hoặc **Sửa tên/model** để chỉnh rồi gửi lại.
+4. Danh sách video ứng viên hiện ngay trong khung. Xem từng video (liên kết mở nguồn), **tích ô xác nhận** rồi bấm **Chọn và tải để xử lý**: video vào hàng đợi như mọi video khác, gắn đúng tài khoản đã chọn, luôn cần bạn duyệt trước khi đăng.
+5. Muốn link hoa hồng của sản phẩm: **dán link chia sẻ vào chính khung chat** (xem dưới).
 
-- Tìm kiếm chủ động độc lập với ngưỡng thịnh hành và mốc lần quét đầu; người tìm sản phẩm cần video đúng hàng, không nhất thiết nhiều lượt xem.
-- Yêu cầu và kết quả thuộc tài khoản đã chọn. Video tìm kiếm không được lịch lấy sang tài khoản khác.
-- Tên/hình ảnh giống nhau chỉ là ứng viên. Mã sản phẩm, thương hiệu, model, dung tích, màu và biến thể phải được kiểm tra; điểm khớp từ khóa không phải xác suất đúng.
-- Không tải tất cả kết quả: giữ tối đa 20 ứng viên, chỉ tải sau khi chủ chọn. Mỗi lần nhận diện dùng một vòng gọi Gemini (có thể thử model dự phòng khi lỗi), dùng hạn mức chung.
-- Mỗi tệp tối đa 4 MiB, tối đa 3 tệp, tổng tối đa 8 MiB. DOCX giải nén có giới hạn; PDF/ảnh được gửi cho Gemini để đọc, không thực thi nội dung. URL phải HTTPS công khai, kiểm DNS và từng chuyển hướng.
-- Danh sách hoa hồng phải lấy trong phiên nhà sáng tạo đúng tài khoản, không dùng danh sách bán hàng công khai làm chứng cứ. Chưa xác minh hoặc gặp CAPTCHA/hết phiên thì dừng và báo rõ.
-- Không bao giờ đăng video được chọn với yêu cầu giỏ hàng nếu không gắn và xác minh đúng mã sản phẩm. Giao diện TikTok không hỗ trợ thì giữ video và báo chủ, không âm thầm đăng video thiếu giỏ.
+Gặp xác minh/CAPTCHA của TikTok hay Douyin: thẻ lỗi có nút **Mở cửa sổ để tự xác minh rồi tìm lại**. Bạn tự giải trong cửa sổ đó (tối đa 4 phút); hệ thống không bao giờ giải hay né. Sau khi có kết quả, hệ thống kiểm lại tên đăng nhập thật của phiên.
 
-## Giới hạn kiểm chứng
+## Link hoa hồng: hệ thống làm được gì và không làm được gì
 
-Không có cách chứng minh đúng 100% với mọi sản phẩm từ ảnh hoặc mô tả thiếu thông tin. Giữ bước lựa chọn và xác nhận của chủ; ghi riêng những gì tìm thấy, chưa xác minh hoặc bị nền tảng chặn. Đăng thật và thêm vào showcase là thao tác ngoài hệ thống, cần chủ chọn sản phẩm và bấm nút tương ứng.
+Link hoa hồng của sản phẩm trong Showcase của bạn chỉ có trong **ứng dụng TikTok trên điện thoại** (Showcase → chọn sản phẩm → Chia sẻ → Sao chép link). TikTok không đưa link này ra trang web hay API cho tài khoản nhà sáng tạo chưa có ứng dụng Shop Partner được duyệt, và hệ thống này **không đăng nhập Shop/Affiliate của bạn**. Vì vậy cách làm là: bạn sao chép link trong ứng dụng, dán vào khung chat, hệ thống kiểm tra và lưu.
 
-Tài liệu nền tảng: [Affiliate integration](https://partner.tiktokshop.com/docv2/page/affiliate-integration), [Product Marketplace](https://seller-vn.tiktok.com/university/essay?knowledge_id=6837827107342081&lang=en), [Link products](https://seller-vn.tiktok.com/university/essay?knowledge_id=496374274639617&lang=en).
+Khi dán, hệ thống làm theo thứ tự:
 
-## Kết nối và đăng kèm giỏ hàng
+1. Chỉ chấp nhận link HTTPS của `tiktok.com`. Đi theo các chuyển hướng (chỉ gọi host `tiktok.com`; bước chuyển sang nơi khác được ghi lại nhưng không được gọi).
+2. Đọc **mã sản phẩm** từ địa chỉ cuối (và tên sản phẩm từ trang, nếu đọc được).
+3. So với sản phẩm đang bàn trong khung (tin nhận diện gần nhất). Nếu chưa có sản phẩm nào, chính link là sản phẩm của khung.
+4. Tìm các tham số gắn link với một **người chia sẻ** (ví dụ `share_creator_id`), và so với các link bạn đã xác nhận trước đó trên cùng tài khoản.
 
-Mở Thêm → Tìm sản phẩm → Kết nối TikTok Shop. Bước 1 mở cửa sổ đăng nhập đúng tài khoản. Nếu chỉ có tài khoản nhà sáng tạo, xem hoa hồng/trang trưng bày trong ứng dụng TikTok; tự đồng bộ cần ứng dụng TikTok Shop được duyệt. Khi có ứng dụng: nhập App key/secret tại máy, đặt Redirect URL như trang hiển thị, rồi tự đăng nhập/đồng ý cấp quyền. Không gửi bí mật qua chat. Có lựa chọn nâng cao dùng token có sẵn. Token người bán không thay được token nhà sáng tạo. Ứng dụng phải có quyền đọc thông tin/tiếp thị liên kết/showcase và quyền `creator.video.write` để đăng. Luồng cấp quyền chính thức lưu access/refresh token bảo vệ quyền đọc, kiểm creator/scopes/username; làm mới trước khi hết hạn và kiểm open_id không đổi. Token nhập tay không có refresh token thì vẫn cần nhập lại khi hết hạn.
+| Kết luận | Nghĩa | Việc của bạn |
+|---|---|---|
+| **Đúng sản phẩm** | Mã sản phẩm trùng mã đang bàn | Link đã lưu ngay nếu có cùng dấu hiệu nhà sáng tạo với các link bạn đã xác nhận; ngược lại bấm xác nhận |
+| **Đã đọc sản phẩm** | Chưa có sản phẩm khác để đối chiếu; sản phẩm của khung lấy từ chính link | Xác nhận nếu đúng |
+| **Có vẻ đúng** | Không có mã để so; tên trang khớp hãng/model (chỉ là ứng viên) | Tự mở link xem rồi mới xác nhận |
+| **Chưa rõ** | Không đọc được tên hay mã để so | Tự mở link xem |
+| **Sản phẩm khác** | Mã hoặc model/biến thể khác | Không dùng; không thể xác nhận |
+| **Không hợp lệ** | Không đọc được mã sản phẩm | Dán lại link chia sẻ đầy đủ |
 
-Đọc tối đa2.000 sản phẩm showcase và20 ứng viên marketplace cho mỗi tìm kiếm. Marketplace có thông tin hoa hồng nhưng chưa chứng minh đủ điều kiện gắn; thêm sản phẩm trong TikTok rồi đồng bộ lại để xác minh showcase. Khi ghép video, xác nhận đúng sản phẩm và biến thể. Khi đăng, kiểm lại username, quyền tiếp thị liên kết, showcase, tồn kho, hoa hồng và MD5. Hiện API tải trực tiếp hỗ trợ video tối đa10 MiB; video lớn hơn hoặc chế độ không công khai được giữ lại và báo lý do, chưa triển khai luồng tải tệp lớn. Chạy thử có tải tệp lên TikTok Shop nhưng không gửi lệnh đăng.
+Điều kiện để tin: **chính xác = cùng mã sản phẩm**. Tên giống nhau không bao giờ cho kết luận "đúng". Hệ thống **không thể chứng minh** link thuộc tài khoản nào: lần đầu tiên (hoặc khi dấu hiệu nhà sáng tạo khác các link đã xác nhận) bạn phải bấm "Đây đúng là link hoa hồng của tôi", và chỉ nên bấm khi chính bạn sao chép nó từ Showcase. Link thường (không có dấu hiệu nhà sáng tạo) được báo là **không tính hoa hồng**. Link đã lưu hiện kèm nút **Chép link**.
 
-API tham chiếu: [Creator Profile](https://partner.tiktokshop.com/docv2/page/get-creator-profile-202508), [Showcase](https://partner.tiktokshop.com/docv2/page/get-showcase-products-202405), [Search open collaboration](https://partner.tiktokshop.com/docv2/page/creator-search-open-collaboration-product-202405), [Upload](https://partner.tiktokshop.com/docv2/page/upload-shoppable-video-file-202505), [Post shoppable video](https://partner.tiktokshop.com/docv2/page/post-shoppable-video-202603), [Posting status](https://partner.tiktokshop.com/docv2/page/get-shoppable-video-status-202509).
+## Nhận diện sản phẩm
 
+- Lời bạn gõ thắng ảnh: nếu ảnh được Gemini đọc ra hãng/model khác tên bạn nhập, hệ thống giữ tên bạn, báo xung đột và hiện cái ảnh đọc được. Lời không chứa hãng hay model (ví dụ "tìm cái này") không ghi đè điều Gemini đọc từ ảnh/trang.
+- Gemini quá tải hoặc trả lời hỏng: tên bạn nhập vẫn tìm được; ảnh/tài liệu **không có tên đi kèm** thì cần nhận diện thành công, nếu không báo lỗi bằng lời.
+- Từ khóa Douyin giữ nguyên hãng/model/biến thể khi dịch; dòng sản phẩm có từ riêng ở chợ Trung Quốc nằm ở bảng `LINE_HINTS` trong `services/worker/src/trendvn_worker/domain/search_queries.py` (thêm một dòng là thêm một dòng sản phẩm), bí danh hãng ở `BRAND_ALIASES`.
+- Ảnh không được đưa vào ô tìm ảnh của TikTok: Gemini mô tả, rồi tìm bằng chữ.
 
-## Tên, hình ảnh và nguồn tiếng Trung
+## Tìm video và kiểm khớp
 
-Tên/model/biến thể nhập ngắn được ưu tiên, ảnh bổ sung thông tin; nếu AI nhận ảnh khác thì báo xung đột và giữ tên. Nếu Gemini chưa đọc được ảnh, tên đủ thông tin vẫn tìm được; ảnh không có tên thì cần nhận diện thành công. Ảnh không được gửi vào ô tìm kiếm ảnh TikTok: Gemini trích mô tả/từ khóa, sau đó dùng tìm kiếm văn bản. Không khẳng định nền tảng không có mọi dạng tìm kiếm ảnh ở mọi khu vực.
+Tìm chạy trong hồ sơ Chrome của đúng tài khoản (headless, hoặc cửa sổ của bạn khi tự xác minh). Mỗi ứng viên được so với sản phẩm: **khác hãng, model hoặc biến thể thì bị loại khỏi lựa chọn**; khớp từ khóa chỉ là ứng viên và luôn cần bạn xem video. Tối đa 20 ứng viên mỗi lần, chỉ tải video bạn chọn. Chọn "TikTok + Douyin": một nguồn lỗi (kể cả hết thời gian chờ) không làm mất kết quả của nguồn kia.
 
-Chọn TikTok, Douyin hoặc cả hai. Mỗi nguồn hiện từ khóa đã dùng. Với bàn phím MCHOSE ACE68: TikTok dùng tên/model, Douyin dùng `迈从 ACE68 磁轴键盘`; alias thương hiệu đối chiếu theo [hướng dẫn MCHOSE](https://file.maicong.cn/uploads/25/02/MCHOSE%2020250211.pdf). Không đổi ACE68 thành Air/Turbo/GT/V2 khi dịch hoặc xếp kết quả. Tìm lại tạo phiên mới để video đã chọn không bị mất liên kết với kết quả cũ. CAPTCHA cần chủ tự xử lý trong cửa sổ mở từ trang, không giải tự động.
+## Không làm / chưa kiểm chứng
 
-Cấp quyền nhà sáng tạo theo [TikTok Creator Authorization](https://partner.tiktokshop.com/docv2/page/678e3a362dccb8030ea6f98c); [showcase](https://partner.tiktokshop.com/docv2/page/get-showcase-products-202405) chấp nhận quyền `creator.showcase.read` hoặc `creator.video.write`. Quyền đăng không suy ra từ quyền đọc.
+- Không tự đăng, không tự thêm sản phẩm vào Showcase, không đăng video gắn giỏ hàng. Những việc đó cần ứng dụng Shop Partner được duyệt; mã tích hợp API Shop đã gỡ khỏi bản này (còn nguyên ở commit `3d48f41` nếu sau này bạn có ứng dụng được duyệt).
+- Không có cách nào chứng minh "đúng 100% mọi sản phẩm" từ ảnh hoặc mô tả thiếu thông tin. Cái chắc chắn duy nhất là **mã sản phẩm trùng**; mọi thứ khác là ứng viên cho bạn xem.
+- Đã kiểm bằng test và Chrome thật với agent giả; **chưa** kiểm với link chia sẻ thật từ ứng dụng TikTok (dạng tham số có thể khác dự đoán) và với nguồn TikTok/Douyin thật bị chặn xác minh. Xem `docs/ROADMAP.md`, Phase K.
+
+## Dữ liệu và riêng tư
+
+Nhật ký chat (SQLite `chat`, giữ 300 tin gần nhất) chỉ chứa lời nhắn đã cắt còn 1.000 ký tự, tên tệp và kết quả; **nội dung ảnh/tài liệu chỉ nằm trong bộ nhớ** tới khi nhận diện xong. Link bạn xác nhận nằm ở bảng `commission_links` (một dòng cho mỗi cặp tài khoản + sản phẩm). Chi tiết bảo mật: `docs/SECURITY.md`.
