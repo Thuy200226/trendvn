@@ -15,6 +15,7 @@ import urllib.request
 
 from .domain.platforms import NAMES
 from .pipeline import process_many
+from .search import runner
 
 PROCESS_BATCH = 4  # videos processed per press of the button
 BROWSER_KINDS = {
@@ -26,7 +27,10 @@ BROWSER_KINDS = {
     "search_download",
     "search_human",
 }
+CHAT_KINDS = ("identify", "link", "search", "search_human", "search_download")  # the jobs behind the product chat (search/runner.py)
 LABELS = {
+    "identify": "Nhận diện sản phẩm",
+    "link": "Kiểm tra link hoa hồng",
     "search_human": "Tự xác minh và tìm lại",
     "search": "Tìm video về sản phẩm",
     "search_download": "Tải video đã chọn",
@@ -144,18 +148,19 @@ class Tasks:
     def __init__(self, store, token, process_fn, process_lock):
         self.store, self.token, self.process_fn, self.process_lock = store, token, process_fn, process_lock
         self.guard = threading.Lock()
+        self.references = {}  # what the owner sent with a message, until its job has read it (never written to disk)
         store.tasks_reap()
-        store.search_recover()
+        store.chat_recover()
 
-    def start(self, kind, job_id=None):
+    def start(self, kind, job_id=None, reference=None):
         if kind not in LABELS:
             raise ValueError("Việc không hợp lệ")
         if kind in ("publish", "dryrun") and not job_id:
             raise ValueError("Cần chọn một video")
-        if kind in ("search", "search_human", "search_download") and not (
-            isinstance(job_id, str) and re.fullmatch(r"[0-9a-f]{32}", job_id)
+        if kind in CHAT_KINDS and not (
+            isinstance(job_id, str) and re.fullmatch(r"[0-9a-f]{32}" if kind == "search_download" else r"\d{1,12}", job_id)
         ):
-            raise ValueError("Mã tìm kiếm không hợp lệ")
+            raise ValueError("Mã tin nhắn không hợp lệ")
         with self.guard:  # check-and-create is atomic, so a double click starts one task, not two
             running = {t["kind"] for t in self.store.tasks_running()}
             wants_browser = kind in BROWSER_KINDS or kind == "update"
@@ -168,6 +173,8 @@ class Tasks:
             if wants_gemini and running & {"process", "update"}:
                 raise TaskBusy("Đang xử lý video rồi. Đợi nó xong rồi bấm lại.")
             tid = self.store.task_create(kind, job_id)
+            if reference is not None:
+                self.references[job_id] = reference
         threading.Thread(target=self._run, args=(tid, kind, job_id), daemon=True, name="task-" + kind).start()
         return tid
 
@@ -184,8 +191,8 @@ class Tasks:
                 outcomes.append(self._publish_step(steps, kind, job_id))
             if kind == "stats":
                 outcomes.append(self._stats_step(steps))
-            if kind in ("search", "search_human", "search_download"):
-                outcomes.append(self._search_step(steps, kind, job_id))
+            if kind in CHAT_KINDS:
+                outcomes.append(self._chat_step(steps, kind, job_id))
             ok = any(outcomes)
             last_detail = steps.items[-1]["detail"] if steps.items else ""
             print(
@@ -214,62 +221,15 @@ class Tasks:
         steps.end(index, "done" if worked else "error", summarize_collect(report))
         return worked
 
-    def _search_step(self, steps, kind, key):
-        from .search.identify import identify
+    def _chat_step(self, steps, kind, key):
+        index = steps.begin(LABELS[kind])
 
-        index = steps.begin("Nhận diện và tìm ứng viên" if kind == "search" else "Tải video bạn đã chọn")
-        try:
-            if kind == "search_download":
-                selected = self.store.search_media_ready(key)
-                result = call_agent(
-                    "/api/search/download", {"account": selected["account"], "job_id": key, "item": selected["item"]}, self.token
-                )
-                text = (
-                    "Video đã tải và vào hàng đợi xử lý."
-                    if result.get("state") == "queued"
-                    else "Video trùng dữ liệu đã có; không xử lý trùng."
-                )
-            else:
-                search = self.store.search_get(key)
-                self.store.search_update(key, "running")
-                reference = search["reference"]
-                identity = (
-                    identify(self.store, search["reference"], search["mode"])
-                    if not reference.get("reuse_identity") and (reference.get("text") or reference.get("files"))
-                    else {"query": "", "name": ""}
-                )
-                if search["reference"].get("reuse_identity"):
-                    identity = search["identity"]
-                identity["source"] = search["reference"].get("source", identity.get("source", "tiktok"))
-                self.store.search_update(key, "running", identity=identity)
-                response = call_agent(
-                    "/api/search/open" if kind == "search_human" else "/api/search",
-                    {
-                        "account": search["account"],
-                        "query": identity["query"],
-                        "queries": identity.get("queries", {}),
-                        "source": identity["source"],
-                        "links": identity.get("links", []),
-                    },
-                    self.token,
-                    timeout=360 if kind == "search_human" else 180,
-                )
-                results, note = self.store.search_rank(key, response.get("items", [])), response.get("note", "")
-                self.store.search_update(key, "done", results=results, note=note)
-                text = "Tìm thấy %d ứng viên. Hãy xem và lựa chọn bên dưới." % len(results)
-            steps.end(index, "done", text)
-            return True
-        except Exception as error:
-            if kind in ("search", "search_human"):
-                self.store.search_update(key, "error", error=str(error))
-            else:
-                with self.store.transaction() as db:
-                    db.execute(
-                        "UPDATE jobs SET state='search_selected',reason=? WHERE id=? AND state='candidate' AND source_file IS NULL",
-                        (str(error)[:700], key),
-                    )
-            steps.end(index, "error", str(error)[:700])
-            return False
+        def agent(path, payload, timeout):
+            return call_agent(path, payload, self.token, timeout)
+
+        ok, text = runner.run(self.store, kind, key, agent, self.references.pop(key, None))
+        steps.end(index, "done" if ok else "error", text)
+        return ok
 
     def _process_step(self, steps):
         index = steps.begin("Xử lý video đang chờ")

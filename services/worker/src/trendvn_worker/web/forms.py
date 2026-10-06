@@ -222,15 +222,6 @@ FORMS = {
 }
 
 
-def _search_select(app, form):
-    from .search_forms import select_video
-
-    return select_video(app, form)
-
-
-FORMS.update({"/search-select": _search_select})
-
-
 # what the page says after each successful form (shown once, as a green banner)
 FLASH = {
     "started": "Đã bắt đầu. Tiến độ hiện ngay trên trang, không cần tải lại.",
@@ -249,12 +240,3 @@ FLASH = {
     "account_saved": "Đã lưu tài khoản.",
     "account_deleted": "Đã xóa tài khoản.",
 }
-
-
-def _search_retry(app, form):
-    from .search_forms import retry
-
-    return retry(app, form)
-
-
-FORMS.update({"/search-retry": _search_retry})

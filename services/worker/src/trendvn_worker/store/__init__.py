@@ -3,6 +3,8 @@
 from .accounts import AccountsMixin
 from .base import StoreBase
 from .captions import CaptionMixin
+from .chat import ChatMixin
+from .commission import CommissionMixin
 from .feedback import FeedbackMixin
 from .health import HealthMixin
 from .ingest import IngestMixin
@@ -11,7 +13,7 @@ from .queue import QueueMixin
 from .reporting import ReportingMixin
 from .retention import RetentionMixin
 from .task_log import TaskLogMixin
-from .search import SearchMixin
+from .videos import VideosMixin
 
 
 class Store(
@@ -26,6 +28,8 @@ class Store(
     FeedbackMixin,
     ReportingMixin,
     RetentionMixin,
-    SearchMixin,
+    ChatMixin,
+    VideosMixin,
+    CommissionMixin,
 ):
     """The whole database API (ingest, queue, publishing, captions, tasks, feedback, reporting)."""

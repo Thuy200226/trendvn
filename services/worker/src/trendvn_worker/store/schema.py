@@ -122,20 +122,24 @@ def _retention(db):
     db.execute("CREATE INDEX IF NOT EXISTS idx_jobs_hash ON jobs(content_hash)")
 
 
-def _product_search(db):
+def _product_chat(db):
+    """The product chat: one log of messages (what the owner said, what the system answered, with its state) and the commission links the
+    owner confirmed. A video picked from a chat answer is pinned to the account the owner chose (jobs.search_account)."""
     db.execute(
-        "CREATE TABLE IF NOT EXISTS searches (id TEXT PRIMARY KEY, account TEXT NOT NULL, mode TEXT, created REAL, state TEXT, reference TEXT, identity TEXT, results TEXT, error TEXT, note TEXT)"
+        "CREATE TABLE IF NOT EXISTS chat (id INTEGER PRIMARY KEY AUTOINCREMENT, created REAL NOT NULL, role TEXT NOT NULL, kind TEXT NOT NULL, "
+        "state TEXT NOT NULL, account TEXT, body TEXT NOT NULL)"
     )
-    db.execute("CREATE INDEX IF NOT EXISTS idx_searches_created ON searches(created)")
-    if "account_username" not in {r[1] for r in db.execute("PRAGMA table_info(searches)")}:
-        db.execute("ALTER TABLE searches ADD COLUMN account_username TEXT")
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS commission_links (account TEXT NOT NULL, product_id TEXT NOT NULL, created REAL NOT NULL, url TEXT NOT NULL, "
+        "title TEXT, markers TEXT NOT NULL, tracked INTEGER NOT NULL, PRIMARY KEY (account, product_id))"
+    )
     present = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
     for column in ("search_id TEXT", "search_account TEXT"):
         if column.split()[0] not in present:
             db.execute("ALTER TABLE jobs ADD COLUMN " + column)
 
 
-MIGRATIONS = [_baseline, _accounts, _legacy_posts, _news_topic, _retention, _product_search]
+MIGRATIONS = [_baseline, _accounts, _legacy_posts, _news_topic, _retention, _product_chat]
 
 
 def migrate(db):

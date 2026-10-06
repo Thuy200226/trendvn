@@ -10,9 +10,9 @@ from urllib.parse import parse_qs, urlsplit
 from .. import ui
 from ..ui.labels import vi_error
 from ..version import VERSION
-from . import api, forms, media_files
+from . import api, chat_forms, forms, media_files
 from .log import log
-from .pages import dashboard_html
+from .pages import chat_html, dashboard_html
 from .responses import ResponseMixin
 from .security import SESSION_COOKIE, SESSION_SECONDS, same
 
@@ -130,6 +130,8 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
             ok_key = query.get("ok", [""])[0]
             flash = ("ok", forms.FLASH[ok_key]) if ok_key in forms.FLASH else (("err", query["err"][0]) if query.get("err") else None)
             return self.send(200, dashboard_html(self.app, flash, self.headers.get("Host", "")), "text/html; charset=utf-8")
+        if path == "/fragment/chat" and self.local_ui():
+            return self.send(200, chat_html(self.app), "text/html; charset=utf-8")
         if path == "/api/status" and self.api_allowed():
             return self.send(200, self.store.status())
         if path == "/api/dashboard" and self.api_allowed():
@@ -149,17 +151,10 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
             return self.logout()
         try:
             length = self.body_length()
-            if not 0 < length <= (12 << 20 if path == "/search-input" else MAX_BODY):
+            if not 0 < length <= (chat_forms.ROUTES[path][1] if path in chat_forms.ROUTES else MAX_BODY):
                 return self.send(413, {"error": "Request too large or empty"})
-            if path == "/search-input":
-                if not self.local_ui() or not self.access.form_origin_ok(self.headers):
-                    return self.send(403, {"error": "Local form only"})
-                payload = json.loads(self.rfile.read(length))
-                if not isinstance(payload, dict) or not same(payload.get("csrf", ""), self.app.csrf):
-                    return self.send(403, {"error": "Trang đã cũ; hãy tải lại trước khi tìm"})
-                from .search_forms import submit
-
-                return self.send(200, submit(self.app, payload))
+            if path in chat_forms.ROUTES:
+                return self.chat_post(path, length)
             if path in forms.FORMS:
                 return self.form_post(path, length)
             if not self.access.authorized(self.headers):
@@ -171,6 +166,15 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
         except Exception:
             log("ERROR POST %s\n%s" % (path, traceback.format_exc().rstrip()))
             return self.send(500, {"error": "Internal failure; inspect local service"})
+
+    def chat_post(self, path, length):
+        """The product chat's JSON posts: this machine's page only, same origin, and the page's CSRF token."""
+        if not self.local_ui() or not self.access.form_origin_ok(self.headers):
+            return self.send(403, {"error": "Local form only"})
+        payload = json.loads(self.rfile.read(length))
+        if not isinstance(payload, dict) or not same(payload.get("csrf", ""), self.app.csrf):
+            return self.send(403, {"error": "Trang đã cũ; hãy tải lại trước khi gửi"})
+        return self.send(200, chat_forms.ROUTES[path][0](self.app, payload))
 
     def form_post(self, path, length):
         if not self.local_ui() or not self.access.form_origin_ok(self.headers):

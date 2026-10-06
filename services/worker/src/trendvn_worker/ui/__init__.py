@@ -5,5 +5,6 @@ from .format import ago, num
 from .labels import vi_reason
 from .login import login_page
 from .page import render
+from .tabs.search import chat_thread
 
-__all__ = ["render", "task_panel", "login_page", "vi_reason", "ago", "num"]
+__all__ = ["render", "chat_thread", "task_panel", "login_page", "vi_reason", "ago", "num"]

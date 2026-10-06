@@ -18,7 +18,7 @@ from ..components import (
     text_input,
 )
 from ..format import ago, escape as E, windows_text
-from . import accounts, search
+from . import accounts
 from ..labels import EVENT_LABELS, PLATFORM, STATE_LABELS, vi_reason
 
 
@@ -287,7 +287,6 @@ def render(view):
     return "".join(
         (
             '<h2 class="desk">Nguồn, cài đặt, thông báo, nhật ký</h2>',
-            accordion("search", "Tìm video và sản phẩm", search.render(view)),
             accordion("accounts", "Tài khoản TikTok và chủ đề", accounts.render(view)),
             accordion("sources", "Nguồn thu thập", sources(view)),
             accordion("settings", "Cài đặt", settings_form(view) + '<h3 class="sub">Khóa Gemini và giọng đọc</h3>' + gemini_key_form(view)),

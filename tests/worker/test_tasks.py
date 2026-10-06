@@ -40,10 +40,16 @@ class FakeAgentHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-class TaskTests(StoreCase):
+DEFAULT_BODY = dict(FakeAgentHandler.body)
+
+
+class TaskCase(StoreCase):
+    """A task runner whose browser agent is a fake HTTP server."""
+
     def setUp(self):
         super().setUp()
         FakeAgentHandler.hits.clear()
+        FakeAgentHandler.body = dict(DEFAULT_BODY)
         FakeAgentHandler.code, FakeAgentHandler.delay = 200, 0
         self.srv = ThreadingHTTPServer(("127.0.0.1", 0), FakeAgentHandler)
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
@@ -67,6 +73,8 @@ class TaskTests(StoreCase):
             time.sleep(0.05)
         self.fail("task still running")
 
+
+class TaskTests(TaskCase):
     def test_collect_task_summarises_each_source_in_vietnamese(self):
         row = self.wait(self.t.start("collect"))
         self.assertEqual(row["state"], "done")
@@ -191,6 +199,59 @@ class TaskTests(StoreCase):
         t = tasks_mod.Tasks(self.s, "t" * 40, boom, self.lock)
         row = self.wait(t.start("process"))
         self.assertNotEqual(row["state"], "running")
+
+
+class ChatTaskTests(TaskCase):
+    """The jobs behind the product chat run through the same task system: the browser ones never overlap, the others never wait for it."""
+
+    def videos(self):
+        body = {"identity": {"name": "MCHOSE ACE68", "model": "ACE68", "query": "mchose ace68", "queries": {}, "links": []}, "source": "tiktok",
+                "account_username": self.s.account("main")["username"], "results": []}  # fmt: skip
+        return self.s.chat_add("bot", "videos", body, state="running", account="main")
+
+    def test_a_search_reaches_the_agent_with_the_account_and_ends_its_message(self):
+        FakeAgentHandler.body = {"items": [], "note": "không có"}
+        mid = self.videos()
+        row = self.wait(self.t.start("search", str(mid)))
+        self.assertEqual(row["state"], "done")
+        path, payload, _ = FakeAgentHandler.hits[0]
+        self.assertEqual((path, payload["account"], payload["source"]), ("/api/search", "main", "tiktok"))
+        self.assertEqual(self.s.chat_get(mid)["state"], "done")
+
+    def test_a_search_the_agent_refuses_is_an_error_task_and_an_error_message(self):
+        FakeAgentHandler.code, FakeAgentHandler.body = 409, {"error": "bận"}
+        mid = self.videos()
+        row = self.wait(self.t.start("search", str(mid)))
+        self.assertEqual(row["state"], "error")
+        self.assertEqual(self.s.chat_get(mid)["state"], "error")
+        self.assertIn("bận", self.s.chat_get(mid)["body"]["error"])
+
+    def test_recognising_a_product_needs_no_browser_and_hands_its_reference_over_once(self):
+        mid = self.s.chat_add("bot", "product", {}, state="running", account="main")
+        busy = self.s.task_create("collect")  # a browser job is running: recognition must not care
+        row = self.wait(self.t.start("identify", str(mid), {"text": "Xiaomi Band 9", "files": []}))
+        self.assertEqual(row["state"], "done")
+        self.assertEqual(self.s.chat_get(mid)["body"]["identity"]["brand"], "Xiaomi")
+        self.assertNotIn(str(mid), self.t.references)
+        self.s.task_update(busy, state="done")
+
+    def test_two_browser_searches_cannot_run_at_once_but_the_second_leaves_no_hanging_message(self):
+        FakeAgentHandler.delay = 0.6
+        FakeAgentHandler.body = {"items": []}
+        first = self.t.start("search", str(self.videos()))
+        with self.assertRaises(tasks_mod.TaskBusy):
+            self.t.start("search", str(self.videos()))
+        self.wait(first)
+
+    def test_ids_are_checked_per_kind(self):
+        for kind, key in (("search", "abc"), ("search", None), ("identify", "1; DROP"), ("link", "x" * 20), ("search_download", "12")):
+            with self.subTest(kind=kind, key=key), self.assertRaises(ValueError):
+                self.t.start(kind, key)
+
+    def test_a_restart_turns_every_unfinished_answer_into_an_error(self):
+        mid = self.videos()
+        tasks_mod.Tasks(self.s, "t" * 40, lambda s: {}, self.lock)
+        self.assertEqual(self.s.chat_get(mid)["state"], "error")
 
 
 if __name__ == "__main__":

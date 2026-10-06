@@ -1,5 +1,5 @@
 (function(){
-  var phone=window.matchMedia('(max-width:720px)'),tabs=['home','queue','publish','attention','posted','more'];
+  var phone=window.matchMedia('(max-width:720px)'),tabs=['home','search','queue','publish','attention','posted','more'];
   function tabOf(hash){
     var h=(hash||'').replace('#','');
     if(tabs.indexOf(h)>=0)return {tab:h};
@@ -31,34 +31,101 @@
     card.querySelector('[data-len]').textContent=txt.replace(/#[\p{L}\p{N}_]+/gu,'').trim().length;
     card.querySelector('[data-tags]').textContent=(txt.match(/#[\p{L}\p{N}_]+/gu)||[]).length;
   });
-  // Product references: files stay in memory; never stored in browser local storage.
-  var searchForm=document.querySelector('[data-search-form]'),searchFiles=[];
-  if(searchForm){
-    var drop=searchForm.querySelector('[data-search-drop]'),picker=searchForm.elements.files,msg=searchForm.querySelector('[data-search-message]');
-    function showFiles(){var list=searchForm.querySelector('[data-search-files]');list.replaceChildren();searchFiles.forEach(function(f){var li=document.createElement('li');li.textContent=f.name+' ('+Math.round(f.size/1024)+' KiB)';list.appendChild(li);});}
-    function addFiles(files){
-      var next=searchFiles.concat(Array.from(files));
-      if(next.length>3||next.some(function(f){return f.size>4*1024*1024;})||next.reduce(function(n,f){return n+f.size;},0)>8*1024*1024){msg.textContent='Tối đa 3 tệp, 4 MiB/tệp, tổng 8 MiB.';return;}
-      if(next.some(function(f){return !/\.(png|jpe?g|webp|pdf|docx|txt)$/i.test(f.name);})){msg.textContent='Chỉ nhận PNG/JPEG/WebP, PDF, DOCX hoặc TXT.';return;}
-      searchFiles=next;msg.textContent='';dirty=true;showFiles();
-    }
+  // Product chat: one thread for words, files and links. Files stay in memory (never in browser storage); answers are polled while one is
+  // being worked on and the thread is replaced in place, so a screen reader keeps its place.
+  var chat=document.querySelector('[data-chat]'),chatFiles=[];
+  if(chat){
+    var form=chat.querySelector('[data-chat-form]'),csrf=chat.dataset.csrf,status=chat.querySelector('[data-chat-message]');
+    var thread=function(){return document.getElementById('chat-thread');};
+    var say=function(text){if(status)status.textContent=text||'';};
+    var toBottom=function(){var t=thread();t.scrollTop=t.scrollHeight;};
+    var post=async function(url,body){
+      var response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      var data=await response.json().catch(function(){return {};});
+      if(!response.ok)throw Error(data.error||'Không thực hiện được');
+      return data;
+    };
+    var refresh=function(){
+      return fetch('/fragment/chat',{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(html){
+        if(!html)return;
+        var t=thread(),near=t.scrollHeight-t.scrollTop-t.clientHeight<80,tmp=document.createElement('div');
+        tmp.innerHTML=html;var fresh=tmp.firstElementChild;
+        if(fresh.innerHTML!==t.innerHTML){t.innerHTML=fresh.innerHTML;if(near)toBottom();}
+        t.dataset.busy=fresh.dataset.busy;
+      }).catch(function(){});
+    };
+    setInterval(function(){var t=thread();if(t&&t.dataset.busy==='1')refresh();},2500);
+    toBottom();
+    chat.addEventListener('click',function(e){
+      var b=e.target.closest('button[data-chat-act]'),c=e.target.closest('[data-copy]');
+      if(c){
+        var box=c.parentNode.querySelector('input'),done=function(){c.textContent='Đã chép';setTimeout(function(){c.textContent='Chép link';},1800);};
+        box.select();
+        if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(box.value).then(done,function(){document.execCommand('copy');done();});
+        else{document.execCommand('copy');done();}
+        return;
+      }
+      if(!b)return;
+      var act=b.dataset.chatAct,payload={csrf:csrf,action:act,account:form?form.elements.account.value:''};
+      if(act==='fill'){if(form){form.elements.text.value=b.dataset.text||'';form.elements.text.focus();}return;}
+      if(b.dataset.id)payload.id=+b.dataset.id;
+      if(b.dataset.source)payload.source=b.dataset.source;
+      if(b.dataset.human)payload.human=true;
+      if(act==='pick'){
+        var tick=b.closest('article').querySelector('[data-chat-confirm]');
+        if(!tick.checked){say('Hãy xem video rồi tích ô xác nhận trước khi chọn.');tick.focus();return;}
+        payload.confirmed=true;payload.source_id=b.dataset.sourceId;payload.platform=b.dataset.platform;
+      }
+      b.disabled=true;say('Đang gửi…');
+      post('/chat/act',payload).then(function(){say('');return refresh();}).catch(function(error){say(error.message);b.disabled=false;});
+    });
+  }
+  if(chat&&form){
+    var picker=form.elements.files,list=form.querySelector('[data-chat-files]'),textbox=form.elements.text;
+    var showFiles=function(){
+      list.replaceChildren();
+      chatFiles.forEach(function(f,i){
+        var li=document.createElement('li'),drop=document.createElement('button');
+        li.textContent='📎 '+f.name+' ('+Math.round(f.size/1024)+' KiB)';
+        drop.type='button';drop.className='ghost';drop.textContent='✕';drop.setAttribute('aria-label','Bỏ tệp '+f.name);
+        drop.addEventListener('click',function(){chatFiles.splice(i,1);showFiles();});
+        li.appendChild(drop);list.appendChild(li);
+      });
+    };
+    var addFiles=function(files){
+      var next=chatFiles.concat(Array.from(files));
+      if(next.length>3||next.some(function(f){return f.size>4*1024*1024;})||next.reduce(function(n,f){return n+f.size;},0)>8*1024*1024){say('Tối đa 3 tệp, 4 MiB/tệp, tổng 8 MiB.');return;}
+      if(next.some(function(f){return !/\.(png|jpe?g|webp|pdf|docx|txt)$/i.test(f.name);})){say('Chỉ nhận PNG/JPEG/WebP, PDF, DOCX hoặc TXT.');return;}
+      chatFiles=next;say('');dirty=true;showFiles();
+    };
+    var readFile=function(f){return new Promise(function(resolve,reject){var r=new FileReader();r.onerror=function(){reject(Error('Không đọc được tệp'));};r.onload=function(){resolve({name:f.name,data:String(r.result).split(',')[1]});};r.readAsDataURL(f);});};
+    form.querySelector('[data-chat-attach]').addEventListener('click',function(){picker.click();});
     picker.addEventListener('change',function(){addFiles(picker.files);picker.value='';});
-    drop.addEventListener('dragover',function(e){e.preventDefault();drop.classList.add('over');});
-    drop.addEventListener('dragleave',function(){drop.classList.remove('over');});
-    drop.addEventListener('drop',function(e){e.preventDefault();drop.classList.remove('over');if(e.dataTransfer.files.length)addFiles(e.dataTransfer.files);else{var txt=e.dataTransfer.getData('text/uri-list')||e.dataTransfer.getData('text/plain');if(txt)searchForm.elements.text.value+='\n'+txt;dirty=true;}});
-    searchForm.addEventListener('paste',function(e){var files=Array.from(e.clipboardData.items).filter(function(i){return i.kind==='file';}).map(function(i){return i.getAsFile();}).filter(Boolean);if(files.length){e.preventDefault();addFiles(files);}else if(e.target===drop){var txt=e.clipboardData.getData('text/plain');if(txt){e.preventDefault();searchForm.elements.text.value+='\n'+txt;dirty=true;}}});
-    searchForm.querySelector('[data-search-clear]').addEventListener('click',function(){searchFiles=[];showFiles();});
-    document.addEventListener('click',function(e){var a=e.target.closest('[data-search-account]');if(a){searchForm.elements.account.value=a.dataset.searchAccount;dirty=true;}});
-    function readFile(f){return new Promise(function(resolve,reject){var reader=new FileReader();reader.onerror=function(){reject(Error('Không đọc được tệp'));};reader.onload=function(){resolve({name:f.name,data:String(reader.result).split(',')[1]});};reader.readAsDataURL(f);});}
-    searchForm.addEventListener('submit',async function(e){
-      e.preventDefault();e.stopPropagation();if(searchForm.dataset.sent)return;searchForm.dataset.sent='1';
-      var button=searchForm.querySelector('button[type="submit"],button.go');button.disabled=true;msg.textContent='Đang kiểm tra và gửi yêu cầu…';
+    chat.addEventListener('dragover',function(e){e.preventDefault();chat.classList.add('over');});
+    chat.addEventListener('dragleave',function(e){if(!chat.contains(e.relatedTarget))chat.classList.remove('over');});
+    chat.addEventListener('drop',function(e){
+      e.preventDefault();chat.classList.remove('over');
+      if(e.dataTransfer.files.length)addFiles(e.dataTransfer.files);
+      else{var dropped=e.dataTransfer.getData('text/uri-list')||e.dataTransfer.getData('text/plain');if(dropped){textbox.value+=(textbox.value?'\n':'')+dropped;dirty=true;}}
+    });
+    chat.addEventListener('paste',function(e){
+      var pasted=Array.from(e.clipboardData.items||[]).filter(function(i){return i.kind==='file';}).map(function(i){return i.getAsFile();}).filter(Boolean);
+      if(pasted.length){e.preventDefault();addFiles(pasted);}
+    });
+    textbox.addEventListener('keydown',function(e){if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();form.requestSubmit();}});
+    document.addEventListener('click',function(e){var a=e.target.closest('[data-search-account]');if(a)form.elements.account.value=a.dataset.searchAccount;});
+    form.addEventListener('submit',async function(e){
+      e.preventDefault();e.stopPropagation();
+      var text=textbox.value.trim();
+      if(form.dataset.sent)return;
+      if(!text&&!chatFiles.length){say('Hãy nhập mô tả, dán link hoặc thêm tệp.');return;}
+      form.dataset.sent='1';var send=form.querySelector('button.send');send.disabled=true;say('Đang gửi…');
       try{
-        var files=await Promise.all(searchFiles.map(readFile));
-        var response=await fetch('/search-input',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf:searchForm.elements.csrf.value,account:searchForm.elements.account.value,mode:searchForm.elements.mode.value,source:searchForm.elements.source.value,text:searchForm.elements.text.value,files:files})});
-        var data=await response.json();if(!response.ok)throw Error(data.error||'Không gửi được tìm kiếm');
-        location.hash='#search';location.reload();
-      }catch(error){msg.textContent=error.message;delete searchForm.dataset.sent;button.disabled=false;}
+        var encoded=await Promise.all(chatFiles.map(readFile));
+        await post('/chat/send',{csrf:csrf,account:form.elements.account.value,text:text,files:encoded});
+        textbox.value='';chatFiles=[];showFiles();dirty=false;say('');await refresh();toBottom();
+      }catch(error){say(error.message);}
+      finally{delete form.dataset.sent;send.disabled=false;}
     });
   }
 
@@ -87,6 +154,7 @@
   setInterval(function(){
     var a=document.activeElement,playing=false,panel=document.querySelector('.taskpanel[data-running="1"]');
     document.querySelectorAll('video,audio').forEach(function(v){if(!v.paused)playing=true;});
-    if(!dirty&&!playing&&!document.hidden&&!panel&&!(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)))location.reload();
+    var talking=document.getElementById('chat-thread');
+    if(!dirty&&!playing&&!document.hidden&&!panel&&!(talking&&talking.dataset.busy==='1')&&!(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)))location.reload();
   },90000);
 })();

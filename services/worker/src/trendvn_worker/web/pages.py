@@ -1,6 +1,31 @@
 """Build the data the dashboard needs and render it."""
 
 from .. import notify, ui
+from ..ui.labels import STATE_LABELS
+
+
+def chat_data(store):
+    """The product chat as the page shows it: the latest messages, the videos picked from each answer, who the accounts are."""
+    messages = store.chat_thread()
+    ids = [str(m["id"]) for m in messages if m["kind"] == "videos"]
+    picked = {}
+    if ids:
+        with store.connect() as db:
+            for row in db.execute(
+                "SELECT id,source_id,platform,state,reason,search_id FROM jobs WHERE search_id IN (%s)" % ",".join("?" * len(ids)), ids
+            ):
+                picked.setdefault(row["search_id"], []).append(dict(row, state_label=STATE_LABELS.get(row["state"], row["state"])))
+    return {
+        "messages": messages,
+        "picked": picked,
+        "accounts": {a["id"]: a["username"] for a in store.accounts()},
+        "product": (store.chat_product() or {}).get("body", {}).get("identity"),
+    }
+
+
+def chat_html(app):
+    """Just the thread (what the page polls while an answer is being worked on)."""
+    return ui.chat_thread(chat_data(app.store))
 
 
 def dashboard_html(app, flash=None, host=""):
@@ -9,26 +34,7 @@ def dashboard_html(app, flash=None, host=""):
     data = store.dashboard_data()
     data["ready"] = store.ready_list()
     data["tasks"] = store.tasks_recent(6)
-    data["searches"] = store.searches_recent()
-    from ..ui.labels import STATE_LABELS
-
-    with store.connect() as db:
-        jobs = [
-            dict(r)
-            for r in db.execute(
-                "SELECT id,source_id,platform,title,state,reason,search_id,search_account FROM jobs WHERE search_id IS NOT NULL ORDER BY first_seen DESC LIMIT 100"
-            )
-        ]
-    for job in jobs:
-        job["state_label"] = STATE_LABELS.get(job["state"], job["state"])
-    for search in data["searches"]:
-        search["jobs"] = [j for j in jobs if j["search_id"] == search["id"]]
-        search["account_jobs"] = [
-            j
-            for j in jobs
-            if j["search_account"] == search["account"]
-            and j["state"] in ("search_selected", "queued", "ready", "awaiting_approval", "needs_review")
-        ]
+    data["chat"] = chat_data(store)
     data["discovery_at"] = (store.settings().get("hb_discovery") or {}).get("at")
     # n8n lives on the same machine as this page: reuse the host the visitor used, swapping in n8n's port
     visitor_host = (host.rsplit(":", 1)[0] if host else "localhost") or "localhost"
