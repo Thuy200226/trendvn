@@ -8,7 +8,7 @@ from ..domain.accounts import account_flag
 from .components import task_panel  # noqa: F401  (re-exported for the tabs)
 from .format import escape as E
 
-BROWSER_TASKS = ("collect", "publish", "dryrun", "stats", "update", "search", "search_download", "shop_sync")
+BROWSER_TASKS = ("collect", "publish", "dryrun", "stats", "update", "search", "search_download", "search_human")
 PROCESS_TASKS = ("process", "update")
 
 

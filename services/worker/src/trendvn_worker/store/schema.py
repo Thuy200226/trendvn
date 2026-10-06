@@ -130,7 +130,7 @@ def _product_search(db):
     if "account_username" not in {r[1] for r in db.execute("PRAGMA table_info(searches)")}:
         db.execute("ALTER TABLE searches ADD COLUMN account_username TEXT")
     present = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
-    for column in ("search_id TEXT", "search_account TEXT", "product_binding TEXT"):
+    for column in ("search_id TEXT", "search_account TEXT"):
         if column.split()[0] not in present:
             db.execute("ALTER TABLE jobs ADD COLUMN " + column)
 

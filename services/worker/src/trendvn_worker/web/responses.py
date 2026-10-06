@@ -1,21 +1,16 @@
 """Sending responses: JSON/HTML with the security headers, gzip, and redirects after a form post."""
 
-import base64
-import hashlib
 import gzip
 import json
 from urllib.parse import quote
 
 from ..ui.assets import JS_SHA256
-from .shop_callback import SCRIPT
-
-CALLBACK_SHA256 = base64.b64encode(hashlib.sha256(SCRIPT.encode()).digest()).decode()
 
 # The one inline script is allowed by its hash (computed from the real file), so an injected script would not run.
 CONTENT_SECURITY_POLICY = (
-    "default-src 'self'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'sha256-%s' 'sha256-%s'; "
+    "default-src 'self'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'sha256-%s'; "
     "media-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
-) % (JS_SHA256, CALLBACK_SHA256)
+) % JS_SHA256
 GZIP_MIN_BYTES = 1500
 
 

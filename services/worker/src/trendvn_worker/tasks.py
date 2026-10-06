@@ -24,17 +24,11 @@ BROWSER_KINDS = {
     "stats",
     "search",
     "search_download",
-    "shop_sync",
-    "shop_authorize",
-    "account_login",
     "search_human",
 }
 LABELS = {
-    "account_login": "Đăng nhập tài khoản TikTok",
-    "shop_authorize": "Cấp quyền nhà sáng tạo",
     "search_human": "Tự xác minh và tìm lại",
-    "shop_sync": "Xác minh kết nối TikTok Shop",
-    "search": "Tìm video và sản phẩm",
+    "search": "Tìm video về sản phẩm",
     "search_download": "Tải video đã chọn",
     "update": "Cập nhật tổng hợp",
     "collect": "Thu thập video mới",
@@ -45,9 +39,6 @@ LABELS = {
 }
 PLATFORM_NAMES = NAMES
 PROCESS_LABELS = {
-    "account_login": "Đăng nhập tài khoản TikTok",
-    "shop_authorize": "Cấp quyền nhà sáng tạo",
-    "search_human": "Tự xác minh và tìm lại",
     "ready": "sẵn sàng đăng",
     "awaiting_approval": "chờ bạn duyệt",
     "needs_review": "cần duyệt",
@@ -195,10 +186,6 @@ class Tasks:
                 outcomes.append(self._stats_step(steps))
             if kind in ("search", "search_human", "search_download"):
                 outcomes.append(self._search_step(steps, kind, job_id))
-            if kind in ("account_login", "shop_authorize"):
-                outcomes.append(self._connection_step(steps, kind, job_id))
-            if kind == "shop_sync":
-                outcomes.append(self._shop_sync_step(steps, job_id))
             ok = any(outcomes)
             last_detail = steps.items[-1]["detail"] if steps.items else ""
             print(
@@ -229,7 +216,6 @@ class Tasks:
 
     def _search_step(self, steps, kind, key):
         from .search.identify import identify
-        from .search.catalog import search_catalog
 
         index = steps.begin("Nhận diện và tìm ứng viên" if kind == "search" else "Tải video bạn đã chọn")
         try:
@@ -256,24 +242,19 @@ class Tasks:
                     identity = search["identity"]
                 identity["source"] = search["reference"].get("source", identity.get("source", "tiktok"))
                 self.store.search_update(key, "running", identity=identity)
-                if search["mode"] == "products":
-                    self._sync_catalog(search["account"], identity.get("query", ""), identity.get("product_id", ""))
-                    results = search_catalog(self.store, search["account"], identity)
-                    note = "Hoa hồng và quyền gắn giỏ theo lần đồng bộ tài khoản; sẽ kiểm lại trước khi đăng."
-                else:
-                    response = call_agent(
-                        "/api/search/open" if kind == "search_human" else "/api/search",
-                        {
-                            "account": search["account"],
-                            "query": identity["query"],
-                            "queries": identity.get("queries", {}),
-                            "source": identity["source"],
-                            "links": identity.get("links", []),
-                        },
-                        self.token,
-                        timeout=360 if kind == "search_human" else 180,
-                    )
-                    results, note = self.store.search_rank(key, response.get("items", [])), response.get("note", "")
+                response = call_agent(
+                    "/api/search/open" if kind == "search_human" else "/api/search",
+                    {
+                        "account": search["account"],
+                        "query": identity["query"],
+                        "queries": identity.get("queries", {}),
+                        "source": identity["source"],
+                        "links": identity.get("links", []),
+                    },
+                    self.token,
+                    timeout=360 if kind == "search_human" else 180,
+                )
+                results, note = self.store.search_rank(key, response.get("items", [])), response.get("note", "")
                 self.store.search_update(key, "done", results=results, note=note)
                 text = "Tìm thấy %d ứng viên. Hãy xem và lựa chọn bên dưới." % len(results)
             steps.end(index, "done", text)
@@ -290,39 +271,6 @@ class Tasks:
             steps.end(index, "error", str(error)[:700])
             return False
 
-    def _connection_step(self, steps, kind, account):
-        index = steps.begin("Đăng nhập trong cửa sổ TikTok vừa mở; tối đa 4 phút")
-        try:
-            path = "/api/account/login" if kind == "account_login" else "/api/shop/authorize"
-            result = call_agent(path, {"account": account}, self.token, timeout=360)
-            text = "Đã xác minh phiên TikTok đúng @" + result["username"]
-            if kind == "shop_authorize":
-                data = self._sync_catalog(account)
-                text += "; đã đồng bộ %d sản phẩm hoa hồng." % data["count"]
-            else:
-                text += ". Đăng nhập TikTok chưa đồng nghĩa đã kết nối dữ liệu hoa hồng."
-            steps.end(index, "done", text)
-            return True
-        except Exception as error:
-            steps.end(index, "error", str(error)[:700])
-            return False
-
-    def _sync_catalog(self, account, query="", product_id=""):
-        from .search.catalog import save_catalog
-
-        data = call_agent("/api/shop/search", {"account": account, "query": query, "product_id": product_id}, self.token, timeout=360)
-        return save_catalog(self.store, data)
-
-    def _shop_sync_step(self, steps, account):
-        index = steps.begin("Đối chiếu tài khoản và đọc hoa hồng TikTok Shop")
-        try:
-            data = self._sync_catalog(account)
-            steps.end(index, "done", "Đã xác minh và đồng bộ %d sản phẩm hoa hồng trong showcase." % data["count"])
-            return True
-        except Exception as e:
-            steps.end(index, "error", str(e)[:700])
-            return False
-
     def _process_step(self, steps):
         index = steps.begin("Xử lý video đang chờ")
         try:
@@ -336,10 +284,6 @@ class Tasks:
     def _publish_step(self, steps, kind, job_id):
         index = steps.begin("Đăng video lên TikTok" if kind == "publish" else "Chạy thử: tải lên, điền mô tả, dừng trước nút Đăng")
         try:
-            with self.store.connect() as db:
-                row = db.execute("SELECT search_account,product_binding FROM jobs WHERE id=?", (job_id,)).fetchone()
-            if row and row["product_binding"]:
-                self._sync_catalog(row["search_account"])
             result = call_agent("/api/publish" if kind == "publish" else "/api/dry-run", {"job_id": job_id}, self.token)
         except AgentError as error:
             steps.end(index, "error", str(error))

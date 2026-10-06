@@ -195,7 +195,6 @@ class PublishingMixin:
         """Mark the video as being published (with a lease the agent must present when it reports back) and return the claim."""
         if row["search_account"] and loads(row["meta"], {}).get("search_username") != account["username"]:
             raise ValueError("Tài khoản thực đã thay đổi; hãy tìm lại video")
-        product = self._product_for_publish(row, account)
         token = uuid.uuid4().hex
         db.execute(
             "UPDATE jobs SET state='publishing',publish_lease=?,prev_state=?,account=?,target=?,updated=? WHERE id=?",
@@ -218,20 +217,7 @@ class PublishingMixin:
             "target": account["username"],
             "visibility": effective(account, cfg)["visibility"],
             "search_account": row["search_account"],
-            "product": product,
         }
-
-    def _product_for_publish(self, row, account):
-        product = loads(row["product_binding"], {})
-        if not product:
-            return None
-        from ..search.catalog import search_catalog
-
-        found = search_catalog(self, account["id"], {"product_id": product.get("product_id"), "query": ""}, allow_stale=True)
-        current = next((p for p in found if p["product_id"] == product.get("product_id")), None)
-        if not current or not current["can_attach"] or not product.get("confirmed"):
-            raise ValueError("Sản phẩm hoặc quyền hoa hồng/gắn giỏ đã thay đổi; cần xác minh lại trước khi đăng")
-        return current
 
     def publish_peek(self, job_id=None, account_id=None):
         """A rendered video for rehearsals (the next one, or a chosen one, for the account asked for or the best fit); changes nothing and
@@ -259,7 +245,6 @@ class PublishingMixin:
                 raise ValueError("Video được tìm cho tài khoản khác; không chuyển tài khoản khi chạy thử")
             if row["search_account"] and loads(row["meta"], {}).get("search_username") != account["username"]:
                 raise ValueError("Tài khoản thực đã thay đổi; hãy tìm lại video")
-            product = self._product_for_publish(row, account)
         a = loads(row["analysis"], {})
         return {
             "status": "ready",
@@ -272,7 +257,6 @@ class PublishingMixin:
             "target": account["username"],
             "visibility": effective(account, cfg)["visibility"],
             "search_account": row["search_account"],
-            "product": product,
         }
 
     def publish_finish(self, jid, lease, outcome, url="", reason=""):

@@ -640,19 +640,6 @@ def main():
                 "Adding without a topic is refused with a message", Store(tmp).account("no_topics") is None and pg.is_visible(".flash.bad")
             )
 
-            # Creator account login is browser-operated; never pretend it grants Shop API access.
-            go(pg, base + "/#search")
-            pg.locator("#search details").filter(has=pg.locator("summary", has_text="Kết nối TikTok Shop của nhà sáng tạo")).locator(
-                "summary"
-            ).first.click()
-            FakeAgent.calls.clear()
-            pg.click('form[action="/account-login"] button')
-            pg.wait_for_timeout(1000)
-            check(
-                "Creator login opens selected account without Shop keys",
-                bool(FakeAgent.calls) and FakeAgent.calls[0][0] == "/api/account/login" and FakeAgent.calls[0][1]["account"] == "main",
-            )
-
             # Reference input and explicit selection, through the real HTTP worker and isolated fake agent.
             go(pg, base + "/#search")
             pg.fill('[data-search-form] textarea[name="text"]', "Samsung Galaxy S24")

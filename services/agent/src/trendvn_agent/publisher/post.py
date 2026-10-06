@@ -37,14 +37,10 @@ def _publish_one(job, dry_run, state):
         return "failed", "", "Không thấy file video đã dựng"
     if sha256(video) != job["output_hash"]:
         return "failed", "", "Hash video thay đổi sau khi dựng; không đăng"
-    if job.get("product"):
-        from ..shop.post import publish
-
-        return publish(job, video, dry_run, state)
     with chrome(profile_name(job.get("account")), locale="vi-VN", headless=not HEADED, viewport=(1280, 1000)) as ctx:
         if not logged_in(ctx):
             return "signed_out", "", "Chưa đăng nhập TikTok cho @%s trong hồ sơ riêng" % job["target"]
-        if job.get("search_account") or job.get("product"):
+        if job.get("search_account"):  # a video found for one account is only ever posted on that account
             who = signed_in_as(ctx)
             if not who or who.casefold() != job["target"].casefold():
                 return "signed_out", "", "Không xác minh được đúng tài khoản đã chọn; dừng đăng"

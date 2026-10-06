@@ -71,7 +71,7 @@ def verify(payload):
     return publisher.verify_unresolved()
 
 
-def search_products_video(payload):
+def search_videos(payload):
     from .search import search
 
     return search(payload)
@@ -83,36 +83,15 @@ def search_download(payload):
     return download_selected(payload)
 
 
-def shop_search(payload):
-    from .shop.catalog import search
-
-    return search(payload)
-
-
 def search_open(payload):
     from .search import search
 
     return search(payload, human=True)
 
 
-def account_login(payload):
-    from .account_login import login
-
-    return login(payload)
-
-
-def shop_authorize(payload):
-    from .shop.authorize import authorize
-
-    return authorize(payload)
-
-
 ROUTES = {
-    "/api/account/login": account_login,
-    "/api/shop/authorize": shop_authorize,
     "/api/search/open": search_open,
-    "/api/shop/search": shop_search,
-    "/api/search": search_products_video,
+    "/api/search": search_videos,
     "/api/search/download": search_download,
     "/api/collect": collect,
     "/api/publish": publish,

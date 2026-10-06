@@ -1,8 +1,6 @@
 """Regressions for explicit product names, Chinese queries, source selection and OAuth callbacks."""
 
 import json
-import time
-from types import SimpleNamespace
 from unittest import mock
 
 from tests.support import StoreCase
@@ -10,8 +8,6 @@ from tests.worker.test_product_search import file
 from trendvn_worker.domain.product_search import match_identity, validate_input
 from trendvn_worker.domain.search_queries import explicit, query_plan
 from trendvn_worker.search.identify import identify
-from trendvn_worker.web.shop_callback import capture, page
-from trendvn_worker.web.shop_forms import save_app
 from trendvn_worker.tasks import Tasks, StepLog
 
 
@@ -95,54 +91,3 @@ class IdentityRecoveryTests(StoreCase):
         with self.s.connect() as db:
             self.assertEqual(db.execute("SELECT country FROM jobs WHERE id=?", (jid,)).fetchone()[0], "CN")
         self.assertEqual(self.s.search_media_ready(jid)["item"]["platform"], "douyin")
-
-
-class CallbackTests(StoreCase):
-    def pending(self, **overrides):
-        folder = self.s.root / "creator_authorizations"
-        folder.mkdir(exist_ok=True)
-        path = folder / "main.json"
-        data = dict(state="s" * 43, created=time.time(), username=self.s.account("main")["username"], status="pending")
-        data.update(overrides)
-        path.write_text(json.dumps(data))
-        path.chmod(0o600)
-        return path
-
-    def test_single_use_local_callback_and_secret_free_page(self):
-        path = self.pending()
-        app = SimpleNamespace(store=self.s)
-        query = {"state": ["s" * 43], "code": ["private-auth-code"]}
-        self.assertEqual(capture(app, query), "received")
-        self.assertEqual(json.loads(path.read_text())["code"], "private-auth-code")
-        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
-        with self.assertRaises(ValueError):
-            capture(app, query)
-        html = page("Đã nhận cấp quyền")
-        self.assertNotIn("private-auth-code", html)
-        self.assertIn("replaceState", html)
-
-    def test_expired_forged_wrong_identity_and_duplicate_codes_rejected(self):
-        app = SimpleNamespace(store=self.s)
-        good = {"state": ["s" * 43], "code": ["private"]}
-        for override, query in (
-            ({"created": time.time() - 301}, good),
-            ({"username": "someoneelse"}, good),
-            ({}, {"state": ["a" * 43], "code": ["private"]}),
-            ({}, {"state": ["s" * 43], "code": ["one", "two"]}),
-        ):
-            self.pending(**override)
-            with self.assertRaises(ValueError):
-                capture(app, query)
-
-    def test_denial_stores_no_code(self):
-        path = self.pending()
-        self.assertEqual(capture(SimpleNamespace(store=self.s), {"state": ["s" * 43], "error": ["access_denied"]}), "denied")
-        self.assertNotIn("code", json.loads(path.read_text()))
-
-    def test_save_app_opens_owner_authorization_without_manual_token(self):
-        app = SimpleNamespace(store=self.s, tasks=mock.Mock())
-        save_app(app, {"account": ["main"], "app_key": ["test-key"], "app_secret": ["test-secret"]})
-        app.tasks.start.assert_called_once_with("shop_authorize", "main")
-        path = self.s.root / "creator_credentials/main.json"
-        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
-        self.assertNotIn("access_token", json.loads(path.read_text()))

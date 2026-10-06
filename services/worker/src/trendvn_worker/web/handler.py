@@ -27,7 +27,7 @@ STALE_PAGE = (
 MAX_BODY = 2 * 1024 * 1024
 LOGIN_FORM_MAX = 4096
 # polled by the page or by Docker every few seconds: not worth a log line
-QUIET_PATHS = ("/health", "/fragment/", "/media/", "/favicon", "/shop-callback")
+QUIET_PATHS = ("/health", "/fragment/", "/media/", "/favicon")
 SOCKET_TIMEOUT = 30  # seconds a client may stall mid-request before its connection is dropped (slow-client protection)
 
 
@@ -102,23 +102,6 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
     def _get(self):
         url = urlsplit(self.path)
         path = url.path
-        if path == "/shop-callback":
-            if self.headers.get("Host", "") not in self.app.config.loopback_hosts or not self.local_ui() or self.wrong_peer():
-                return self.send(403, {"error": "Chỉ nhận cấp quyền tại máy này"})
-            from .shop_callback import capture, page
-
-            try:
-                status = capture(self.app, parse_qs(url.query))
-                message = (
-                    "Đã nhận cấp quyền. Hệ thống đang đối chiếu đúng tài khoản và quyền hoa hồng."
-                    if status == "received"
-                    else "Bạn chưa đồng ý cấp quyền. Có thể mở lại bước kết nối."
-                )
-                return self.send(200, page(message), "text/html; charset=utf-8")
-            except ValueError:
-                return self.send(
-                    400, page("Phiên cấp quyền không hợp lệ, hết hạn hoặc đã dùng. Hãy mở lại bước kết nối."), "text/html; charset=utf-8"
-                )
         if path == "/health":
             return self.send(200, {"ok": True, "project": "trendvn", "version": VERSION})
         if path in ("/", "/login") and self.wrong_peer():

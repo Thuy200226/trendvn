@@ -10,11 +10,9 @@ from unittest import mock
 
 from tests.support import StoreCase
 from trendvn_worker.domain.product_search import attachment, match_identity, public_url, validate_input
-from trendvn_worker.search.catalog import save_catalog, search_catalog
 from trendvn_worker.search.fetch import PublicHTTPS, VisibleHTML
 from trendvn_worker.search.identify import identify
-from trendvn_worker.web.search_forms import pair_product, submit
-from trendvn_worker.web.shop_forms import connect
+from trendvn_worker.web.search_forms import submit
 
 
 def file(name, raw):
@@ -131,22 +129,6 @@ class SelectionTests(StoreCase):
         self.s.search_update(sid, "done", identity={"name": "Samsung S24"}, results=results)
         return sid
 
-    def catalogue(self):
-        product = {
-            "product_id": "123456",
-            "title": "Samsung S24",
-            "url": "https://shop.tiktok.com/view/product/123456",
-            "commission": "10%",
-            "eligible": True,
-            "can_attach": True,
-            "in_showcase": True,
-        }
-        save_catalog(
-            self.s,
-            {"account": "main", "username": self.s.account("main")["username"], "source": "creator_authorized", "products": [product]},
-        )
-        return product
-
     def test_selection_requires_confirmation_and_is_idempotent(self):
         sid = self.search()
         with self.assertRaises(ValueError):
@@ -202,57 +184,11 @@ class SelectionTests(StoreCase):
             meta = json.loads(db.execute("SELECT meta FROM jobs WHERE id=?", (jid,)).fetchone()[0])
         self.assertEqual(meta["search_username"], self.s.account("main")["username"])
 
-    def test_catalogue_is_account_checked_and_has_bounded_age(self):
-        self.catalogue()
-        self.assertEqual(len(search_catalog(self.s, "main", {"query": "S24"})), 1)
-        with mock.patch("trendvn_worker.search.catalog.time.time", return_value=10**12), self.assertRaises(ValueError):
-            search_catalog(self.s, "main", {})
-        with self.s.transaction() as db:
-            db.execute("UPDATE accounts SET username='changed' WHERE id='main'")
-        with self.assertRaises(ValueError):
-            search_catalog(self.s, "main", {})
-
-    def test_cached_pair_survives_one_hour_but_agent_must_verify_before_post(self):
-        product = self.catalogue()
-        jid = self.s.search_select(self.search(), "1234567890", True)
-        with self.s.transaction() as db:
-            db.execute(
-                "UPDATE jobs SET state='ready',output_file='/d/a.mp4',product_binding=? WHERE id=?",
-                (json.dumps(dict(product, confirmed=True)), jid),
-            )
-        with mock.patch("trendvn_worker.search.catalog.time.time", return_value=10**12):
-            self.assertEqual(self.s.publish_peek(jid)["product"]["product_id"], product["product_id"])
-            with self.assertRaises(ValueError):
-                search_catalog(self.s, "main", {})
-
-    def test_pair_requires_original_result_and_exact_account_video(self):
-        product = self.catalogue()
-        jid = self.s.search_select(self.search(), "1234567890", True)
-        sid = self.s.search_create("main", {}, "products")
-        self.s.search_update(sid, "done", results=[product])
-        app = SimpleNamespace(store=self.s)
-        form = {"search": [sid], "job_id": [jid], "product_id": ["123456"], "confirmed": ["yes"]}
-        pair_product(app, form)
-        with self.s.connect() as db:
-            binding = json.loads(db.execute("SELECT product_binding FROM jobs WHERE id=?", (jid,)).fetchone()[0])
-        self.assertTrue(binding["confirmed"])
-        self.s.search_update(sid, "done", results=[])
-        with self.assertRaises(ValueError):
-            pair_product(app, form)
-
     def test_empty_reference_uses_existing_collect(self):
         tasks = mock.Mock()
         app = SimpleNamespace(store=self.s, tasks=tasks)
         self.assertTrue(submit(app, {"account": "main"})["default"])
         tasks.start.assert_called_once_with("collect")
-
-    def test_connection_secrets_are_restricted_and_not_in_return(self):
-        app = SimpleNamespace(store=self.s, tasks=mock.Mock())
-        result = connect(app, {"account": ["main"], "app_key": ["fake-key"], "app_secret": ["fake-secret"], "access_token": ["fake-token"]})
-        path = self.s.root / "creator_credentials/main.json"
-        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
-        self.assertNotIn("fake-token", str(result))
-        app.tasks.start.assert_called_once_with("shop_sync", "main")
 
 
 class SearchHTTPTests(StoreCase):

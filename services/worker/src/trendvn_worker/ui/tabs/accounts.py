@@ -64,7 +64,6 @@ def _card(view, account):
         '<input type="hidden" name="id" value="%(id)s">'
         '<div class="row"><h3>@%(user)s</h3><div class="facts">%(state)s%(login)s%(today)s</div></div>'
         '<p><a href="#search" data-search-account="%(id)s">Tìm video và sản phẩm cho tài khoản này →</a></p>'
-        '<button class="ghost" formaction="/account-login" formnovalidate>Mở cửa sổ đăng nhập TikTok</button>'
         '<p class="small muted">Nhận các chủ đề:</p>%(toggles)s%(hint)s'
         '<details class="fs"><summary>Tên gọi, bật/tắt và giới hạn riêng</summary><div class="fsbody">%(label)s%(enabled)s%(overrides)s</div></details>'
         '<div class="btns two"><button class="go">Lưu tài khoản</button>'

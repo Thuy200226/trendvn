@@ -29,7 +29,6 @@ def dashboard_html(app, flash=None, host=""):
             if j["search_account"] == search["account"]
             and j["state"] in ("search_selected", "queued", "ready", "awaiting_approval", "needs_review")
         ]
-    data["shop_callback_url"] = "http://localhost:%s/shop-callback" % app.config.public_port
     data["discovery_at"] = (store.settings().get("hb_discovery") or {}).get("at")
     # n8n lives on the same machine as this page: reuse the host the visitor used, swapping in n8n's port
     visitor_host = (host.rsplit(":", 1)[0] if host else "localhost") or "localhost"

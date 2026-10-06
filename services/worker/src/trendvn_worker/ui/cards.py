@@ -3,7 +3,6 @@
 import re
 
 from ..domain import topics
-from ..jsonsafe import loads
 from ..domain.accounts import account_flag
 from .components import chip, platform_badge, state_chip
 from .format import escape as E, headline, left_text, meta_of, num
@@ -55,14 +54,12 @@ def _destination_line(view, job):
     """Which topic the video is about and which accounts take it; says so when none does."""
     if job.get("search_account"):
         account = view.destination(None, job["search_account"])
-        product = loads(job.get("product_binding"), {})
-        basket = " · Giỏ hàng: " + product.get("title", "") + " (" + product.get("product_id", "") + ")" if product else ""
         text = (
             "Tài khoản đã chọn: @" + meta_of(job).get("search_username", account["username"])
             if account
             else "Tài khoản đã chọn đang tắt hoặc đã bị xóa; cần xử lý trước khi đăng"
         )
-        return '<div class="note small">%s</div>' % E(text + basket)
+        return '<div class="note small">%s</div>' % E(text)
     topic = job.get("topic")
     if len(view.d.get("accounts", [])) < 2 and not topic:
         return ""
