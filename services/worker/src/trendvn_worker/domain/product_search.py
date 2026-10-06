@@ -1,16 +1,13 @@
-"""Bounded search inputs and conservative product identity matching; no network or database access."""
+"""Bounded search inputs (text, files, links): validation only, no network or database access."""
 
 import base64
 import binascii
 import io
-import re
-import unicodedata
 import zipfile
 from pathlib import PurePath
-from urllib.parse import urlsplit
 from xml.etree import ElementTree
 
-from .search_queries import normalized
+from .product_links import classify
 
 MAX_FILE = 4 << 20
 MAX_TOTAL = 8 << 20
@@ -20,10 +17,7 @@ MIMES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".web
 
 
 def public_url(value):
-    if not isinstance(value, str) or len(value) > 2000 or re.search(r"[\s\\\x00-\x1f\x7f]", value):
-        raise ValueError("Đường dẫn không hợp lệ")
-    u = urlsplit(value)
-    if u.scheme != "https" or not u.hostname or u.username or u.password or u.port not in (None, 443):
+    if classify(value) is None:
         raise ValueError("Chỉ nhận đường dẫn HTTPS công khai")
     return value
 
@@ -90,41 +84,3 @@ def validate_input(payload):
     if sum(f["size"] for f in files) > MAX_TOTAL:
         raise ValueError("Tổng tệp tối đa 8 MiB")
     return {"text": text.strip(), "files": files}
-
-
-def tokens(text):
-    text = unicodedata.normalize("NFKD", normalized(text).replace("đ", "d"))
-    text = "".join(c for c in text if not unicodedata.combining(c))
-    return set(re.findall(r"[a-z0-9_]+|[\u3400-\u9fff]+", text))
-
-
-def match_identity(identity, title, product_id=""):
-    """Labels are evidence, never a probability. A model mismatch excludes a result even when most keywords overlap."""
-    expected = str(identity.get("product_id") or "")
-    if expected and product_id:
-        return {
-            "level": "id" if expected == product_id else "different",
-            "score": 100 if expected == product_id else 0,
-            "reason": "Cùng mã sản phẩm" if expected == product_id else "Khác mã sản phẩm",
-        }
-    wanted, seen = tokens(identity.get("name") or identity.get("query", "")), tokens(title)
-    model = tokens(identity.get("model", ""))
-    model |= {t for t in wanted if any(c.isdigit() for c in t)}
-    brand, variant = tokens(identity.get("brand", "")), tokens(identity.get("variant", ""))
-    if brand and not brand <= seen:
-        return {"level": "different", "score": 0, "reason": "Chưa khớp thương hiệu đã xác định"}
-    if variant and not variant <= seen:
-        return {"level": "different", "score": 0, "reason": "Chưa khớp biến thể đã xác định"}
-    extras = {"ultra", "pro", "max", "plus", "mini", "lite", "fe", "air", "turbo", "gt", "v2"}
-    version = re.findall(r"\bv\s*(\d+)\b", normalized(title))
-    wanted_version = re.findall(r"\bv\s*(\d+)\b", normalized(identity.get("name") or identity.get("query", "")))
-    if model and ((seen & extras) - wanted - variant or set(version) - set(wanted_version)):
-        return {"level": "different", "score": 0, "reason": "Có biến thể khác với sản phẩm yêu cầu"}
-    if model and not model <= seen:
-        return {"level": "different", "score": 0, "reason": "Chưa khớp model; không coi là đúng sản phẩm"}
-    if brand and model:
-        wanted = brand | model | variant
-    if not wanted:
-        return {"level": "unverified", "score": 0, "reason": "Chưa có thông tin đối chiếu"}
-    score = round(100 * len(wanted & seen) / len(wanted))
-    return {"level": "candidate", "score": score, "reason": "Khớp %d%% từ khóa; cần xem video và biến thể" % score}

@@ -3,7 +3,9 @@
 import re
 
 BRAND_ALIASES = {"迈从": "mchose", "小米": "xiaomi", "三星": "samsung", "苹果": "apple", "雷蛇": "razer", "罗技": "logitech"}
-# Official MCHOSE manual: file.maicong.cn/uploads/25/02/MCHOSE%2020250211.pdf
+# The word Chinese shops use for a product line, when it is more specific than the category: (brand, model pattern, Chinese category).
+# Adding a product line is adding a row. MCHOSE ACE68: official manual file.maicong.cn/uploads/25/02/MCHOSE%2020250211.pdf
+LINE_HINTS = (("mchose", r"ace\s*68", "磁轴键盘"),)
 BRAND_ZH = {value: key for key, value in BRAND_ALIASES.items()}
 CATEGORIES = (
     (r"\bbàn\s+phím\b|\bkeyboard\b|键盘", "keyboard", "键盘"),
@@ -66,9 +68,9 @@ def query_plan(identity):
     if not zh:
         translated_brand = BRAND_ZH.get(brand, "")
         model = identity.get("model", "")
-        category = identity.get("category_zh", "")
-        if brand == "mchose" and re.search(r"ace\s*68", model, re.I):
-            category = "磁轴键盘"
+        category = next(
+            (zh for b, pattern, zh in LINE_HINTS if b == brand and re.search(pattern, model, re.I)), identity.get("category_zh", "")
+        )
         zh = (
             " ".join(filter(None, (translated_brand or identity.get("brand", ""), model, identity.get("variant", ""), category)))
             if model and translated_brand
