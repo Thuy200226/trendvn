@@ -57,4 +57,4 @@ Toàn bộ lệnh: `docs/COMMANDS.md`. Tiến độ và nhật ký rà soát t�
 - Nhiều tài khoản: mỗi tài khoản một hồ sơ Chrome (`publisher` cho `main`, `publisher-<mã>` cho còn lại); phải kiểm tên đăng nhập thật trước khi đăng; tài khoản chưa đăng nhập bị bỏ qua và không tính là lỗi của video.
 
 ## Chưa kiểm chứng được (cập nhật khi thay đổi)
-Gemini thật báo vị trí phụ đề cứng (API video hay quá tải), nguồn Mỹ (cần IP Mỹ), đăng thật lên nhiều tài khoản, macOS thật, chạy dài ngày theo lịch thật.
+Gemini thật báo vị trí phụ đề cứng (API video hay quá tải), nguồn Mỹ (cần IP Mỹ), đăng thật lên nhiều tài khoản, macOS thật, chạy dài ngày theo lịch thật. Link chia sẻ thật từ ứng dụng TikTok (dạng tham số chỉ người chia sẻ), tìm video thật trên TikTok/Douyin cho khung chat tìm sản phẩm (hay gặp xác minh).
