@@ -5,11 +5,10 @@ import re
 from urllib.parse import quote
 
 from .browser import chrome
-from .channels import SignedOut, Wall, report
+from .channels import SignedOut, Wall, report, window_ok
 from .collector.download import download
 from .collector.sources.tiktok import parse_tiktok
 from .config import RUNTIME
-from .publisher.constants import wants_window
 from .publisher.profile import logged_in, profile_name, signed_in_as
 from .search_capture import Capture, wait_for_results
 from .worker_client import worker, worker_get
@@ -47,7 +46,9 @@ def _verify(ctx, account):
         )
     who = signed_in_as(ctx)
     if not who or who.casefold() != account["username"].casefold():
-        raise ValueError("Không xác minh được phiên tìm kiếm đúng @" + account["username"])
+        raise SignedOut(
+            "Phiên TikTok trong hồ sơ này không phải @%s (hoặc không đọc được). Bấm Đăng nhập TikTok đúng tài khoản." % account["username"]
+        )
 
 
 def _blocked(page):
@@ -90,7 +91,7 @@ def _tiktok_search(payload, human=False):
         raise ValueError("Từ khóa tìm kiếm không hợp lệ")
     direct = [link for link in payload.get("links", [])[:3] if isinstance(link, str) and VIDEO_URL.fullmatch(link)]
     capture = Capture(("/api/search/", "/api/item/detail/"), video_items, direct)
-    with chrome(profile_name(account["id"]), locale="vi-VN", headless=not (human or wants_window())) as ctx:
+    with chrome(profile_name(account["id"]), locale="vi-VN", headless=not (human or window_ok())) as ctx:
         if not human:
             _verify(ctx, account)
         for url in direct or ["https://www.tiktok.com/search/video?q=" + quote(query)]:
@@ -147,13 +148,14 @@ def search(payload, human=False):
         try:
             result = _ask(platform, account, payload, query, human)
         except Exception as error:  # one source failing in any way (a timeout, a page that changed) must not lose what the other found
-            if getattr(error, "state", None):  # a wall or a signed-out session: remember it so the dashboard can say so and offer sign-in
+            if isinstance(error, (SignedOut, Wall)):  # remember it so the dashboard can say so and offer the sign-in
                 report(account["id"], platform, error.state)
             notes.append("%s: %s" % (platform, str(error)[:300]) if len(platforms) > 1 else str(error)[:300])
             continue
         items.extend(result["items"])
         notes.append(result.get("note", ""))
-        report(account["id"], platform, "ok", account["username"] if platform == "tiktok" else "")
+        if result.get("proves_session", True):  # a video found by its own address says nothing about being signed in
+            report(account["id"], platform, "ok", account["username"] if platform == "tiktok" else "")
     if not items:
         raise ValueError(" · ".join(notes))
     return {"items": items[:40], "note": " · ".join(notes)[:1000]}

@@ -116,6 +116,9 @@ class HealthMixin:
         account = self.account(account_id)
         if not account:
             raise ValueError("Không có tài khoản này")
+        known = self.channel_states().get(account_id, {}).get("tiktok")
+        if not known or (known["state"] == "ok") != bool(ok):  # the search channels' view of the same fact
+            self.channel_write(account_id, "tiktok", "ok" if ok else "out", account["username"] if ok else "")
         with self.transaction() as db:
             row = db.execute("SELECT value FROM settings WHERE key='hb_publisher'").fetchone()
             value = json.loads(row["value"]) if row else {"at": time.time(), "ok": True, "detail": None}

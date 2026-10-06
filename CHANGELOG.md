@@ -4,7 +4,7 @@
 
 **Đăng nhập Douyin và TikTok để tìm kiếm.** Đo trên máy thật: khách không tìm kiếm được ở cả hai nguồn (TikTok trả phản hồi rỗng; Douyin chuyển Chrome ẩn tới trang xác minh ngay ở trang chủ). Cột bên cạnh khung chat có mục **Kênh tìm kiếm**: tình trạng đăng nhập của từng tài khoản trên từng kênh, nút **Đăng nhập** (mở cửa sổ Chrome thật cho chủ tự đăng nhập, tối đa 10 phút) và **Kiểm tra** (đọc cookie, không mở trang); thẻ lỗi của lần tìm cũng có nút đăng nhập đúng kênh. Tình trạng được agent ghi lại sau mỗi lần đăng nhập, kiểm tra và tìm kiếm. Khi máy có màn hình, tìm kiếm chạy bằng cửa sổ thật như đăng bài (Douyin từ chối Chrome ẩn); trang xác minh trắng của Douyin giờ được nhận ra thay vì báo "chưa trả video".
 
-**Link đã lưu và lịch sử.** Danh sách link hoa hồng đã lưu (chép, xóa từng link) nằm ở cột bên cạnh, tách khỏi lịch sử chat. **Xóa lịch sử tìm kiếm** xóa tin đã xong, giữ tin đang chạy, video đã chọn, link đã lưu và tình trạng đăng nhập; tin đã xong quá 30 ngày tự bị dọn. Xóa tài khoản xóa luôn tình trạng đăng nhập và link đã lưu của nó (migration 8).
+**Link đã lưu và lịch sử.** Danh sách link hoa hồng đã lưu (chép, xóa từng link) nằm ở cột bên cạnh, tách khỏi lịch sử chat. **Xóa lịch sử tìm kiếm** xóa tin đã xong, giữ tin đang chạy, video đã chọn, link đã lưu và tình trạng đăng nhập; tin đã xong quá 30 ngày tự bị dọn. Xóa tài khoản xóa luôn tình trạng đăng nhập và link đã lưu của nó (bảng `channel_logins` do migration 8 tạo).
 
 **Bố cục.** Tab Tìm hai cột trên màn hình rộng (khung chat + cột bên cạnh), cột bên cạnh nằm dưới khung nhập trên điện thoại. Thanh điều hướng điện thoại dàn đều khoảng cách giữa bảy mục thay vì chia theo độ dài nhãn, nhãn đầu và cuối không còn sát mép.
 

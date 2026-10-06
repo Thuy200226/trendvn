@@ -74,20 +74,30 @@ class ChatMixin:
                 return dict(row) | {"body": body}
         return None
 
+    def chat_delete(self, mid):
+        """Drop one message (an answer that never started)."""
+        with self.transaction() as db:
+            db.execute("DELETE FROM chat WHERE id=?", (mid,))
+
     def chat_clear(self, before=None):
         """Forget the finished part of the history (only what is older than `before`, a Unix time, when given); returns how many messages
-        went. What is still being worked on stays, and so does the answer a video was picked from while that video waits to be downloaded
-        (the download needs it). Picked or downloaded videos, saved links and sign-in records are not history and are never touched."""
+        went. What is still being worked on stays, and so does what it needs: the answer a waiting video was picked from, and the product
+        a running search was started for (a failed search offers to try again on it). Picked or downloaded videos, saved links and sign-in
+        records are not history and are never touched."""
         with self.transaction() as db:
-            waiting = {
+            keep = {
                 int(r[0])
                 for r in db.execute("SELECT search_id FROM jobs WHERE search_id IS NOT NULL AND state IN ('search_selected','candidate')")
-                if str(r[0]).isdigit()
+                if str(r[0]).isascii() and str(r[0]).isdigit()
             }
+            for row in db.execute("SELECT body FROM chat WHERE state IN ('pending','running')"):
+                product = loads(row["body"], {}).get("product")
+                if isinstance(product, int) and not isinstance(product, bool):
+                    keep.add(product)
             rows = db.execute(
                 "SELECT id FROM chat WHERE state IN ('done','error') AND created<?", (float("inf") if before is None else before,)
             )
-            ids = [r[0] for r in rows if r[0] not in waiting]
+            ids = [r[0] for r in rows if r[0] not in keep]
             db.executemany("DELETE FROM chat WHERE id=?", [(i,) for i in ids])
         return len(ids)
 

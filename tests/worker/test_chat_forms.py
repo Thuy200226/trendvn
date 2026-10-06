@@ -123,11 +123,19 @@ class ChannelActionTests(FormCase):
         self.assertEqual(self.s.chat_thread(), [])
         self.tasks.start.assert_not_called()
 
-    def test_a_window_that_cannot_open_leaves_an_error_answer_not_a_hanging_one(self):
+    def test_a_click_that_cannot_start_leaves_no_card_behind_only_the_refusal(self):
+        """A sign-in or a search started by a button has no message of the owner's to hang an error on: twelve refused clicks must not
+        leave twelve alerts in the thread."""
         self.tasks.start.side_effect = TaskBusy("Đang có việc dùng trình duyệt")
-        with self.assertRaises(ValueError):
-            chat_forms.act(self.app, {"action": "login", "channel": "douyin", "account": "main"})
-        self.assertEqual(self.s.chat_thread()[-1]["state"], "error")
+        pid = self.product()
+        for payload in (
+            {"action": "login", "channel": "douyin", "account": "main"},
+            {"action": "check", "channel": "tiktok", "account": "main"},
+            {"action": "find", "id": pid, "source": "tiktok"},
+        ):
+            with self.subTest(payload=payload), self.assertRaises(ValueError):
+                chat_forms.act(self.app, payload)
+        self.assertEqual([m["kind"] for m in self.s.chat_thread()], ["product"])
 
 
 class HistoryActionTests(FormCase):

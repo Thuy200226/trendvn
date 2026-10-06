@@ -172,6 +172,23 @@ class SearchRoutingTests(StoreCase):
                 self.run_search({"account": "main", "source": "tiktok", "query": "x"}, tiktok={"side_effect": TimeoutError("slow")})
         report.assert_not_called()  # a timeout says nothing about the sign-in
 
+    def test_a_source_that_says_it_proves_nothing_about_the_session_is_not_reported_as_ready(self):
+        with mock.patch("trendvn_agent.search.report") as report:
+            self.run_search(
+                {"account": "main", "source": "douyin", "query": "x"},
+                douyin={"return_value": {"items": [video("7", platform="douyin")], "note": "", "proves_session": False}},
+            )
+        report.assert_not_called()
+
+    def test_an_exception_that_merely_has_a_state_attribute_is_not_taken_for_a_session_state(self):
+        class Odd(ValueError):
+            state = "banana"
+
+        with mock.patch("trendvn_agent.search.report") as report:
+            with self.assertRaises(ValueError):
+                self.run_search({"account": "main", "source": "tiktok", "query": "x"}, tiktok={"side_effect": Odd("x")})
+        report.assert_not_called()
+
     def test_when_every_source_fails_the_reasons_are_the_error(self):
         with self.assertRaises(ValueError) as caught:
             self.run_search(
@@ -196,7 +213,7 @@ class SearchRoutingTests(StoreCase):
 
 
 class DouyinWallTests(StoreCase):
-    """What a visitor who is not signed in meets on Douyin (measured 2026-10-06): a blank page titled '验证码中间页', no widget at all."""
+    """What a visitor Douyin does not trust meets (measured 2026-10-06): a blank page titled '验证码中间页', with no widget on it at all."""
 
     def page(self, title, widget=False):
         page = mock.Mock()
@@ -206,18 +223,31 @@ class DouyinWallTests(StoreCase):
         return page
 
     def test_the_blank_verification_page_is_a_wall_even_with_no_widget_on_it(self):
+        from trendvn_agent.channels import Wall
         from trendvn_agent.search_douyin import blocked, check
 
         self.assertTrue(blocked(self.page("验证码中间页")))
-        with self.assertRaises(ValueError) as caught:
+        self.assertTrue(blocked(self.page("  验证码中间页 ")))
+        with self.assertRaises(Wall) as caught:
             check(self.page("验证码中间页"))
         self.assertIn("xác minh", str(caught.exception))
 
-    def test_a_widget_is_a_wall_and_a_normal_results_page_is_not(self):
+    def test_a_video_whose_title_merely_mentions_verification_is_not_a_wall(self):
+        from trendvn_agent.search_douyin import blocked
+
+        for title in (
+            "Verify your phone - 抖音",
+            "如何获取验证码 - 抖音",
+            "Captcha solver demo",
+            "验证码中间页教程 - 抖音",
+            "迈从 ACE68 - 抖音搜索",
+        ):
+            self.assertFalse(blocked(self.page(title)), title)
+
+    def test_a_widget_is_a_wall_whatever_the_title(self):
         from trendvn_agent.search_douyin import blocked
 
         self.assertTrue(blocked(self.page("抖音搜索", widget=True)))
-        self.assertFalse(blocked(self.page("迈从 ACE68 - 抖音搜索")))
 
     def test_a_page_that_is_changing_under_us_is_asked_again_not_a_crash(self):
         from trendvn_agent.search_douyin import blocked
@@ -225,6 +255,40 @@ class DouyinWallTests(StoreCase):
         page = self.page("x")
         page.title.side_effect = RuntimeError("Execution context was destroyed")
         self.assertFalse(blocked(page))
+
+    def test_a_keyword_search_that_found_videos_proves_a_session_and_a_video_opened_by_its_address_does_not(self):
+        from trendvn_agent import search_douyin
+
+        link = "https://www.douyin.com/video/7234567890123456789"
+        item = {"source_id": "7234567890123456789", "url": link, "platform": "douyin"}
+
+        def run(links, cookies):
+            ctx = mock.Mock()
+            ctx.cookies.return_value = cookies
+            ctx.new_page.return_value = mock.Mock(is_closed=mock.Mock(return_value=False))
+
+            def wait(page, capture, human, check, rounds):
+                capture.take([item])
+
+            from contextlib import contextmanager
+
+            @contextmanager
+            def launched(*args, **kwargs):
+                yield ctx
+
+            with (
+                mock.patch.object(search_douyin, "chrome", launched),
+                mock.patch.object(search_douyin, "wait_for_results", wait),
+                mock.patch.object(search_douyin, "window_ok", return_value=True),
+            ):
+                return search_douyin.search({"id": "main"}, "x", links)
+
+        guest, member = [{"name": "ttwid", "domain": ".douyin.com", "value": "x"}], [
+            {"name": "sessionid", "domain": ".douyin.com", "value": "x"}
+        ]
+        self.assertTrue(run([], guest)["proves_session"])  # got past the wall with a keyword
+        self.assertFalse(run([link], guest)["proves_session"])  # a public video opens for anyone
+        self.assertTrue(run([link], member)["proves_session"])
 
 
 class TikTokSearchTests(StoreCase):
@@ -242,7 +306,7 @@ class TikTokSearchTests(StoreCase):
             mock.patch("trendvn_agent.search._account", return_value=self.ACCOUNT),
             mock.patch("trendvn_agent.search._verify", side_effect=lambda ctx, account: events.append(("verify",))),
             mock.patch("trendvn_agent.search._read_page", side_effect=read),
-            mock.patch("trendvn_agent.search.wants_window", return_value=screen),
+            mock.patch("trendvn_agent.search.window_ok", return_value=screen),
             mock.patch("trendvn_agent.search.chrome") as chrome,
         ):
             result = _tiktok_search({"account": "main", "query": "mchose ace68", "links": list(links)}, human)
@@ -266,6 +330,18 @@ class TikTokSearchTests(StoreCase):
         self.assertEqual(chrome.call_args.kwargs["headless"], False)
         with self.assertRaises(ValueError):
             self.run_search(True, found=False)
+
+    def test_a_profile_signed_in_as_someone_else_is_a_signed_out_state_naming_the_account_wanted(self):
+        from trendvn_agent.channels import SignedOut
+        from trendvn_agent.search import _verify
+
+        with (
+            mock.patch("trendvn_agent.search.logged_in", return_value=True),
+            mock.patch("trendvn_agent.search.signed_in_as", return_value="somebody_else"),
+            self.assertRaises(SignedOut) as caught,
+        ):
+            _verify(mock.Mock(), {"id": "main", "username": "creator"})
+        self.assertIn("@creator", str(caught.exception))
 
     def test_a_signed_out_profile_is_told_how_to_sign_in_for_that_very_account(self):
         from trendvn_agent.search import _verify

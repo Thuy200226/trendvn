@@ -1,9 +1,9 @@
 """What the product chat accepts from the page: a message (words, links, photos, documents) and an action on one of the answers.
 Both arrive as JSON from the page's script and are checked here; the handler has already checked origin and CSRF."""
 
+from ..domain.channels import CHANNELS
 from ..domain.product_links import product_link
 from ..domain.product_search import validate_input
-from ..store.channels import CHANNELS
 
 SOURCES = ("auto", "tiktok", "douyin")
 SAID_LIMIT = 1000  # of the owner's words kept in the log; the full text only goes to the job that reads it
@@ -24,12 +24,17 @@ def _said(reference, link):
     }  # fmt: skip
 
 
-def _start(app, mid, kind, key=None, reference=None):
-    """Start the job behind an answer; when it cannot start the answer says so instead of staying 'running'."""
+def _start(app, mid, kind, key=None, reference=None, discard=False):
+    """Start the job behind an answer. When it cannot start the answer says so instead of staying 'running'; an answer that nobody asked
+    for in words (a sign-in or a search started by a button) is dropped instead, the refusal reaching the owner as the click's own message.
+    """
     try:
         app.tasks.start(kind, str(key or mid), reference)
-    except Exception as error:  # a refusal or anything else: the answer says so instead of staying 'running' and holding a place
-        app.store.chat_set(mid, "error", error=str(error)[:300] or "Không bắt đầu được")
+    except Exception as error:
+        if discard:
+            app.store.chat_delete(mid)
+        else:
+            app.store.chat_set(mid, "error", error=str(error)[:300] or "Không bắt đầu được")
         raise
     return {"id": mid}
 
@@ -63,7 +68,7 @@ def find(app, payload):
         "account_username": app.store.account(account)["username"], "results": [], "note": "",
     }  # fmt: skip
     mid = app.store.chat_add("bot", "videos", body, state="running", account=account)
-    return _start(app, mid, "search_human" if human else "search")
+    return _start(app, mid, "search_human" if human else "search", discard=True)
 
 
 def pick(app, payload):
@@ -104,7 +109,7 @@ def _sign_in(app, payload, kind):
         "mode": "check" if kind == "channel_check" else "login",
     }
     mid = app.store.chat_add("bot", "login", body, state="running", account=account)
-    return _start(app, mid, kind)
+    return _start(app, mid, kind, discard=True)
 
 
 def login(app, payload):

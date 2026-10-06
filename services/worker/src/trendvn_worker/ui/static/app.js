@@ -58,7 +58,7 @@
           if(near)toBottom();
         }
         t.dataset.busy=fresh.dataset.busy;
-        if(side&&freshSide&&freshSide.innerHTML!==side.innerHTML)side.innerHTML=freshSide.innerHTML;
+        if(side&&freshSide&&freshSide.innerHTML!==side.innerHTML&&!side.contains(document.activeElement))side.innerHTML=freshSide.innerHTML;  // never under a focused button
       }).catch(function(){});
     };
     setInterval(function(){var t=thread();if(t&&t.dataset.busy==='1')refresh();},2500);
@@ -90,7 +90,7 @@
         payload.confirmed=true;payload.source_id=b.dataset.sourceId;payload.platform=b.dataset.platform;
       }
       b.disabled=true;say('Đang gửi…');
-      post('/chat/act',payload).then(function(){say('');return refresh();}).catch(function(error){say(error.message);b.disabled=false;});
+      post('/chat/act',payload).then(function(){say('');return refresh();}).catch(function(error){say(error.message);}).then(function(){b.disabled=false;});
     });
   }
   if(chat&&form){

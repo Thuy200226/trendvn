@@ -367,8 +367,48 @@ class ClearHistoryTests(StoreCase):
         self.assertEqual({m["id"] for m in self.s.chat_thread()}, {running, recent})
         self.assertIsNotNone(self.s.commission_get("main", CommissionTests.FOUND["product_id"]))
 
+    def test_the_product_a_running_search_was_started_for_is_kept_so_its_retry_still_works(self):
+        product = self.s.chat_add("bot", "product", {"identity": {"name": "S24"}}, account="main")
+        other = self.s.chat_add("bot", "product", {"identity": {"name": "other"}}, account="main")
+        running = self.s.chat_add("bot", "videos", {"product": product}, state="running", account="main")
+        self.assertEqual(self.s.chat_clear(), 1)
+        self.assertEqual({m["id"] for m in self.s.chat_thread()}, {product, running})
+        self.assertNotIn(other, {m["id"] for m in self.s.chat_thread()})
+
     def test_clearing_an_empty_history_is_fine(self):
         self.assertEqual(self.s.chat_clear(), 0)
+
+
+class TikTokSignInIsOneFactTests(StoreCase):
+    """The Accounts tab's 'đã đăng nhập TikTok' and the search channel's TikTok row are the same fact, whichever side learns it."""
+
+    def accounts_view(self):
+        return {a["id"]: a["logged_in"] for a in self.s.status()["accounts"]}
+
+    def test_what_the_search_channel_learns_reaches_the_accounts_tab(self):
+        self.s.channel_report("main", "tiktok", "out")
+        self.assertIs(self.accounts_view()["main"], False)
+        self.s.channel_report("main", "tiktok", "ok", who="creator")
+        self.assertIs(self.accounts_view()["main"], True)
+
+    def test_what_the_publisher_learns_reaches_the_search_channel(self):
+        self.s.set_account_login("main", True)
+        self.assertEqual(self.s.channel_states()["main"]["tiktok"]["state"], "ok")
+        self.s.set_account_login("main", False)
+        self.assertEqual(self.s.channel_states()["main"]["tiktok"]["state"], "out")
+
+    def test_a_verification_wall_on_tiktok_is_not_a_signed_out_account_and_douyin_never_touches_the_accounts_tab(self):
+        self.s.set_account_login("main", True)
+        self.s.channel_report("main", "tiktok", "wall")
+        self.assertIs(self.accounts_view()["main"], True)
+        self.s.channel_report("main", "douyin", "out")
+        self.assertIs(self.accounts_view()["main"], True)
+
+    def test_the_schedules_repeated_report_of_the_same_state_does_not_rewrite_the_record(self):
+        self.s.set_account_login("main", True)
+        first = self.s.channel_states()["main"]["tiktok"]["at"]
+        self.s.set_account_login("main", True)
+        self.assertEqual(self.s.channel_states()["main"]["tiktok"]["at"], first)
 
 
 class SavedLinkListTests(StoreCase):

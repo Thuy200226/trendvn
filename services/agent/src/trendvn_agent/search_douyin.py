@@ -4,8 +4,7 @@ import re
 from urllib.parse import quote
 
 from .browser import chrome
-from .channels import Wall
-from .publisher.constants import wants_window
+from .channels import Wall, signed_in, window_ok
 from .collector.sources.douyin import parse_douyin
 from .search_capture import Capture, wait_for_results
 
@@ -20,20 +19,18 @@ def video_items(payload):
     return [dict(i, platform="douyin") for i in parse_douyin({"aweme_list": awemes}) if VIDEO.fullmatch(i["url"])]
 
 
-CAPTCHA_TITLE = (
-    "验证码",
-    "captcha",
-    "verify",
-)  # Douyin's own wall is a blank page titled "验证码中间页" ("verification code interstitial")
+WALL_TITLE = (
+    "验证码中间页"  # Douyin's blank interstitial ("verification code intermediate page"): its whole title, never a piece of a video's
+)
 
 
 def blocked(page):
-    """A verification wall: its widget on the page, or the blank interstitial page Douyin serves a visitor who is not signed in."""
+    """A verification wall: the blank interstitial page Douyin serves a visitor it does not trust (no widget on it at all), or the widget."""
     try:
-        title = (page.title() or "").lower()
+        title = (page.title() or "").strip()
     except Exception:  # the page is navigating: ask again on the next round
         title = ""
-    if any(word in title for word in CAPTCHA_TITLE):
+    if title == WALL_TITLE:
         return True
     nodes = page.locator('[id*="captcha"], [class*="captcha"], [class*="verify-wrap"]')
     return any(nodes.nth(i).is_visible() for i in range(nodes.count()))
@@ -59,7 +56,7 @@ def search(account, query, links=(), human=False):
     urls = direct or ["https://www.douyin.com/search/" + quote(query) + "?type=video"]
     capture = Capture(("/search/", "/aweme/detail/"), payload_videos, direct)
     # Douyin turns a hidden (headless) Chrome away even from its home page (measured 2026-10-06): with a screen it is searched in a window
-    with chrome("search-cn-" + account["id"], locale="zh-CN", region="CN", headless=not (human or wants_window())) as ctx:
+    with chrome("search-cn-" + account["id"], locale="zh-CN", region="CN", headless=not (human or window_ok())) as ctx:
         for url in urls:
             page = ctx.new_page()
             page.on("response", capture.on_response)
@@ -69,8 +66,14 @@ def search(account, query, links=(), human=False):
             finally:
                 if not page.is_closed():
                     page.close()
+        signed = signed_in("douyin", ctx.cookies())
     if not capture.seen:
         raise ValueError(
             "Douyin chưa trả video. Có thể cần đăng nhập/xác minh hoặc không có kết quả; không tự thay bằng video khác sản phẩm."
         )
-    return {"items": list(capture.seen.values())[:20], "note": "Đã tìm Douyin bằng từ khóa tiếng Trung; cần xem đúng model và biến thể."}
+    return {
+        "items": list(capture.seen.values())[:20],
+        "note": "Đã tìm Douyin bằng từ khóa tiếng Trung; cần xem đúng model và biến thể.",
+        "proves_session": signed
+        or not direct,  # a keyword search that returned videos got past the wall; a video opened by its address proves nothing
+    }

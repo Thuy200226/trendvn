@@ -7,7 +7,7 @@ from .identify import from_page, identify, video_identity
 
 SEARCH_TIMEOUT = 180
 HUMAN_TIMEOUT = 360  # a window where the owner solves the site's own check by hand
-SIGN_IN_TIMEOUT = 11 * 60  # the agent waits up to ten minutes for the owner to sign in
+SIGN_IN_TIMEOUT = 13 * 60  # the agent waits up to ten minutes for the owner to sign in, then reads the profile back (a minute or two)
 CHECK_TIMEOUT = 90  # reading a profile's cookies
 
 
@@ -68,7 +68,7 @@ def sign_in(store, mid, agent, check=False):
         result = agent("/api/channel/check", payload, CHECK_TIMEOUT)
         ok = bool(result.get("logged_in"))
         store.chat_set(mid, "done", ok=ok, who="")
-        return "Đã đăng nhập" if ok else "Chưa đăng nhập"
+        return "Hồ sơ có phiên đăng nhập" if ok else "Hồ sơ chưa có phiên đăng nhập"
     result = agent("/api/channel/login", payload, SIGN_IN_TIMEOUT)
     if not result.get("ok"):
         raise ValueError(result.get("reason") or "Chưa đăng nhập được")

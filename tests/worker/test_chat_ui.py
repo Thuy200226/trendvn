@@ -268,6 +268,18 @@ class LoginCardTests(unittest.TestCase):
         self.assertIn("Chưa thấy đăng nhập Douyin", failed)
         self.assertIn('data-chat-act="login" data-channel="douyin" data-account="main"', failed)
 
+    def test_a_cookie_check_does_not_claim_more_than_it_knows(self):
+        html = render(self.login("done", mode="check", ok=True))
+        self.assertIn("Hồ sơ có phiên đăng nhập Douyin", html)
+        self.assertIn("Chưa kiểm đúng tài khoản", html)
+        self.assertNotIn("✓ Đã đăng nhập", html)
+        self.assertIn("Đã đăng nhập: tìm kiếm trên Douyin dùng được", render(self.login("done", ok=True)))  # a real sign-in does
+
+    def test_a_failed_check_is_titled_a_check_not_a_sign_in(self):
+        html = render(self.login("error", mode="check", error="Agent bận"))
+        self.assertIn("<h4>Kiểm tra Douyin", html)
+        self.assertNotIn("<h4>Đăng nhập Douyin", html)
+
     def test_a_check_that_found_nobody_signed_in_offers_the_window(self):
         html = render(self.login("done", mode="check", ok=False))
         self.assertIn("Chưa đăng nhập", html)

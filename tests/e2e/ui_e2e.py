@@ -832,6 +832,11 @@ def main():
                 "History: clearing empties the thread but keeps the picked video and the sign-in states",
                 kept and kept[0] == "queued" and "Sẵn sàng" in pg.inner_text("#chat-side"),
             )
+            pg.wait_for_timeout(500)
+            check(
+                "History: the clear button works again after it was used",
+                not pg.locator('#chat-side button[data-chat-act="clear"]').is_disabled(),
+            )
 
             # files stay in memory, are sent as content, and can be removed
             captured = []

@@ -3,6 +3,7 @@ is, which videos exist for it in their account, whether a pasted share link is t
 
 import time
 
+from ...domain.channels import NAMES as CHANNEL_NAMES
 from ..components import chip, select
 from ..format import ago, escape as E
 
@@ -16,7 +17,6 @@ VERDICTS = {
     "different": ("Sản phẩm khác", "bad"),
     "invalid": ("Không hợp lệ", "bad"),
 }
-CHANNEL_NAMES = {"tiktok": "TikTok", "douyin": "Douyin"}
 STATE_CHIPS = {"ok": ("Sẵn sàng", "good"), "out": ("Chưa đăng nhập", "bad"), "wall": ("Đòi xác minh", "warn"), None: ("Chưa kiểm", "mute")}
 EMPTY = {"messages": [], "picked": {}, "accounts": {}, "roster": [], "channels": {}, "saved": {}}
 CONFIRM = {
@@ -201,21 +201,27 @@ def link_card(message):
 def login_card(message):
     body = message["body"]
     name, who = CHANNEL_NAMES.get(body.get("channel"), "?"), "@" + body.get("account_username", "?")
+    checking = body.get("mode") == "check"
+    title = "%s %s · %s" % ("Kiểm tra" if checking else "Đăng nhập", name, who)
     again = _button("Đăng nhập " + name, "login", "go", channel=body.get("channel"), account=message["account"])
     if _busy(message):
-        if body.get("mode") == "check":
-            return "<h4>Kiểm tra %s · %s</h4>%s" % (E(name), E(who), _working("Đang đọc phiên đã lưu…"))
-        return '<h4>Đăng nhập %s · %s</h4>%s<p class="small muted">%s</p>' % (
-            E(name),
-            E(who),
+        if checking:
+            return "<h4>%s</h4>%s" % (E(title), _working("Đang đọc phiên đã lưu…"))
+        return '<h4>%s</h4>%s<p class="small muted">%s</p>' % (
+            E(title),
             _working("Đã mở cửa sổ Chrome trên máy chạy TrendVN (không phải trình duyệt bạn đang xem). Đăng nhập trong cửa sổ đó."),
             "Quét mã QR hoặc dùng số điện thoại như bình thường, tối đa 10 phút; cửa sổ tự đóng khi xong. Mình không nhập mật khẩu thay bạn.",
         )
     if message["state"] == "error":
-        return '<h4>Đăng nhập %s · %s</h4>%s<div class="btns">%s</div>' % (E(name), E(who), _failed(message), again)
+        return '<h4>%s</h4>%s<div class="btns">%s</div>' % (E(title), _failed(message), again)
+    if body.get("ok") and checking:  # a check reads cookies: it cannot tell whose session it is, and says so
+        return '<h4>%s</h4><p class="note">Hồ sơ có phiên đăng nhập %s. Chưa kiểm đúng tài khoản: lần tìm kiếm sẽ kiểm.</p>' % (
+            E(title),
+            E(name),
+        )
     if body.get("ok"):
-        return '<h4>%s · %s</h4><p class="note">✓ Đã đăng nhập: tìm kiếm trên %s dùng được.</p>' % (E(name), E(who), E(name))
-    return '<h4>%s · %s</h4><p class="note warn">Chưa đăng nhập.</p><div class="btns">%s</div>' % (E(name), E(who), again)
+        return '<h4>%s</h4><p class="note">✓ Đã đăng nhập: tìm kiếm trên %s dùng được.</p>' % (E(title), E(name))
+    return '<h4>%s</h4><p class="note warn">Chưa đăng nhập.</p><div class="btns">%s</div>' % (E(title), again)
 
 
 def bot_bubble(message, data):
