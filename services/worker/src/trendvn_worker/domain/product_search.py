@@ -7,19 +7,11 @@ import zipfile
 from pathlib import PurePath
 from xml.etree import ElementTree
 
-from .product_links import classify
-
 MAX_FILE = 4 << 20
 MAX_TOTAL = 8 << 20
 MAX_FILES = 3
 MAX_TEXT = 12000
 MIMES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".pdf": "application/pdf"}
-
-
-def public_url(value):
-    if classify(value) is None:
-        raise ValueError("Chỉ nhận đường dẫn HTTPS công khai")
-    return value
 
 
 def _document(data, ext):

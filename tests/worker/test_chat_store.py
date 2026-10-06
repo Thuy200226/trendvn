@@ -1,6 +1,7 @@
 """The chat log, picking a video out of an answer, and the commission links the owner confirmed."""
 
 import json
+import time
 
 from tests.support import StoreCase
 
@@ -72,6 +73,13 @@ class ChatLogTests(StoreCase):
         self.assertEqual(len(thread), chat.KEEP)
         self.assertEqual(thread[0]["id"], ids[5])
 
+    def test_a_damaged_body_does_not_stop_the_restart_cleanup(self):
+        mid = self.s.chat_add("bot", "videos", {}, state="running")
+        with self.s.transaction() as db:
+            db.execute("UPDATE chat SET body='not json{' WHERE id=?", (mid,))
+        self.s.chat_recover()
+        self.assertEqual(self.s.chat_get(mid)["state"], "error")
+
     def test_after_a_restart_unfinished_answers_become_errors_and_downloads_wait_to_be_picked_again(self):
         mid = self.s.chat_add("bot", "videos", {"results": []}, state="running")
         done = self.s.chat_add("bot", "note", {"text": "ok"})
@@ -104,6 +112,31 @@ class VideoPickTests(StoreCase):
         self.s.videos_select(self.answer(), "1234567890", True)
         with self.assertRaises(ValueError):
             self.s.videos_select(self.answer(), "1234567890", True)
+
+    def test_a_video_the_system_already_has_under_another_channel_name_is_a_clean_refusal_not_a_crash(self):
+        self.job("7000000001", "queued", platform="tiktok", url="https://www.tiktok.com/@oldname/video/7000000001")
+        mid = self.answer([result("7000000001", url="https://www.tiktok.com/@newname/video/7000000001")])
+        with self.assertRaises(ValueError) as caught:
+            self.s.videos_select(mid, "7000000001", True)
+        self.assertIn("đã có trong hệ thống", str(caught.exception))
+
+    def test_a_pick_whose_answer_was_pruned_or_whose_account_changed_is_rejected_not_left_waiting_forever(self):
+        mid = self.answer()
+        jid = self.s.videos_select(mid, "1234567890", True)
+        with self.s.transaction() as db:
+            db.execute("DELETE FROM chat WHERE id=?", (mid,))
+        with self.assertRaises(ValueError):
+            self.s.videos_media_ready(jid)
+        with self.s.connect() as db:
+            self.assertEqual(db.execute("SELECT state FROM jobs WHERE id=?", (jid,)).fetchone()[0], "rejected")
+
+    def test_a_pick_nobody_downloaded_for_days_expires_like_any_candidate(self):
+        from trendvn_worker.store import retention
+
+        jid = self.s.videos_select(self.answer(), "1234567890", True)
+        self.s.prune(now=time.time() + (retention.CANDIDATE_EXPIRY_DAYS + 1) * 86400)
+        with self.s.connect() as db:
+            self.assertEqual(db.execute("SELECT state FROM jobs WHERE id=?", (jid,)).fetchone()[0], "rejected")
 
     def test_a_video_of_another_product_cannot_be_picked(self):
         mid = self.answer([result(level="different")])
@@ -166,6 +199,13 @@ class VideoPickTests(StoreCase):
 
 
 class RankTests(StoreCase):
+    def test_one_video_the_agent_described_badly_is_left_out_not_a_reason_to_lose_the_others(self):
+        mid = self.s.chat_add("bot", "videos", {"identity": {"name": "S24", "model": "S24"}}, state="running", account="main")
+        good = {"source_id": "1111111111", "platform": "tiktok", "url": "https://www.tiktok.com/@a/video/1111111111", "title": "S24"}
+        for bad in ({"url": "javascript:alert(1)"}, {"url": None}, {"platform": "myspace"}, {"url": "https://evil.example/x"}):
+            ranked = self.s.videos_rank(mid, [good | {"source_id": "2222222222"} | bad, good])
+            self.assertEqual([r["source_id"] for r in ranked], ["1111111111"], bad)
+
     def test_candidates_are_ordered_by_match_with_other_products_last_and_bad_ids_dropped(self):
         mid = self.s.chat_add(
             "bot", "videos", {"identity": {"name": "Samsung Galaxy S24", "model": "S24"}}, state="running", account="main"
@@ -210,7 +250,9 @@ class CommissionTests(StoreCase):
     def test_a_second_confirmation_for_the_same_product_replaces_the_first(self):
         self.s.commission_save("main", self.FOUND)
         self.s.commission_save("main", dict(self.FOUND, input="https://vt.tiktok.com/ZSnew/"))
-        self.assertEqual([l["url"] for l in self.s.commission_list("main")], ["https://vt.tiktok.com/ZSnew/"])
+        self.assertEqual(self.s.commission_get("main", self.FOUND["product_id"])["url"], "https://vt.tiktok.com/ZSnew/")
+        with self.s.connect() as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM commission_links").fetchone()[0], 1)
 
     def test_a_plain_link_confirmed_by_the_owner_teaches_no_marks(self):
         self.s.commission_save("main", dict(self.FOUND, markers={}, tracked=False))
@@ -220,3 +262,23 @@ class CommissionTests(StoreCase):
         for account, found in (("nobody", self.FOUND), ("main", dict(self.FOUND, product_id=None))):
             with self.assertRaises(ValueError):
                 self.s.commission_save(account, found)
+
+
+class MigrationTests(StoreCase):
+    def test_a_database_that_ran_the_first_version_of_migration_6_gets_the_chat_tables(self):
+        """Commits before this one shipped a different migration 6 (a `searches` table): such a database is at version 6 without a chat."""
+        from trendvn_worker.store import Store, schema
+
+        with self.s.transaction() as db:
+            db.execute("DROP TABLE chat")
+            db.execute("DROP TABLE commission_links")
+            db.execute("CREATE TABLE searches (id TEXT PRIMARY KEY, account TEXT NOT NULL)")
+            db.execute("INSERT INTO searches VALUES('old','main')")
+            db.execute("PRAGMA user_version = 6")
+        reopened = Store(self.tmp.name)
+        self.assertEqual(reopened.chat_thread(), [])
+        reopened.chat_add("user", "say", {"text": "ok"})
+        with reopened.connect() as db:
+            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], len(schema.MIGRATIONS))
+            self.assertEqual(db.execute("SELECT id FROM searches").fetchall()[0][0], "old")  # nothing of the owner's is dropped
+            self.assertEqual(db.execute("PRAGMA integrity_check").fetchone()[0], "ok")

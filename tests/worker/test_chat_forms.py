@@ -59,6 +59,12 @@ class SendTests(FormCase):
             self.say("Samsung S24")
         self.assertEqual([(m["kind"], m["state"]) for m in self.s.chat_thread()], [("say", "done"), ("product", "error")])
 
+    def test_whatever_stops_a_job_from_starting_leaves_an_error_answer(self):
+        self.tasks.start.side_effect = RuntimeError("can't start new thread")
+        with self.assertRaises(RuntimeError):
+            self.say("Samsung S24")
+        self.assertEqual(self.s.chat_thread()[-1]["state"], "error")
+
 
 class FindTests(FormCase):
     def test_a_search_is_pinned_to_the_chosen_account_and_carries_the_identity(self):

@@ -2,7 +2,8 @@
 Each function finishes its chat message ('done' or 'error') and returns one line for the task's step log; the caller only runs it."""
 
 from . import affiliate
-from .identify import from_page, identify
+from ..domain.product_links import classify
+from .identify import from_page, identify, video_identity
 
 SEARCH_TIMEOUT = 180
 HUMAN_TIMEOUT = 360  # a window where the owner solves the site's own check by hand
@@ -18,6 +19,11 @@ def check_link(store, mid):
     """Resolve the pasted link, judge it against the product in the chat, and keep it when nothing is left to doubt."""
     message = store.chat_get(mid)
     found = affiliate.inspect(message["body"]["url"])
+    if found["kind"] == "video":  # a short link shared from a video: not a product, but exactly what the owner may want to look up
+        video = classify(found["final"])["canonical"]
+        product = store.chat_add("bot", "product", {"identity": video_identity([video]), "from_video": True}, account=message["account"])
+        store.chat_set(mid, "done", video=video, product=product)
+        return "Link này là một video, không phải trang sản phẩm"
     product = store.chat_product()
     identity = product["body"]["identity"] if product else {}
     result = affiliate.verdict(identity, found, store.commission_known(message["account"]))

@@ -63,16 +63,24 @@ class ChatMixin:
         return [dict(r) | {"body": loads(r["body"], {})} for r in reversed(rows)]
 
     def chat_product(self):
-        """The product the chat is about now: the latest finished 'product' answer, or None."""
+        """The product the chat is about now: the latest finished 'product' answer that names one (an answer that is only video links
+        names none), or None."""
         with self.connect() as db:
-            row = db.execute("SELECT * FROM chat WHERE kind='product' AND state='done' ORDER BY id DESC LIMIT 1").fetchone()
-        return dict(row) | {"body": loads(row["body"], {})} if row else None
+            rows = db.execute("SELECT * FROM chat WHERE kind='product' AND state='done' ORDER BY id DESC LIMIT 10").fetchall()
+        for row in rows:
+            body = loads(row["body"], {})
+            identity = body.get("identity") or {}
+            if identity.get("name") or identity.get("product_id"):
+                return dict(row) | {"body": body}
+        return None
 
     def chat_recover(self):
         """After a restart nothing is really running: whatever was unfinished becomes an error the owner can retry."""
         with self.transaction() as db:
             db.execute(
-                "UPDATE chat SET state='error',body=json_set(body,'$.error','Bị gián đoạn; hãy gửi lại') WHERE state IN ('pending','running')"
+                "UPDATE chat SET state='error',body=CASE WHEN json_valid(body) THEN json_set(body,'$.error',?) ELSE json_object('error',?) END "
+                "WHERE state IN ('pending','running')",
+                ("Bị gián đoạn; hãy gửi lại",) * 2,
             )
             db.execute(
                 "UPDATE jobs SET state='search_selected',reason='Tải bị ngắt; hãy chọn lại để thử' WHERE search_id IS NOT NULL AND state='candidate' AND source_file IS NULL"

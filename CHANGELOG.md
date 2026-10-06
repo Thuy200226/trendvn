@@ -10,7 +10,7 @@
 
 **Agent.** Một nguồn lỗi bất kỳ (kể cả hết thời gian chờ của trình duyệt) không còn làm mất kết quả của nguồn kia ở chế độ TikTok + Douyin (trước đây chỉ bắt `ValueError`). Ở cửa sổ tự xác minh, tên đăng nhập của phiên được kiểm lại sau khi có kết quả, kể cả khi cửa sổ vừa bị đóng.
 
-**Dọn.** Gỡ tích hợp TikTok Shop API và đăng kèm giỏ hàng (cần ứng dụng Shop Partner được duyệt; còn nguyên ở commit `3d48f41`). Bảng kết quả cũ thay bằng nhật ký chat và bảng link đã xác nhận (migration 6 viết lại: chưa từng chạy trên CSDL thật). Việc nền của tìm kiếm tách khỏi `tasks.py` sang `search/runner.py`; phần đọc trang tìm kiếm của agent dùng chung một khung. Ảnh/tài liệu chỉ nằm trong bộ nhớ đến khi nhận diện xong (không còn ghi vào CSDL). Thanh điều hướng điện thoại có bảy mục, nhãn 10 px ở màn hình rộng tới 370 px.
+**Dọn.** Gỡ tích hợp TikTok Shop API và đăng kèm giỏ hàng (cần ứng dụng Shop Partner được duyệt; còn nguyên ở commit `3d48f41`). Bảng kết quả cũ thay bằng nhật ký chat và bảng link đã xác nhận (migration 6 viết lại; migration 7 lặp lại đúng các bước đó cho CSDL đã chạy bản migration 6 đầu tiên của nhánh này, bảng `searches` cũ được để nguyên). Việc nền của tìm kiếm tách khỏi `tasks.py` sang `search/runner.py`; phần đọc trang tìm kiếm của agent dùng chung một khung. Ảnh/tài liệu chỉ nằm trong bộ nhớ đến khi nhận diện xong (không còn ghi vào CSDL). Thanh điều hướng điện thoại có bảy mục, nhãn 10 px ở màn hình rộng tới 370 px.
 
 ## 1.6 — 2026-10-02 (chất lượng đầu ra: docs/QUALITY.md)
 

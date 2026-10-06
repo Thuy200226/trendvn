@@ -1,12 +1,17 @@
 """Is a pasted TikTok share link the product the owner is working on, and is it a commission link? Judged from the link and the page it
 leads to; no account API is involved. Resolving the link is the only network part (`inspect`); the verdict itself is pure."""
 
-from ..domain.product_links import attribution, classify, tiktok_host
+import re
+
+from ..domain.product_links import attribution, classify, sharer, tiktok_host
 from ..domain.product_match import match_identity
 from . import fetch
 
-# What a page says about itself when it shows a login or a consent wall instead of the product: not a product name.
-GENERIC_TITLES = {"tiktok", "tiktok shop", "tiktok - make your day", "log in", "đăng nhập", "tiktok - làm cho ngày của bạn thêm tuyệt vời"}
+GENERIC_TITLES = re.compile(
+    r"tiktok( shop)?|tiktok - (make your day|làm cho ngày của bạn thêm tuyệt vời)|log ?in|đăng nhập|access denied|just a moment\.*|attention required.*|"
+    r"forbidden|(403|404|500)( .*)?|not found|(page )?not available|error|robot check|captcha.*|verify.*",
+    re.I,
+)  # what a page says about itself when it shows a wall or an error instead of the product: not a product name
 LIKELY_FROM = 60  # a title that shares at least this much with what was asked is worth the owner's look; less is not an answer
 SUMMARY = {
     "found": "Đã đọc được sản phẩm từ link; chưa có sản phẩm nào khác trong khung chat để đối chiếu.",
@@ -19,31 +24,36 @@ SUMMARY = {
 
 
 def inspect(url, follow=fetch.follow, page_title=fetch.page_title):
-    """What the link leads to: {'input','chain','final','product_id','title','markers','tracked','stopped'}. Only TikTok addresses are
-    followed (a hop to anywhere else is recorded, never requested); a page that cannot be read still gives the product id."""
+    """What the link leads to: {'input','chain','final','kind','status','product_id','conflict','title','markers','tracked','stopped'}.
+    Only TikTok addresses are followed or read (a hop to anywhere else is recorded, never requested); a page that cannot be read still
+    gives the product id. Two different product ids anywhere on the way (or in one address) make it no product at all."""
     link = classify(url)
     if link is None or not tiktok_host(link["host"]):
         raise ValueError("Chỉ nhận đường dẫn https của TikTok")
     trail = follow(url, allow=tiktok_host)
     chain = list(trail["chain"])
-    onsite = [u for u in chain if (classify(u) or {}).get("host") and tiktok_host(classify(u)["host"])]
-    product_id = next((classify(u)["product_id"] for u in onsite if classify(u)["product_id"]), None)
+    hops = [c for c in (classify(u) for u in chain) if c and tiktok_host(c["host"])]
+    ids = {h["product_id"] for h in hops if h["product_id"]}
+    conflict = len(ids) > 1 or any(h["conflict"] for h in hops)
+    product_id = next(iter(ids)) if len(ids) == 1 and not conflict else None
     markers = {}
-    for hop in onsite:
-        for name, value in attribution(hop)["markers"].items():
+    for hop in hops:
+        for name, value in attribution(hop["url"])["markers"].items():
             markers.setdefault(name, value)
-    final = onsite[-1] if onsite else url
+    final = hops[-1]["url"] if hops else url
+    kind = hops[-1]["kind"] if hops else None
+    status = trail["status"]
     title = ""
-    if product_id:
+    if product_id and status not in (404, 410):
         try:
-            title = page_title(final)[0]
-        except (ValueError, OSError):
+            title = page_title(final, allow=tiktok_host)[0]
+        except fetch.FETCH_ERRORS:
             title = ""  # a wall or a timeout: the id alone still decides
-        if title.strip().lower() in GENERIC_TITLES:
+        if GENERIC_TITLES.fullmatch(title.strip()):
             title = ""
     return {
-        "input": url, "chain": chain, "final": final, "product_id": product_id, "title": title,
-        "markers": markers, "tracked": bool(markers), "stopped": trail["stopped"],
+        "input": url, "chain": chain, "final": final, "kind": kind, "status": status, "product_id": product_id, "conflict": conflict,
+        "title": title, "markers": markers, "tracked": bool(markers), "stopped": trail["stopped"],
     }  # fmt: skip
 
 
@@ -52,12 +62,19 @@ def _check(label, state, detail):
 
 
 def _same_creator(markers, known):
-    return any(markers.get(name) == value for earlier in known for name, value in earlier.items())
+    """The new link carries every sharer mark of a link the owner already confirmed, with the same values. Campaign tags do not count
+    (they are not the sharer) and a confirmed link with no sharer mark in it proves nothing, so one matching value of many is not enough."""
+    mine = sharer(markers)
+    return any(earlier and all(mine.get(name) == value for name, value in earlier.items()) for earlier in map(sharer, known))
 
 
 def _identity_check(identity, found):
     """(verdict, checks) of what the link says about the product itself."""
     expected, seen = str(identity.get("product_id") or ""), found["product_id"]
+    if found.get("conflict"):
+        return "invalid", [_check("Mã sản phẩm", "bad", "Đường dẫn nêu nhiều mã sản phẩm khác nhau: không biết là sản phẩm nào")]
+    if found.get("status") in (404, 410):
+        return "invalid", [_check("Trang sản phẩm", "bad", "Trang trả HTTP %d: sản phẩm không còn hoặc link đã hết hạn" % found["status"])]
     if not seen:
         return "invalid", [_check("Mã sản phẩm", "bad", "Không đọc được mã sản phẩm từ đường dẫn này")]
     if not identity:

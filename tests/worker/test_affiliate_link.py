@@ -21,6 +21,8 @@ def found(**fields):
         "markers": {"share_creator_id": "7000000000000000001"},
         "tracked": True,
         "stopped": "",
+        "kind": "product",
+        "status": 200,
     }
     base.update(fields)
     return base
@@ -35,7 +37,7 @@ class InspectTests(unittest.TestCase):
         def follow(url, allow=None, hops=6):
             return {"chain": chain, "status": 200, "stopped": ""}
 
-        def page_title(url):
+        def page_title(url, allow=None):
             if fail_title:
                 raise ValueError("403")
             return title, url
@@ -58,7 +60,7 @@ class InspectTests(unittest.TestCase):
 
         fetched = []
 
-        def page_title(url):
+        def page_title(url, allow=None):
             fetched.append(url)
             return "Bàn phím", url
 
@@ -77,9 +79,71 @@ class InspectTests(unittest.TestCase):
         result = self.inspect([SHARE, LONG], title="TikTok - Make Your Day")
         self.assertEqual((result["product_id"], result["title"]), (PID, ""))
 
-    def test_the_id_is_taken_from_the_first_hop_that_names_one(self):
-        result = self.inspect(["https://www.tiktok.com/view/product/%s" % PID, "https://www.tiktok.com/view/product/9999999999"])
-        self.assertEqual(result["product_id"], PID)
+    def test_two_different_product_ids_on_the_way_make_it_no_product_at_all(self):
+        other = "https://www.tiktok.com/view/product/2222222222222222222?share_creator_id=7000000000000000001"
+        result = self.inspect(["https://www.tiktok.com/view/product/" + PID, other], title="Other product")
+        self.assertEqual((result["product_id"], result["conflict"]), (None, True))
+        self.assertEqual(affiliate.verdict({"product_id": PID}, result, known=[])["verdict"], "invalid")
+
+    def test_one_address_that_names_two_products_is_no_product_either(self):
+        result = self.inspect(["https://www.tiktok.com/view/product/%s?product_id=9999999999" % PID])
+        self.assertEqual((result["product_id"], result["conflict"]), (None, True))
+
+    def test_the_same_id_on_every_hop_is_one_product(self):
+        result = self.inspect(["https://www.tiktok.com/view/product/" + PID, LONG])
+        self.assertEqual((result["product_id"], result["conflict"]), (PID, False))
+
+    def test_the_title_is_fetched_with_only_tiktok_hosts_allowed(self):
+        seen = {}
+
+        def page_title(url, allow=None):
+            seen["allow"] = allow
+            return "Bàn phím", url
+
+        def follow(url, allow=None, hops=6):
+            return {"chain": [SHARE, LONG], "status": 200, "stopped": ""}
+
+        affiliate.inspect(SHARE, follow=follow, page_title=page_title)
+        self.assertTrue(seen["allow"]("www.tiktok.com"))
+        self.assertFalse(seen["allow"]("evil.example"))
+
+    def test_every_kind_of_failure_reading_the_page_leaves_the_id_alone_deciding(self):
+        import http.client
+
+        for failure in (ValueError("x"), OSError("y"), http.client.BadStatusLine("z"), http.client.IncompleteRead(b"")):
+            with self.subTest(failure=type(failure).__name__):
+
+                def page_title(url, allow=None, failure=failure):
+                    raise failure
+
+                def follow(url, allow=None, hops=6):
+                    return {"chain": [SHARE, LONG], "status": 200, "stopped": ""}
+
+                result = affiliate.inspect(SHARE, follow=follow, page_title=page_title)
+                self.assertEqual((result["product_id"], result["title"]), (PID, ""))
+
+    def test_the_status_of_the_last_page_is_kept_and_a_gone_page_is_not_asked_for_its_title(self):
+        asked = []
+
+        def follow(url, allow=None, hops=6):
+            return {"chain": [SHARE, LONG], "status": 404, "stopped": ""}
+
+        result = affiliate.inspect(SHARE, follow=follow, page_title=lambda url, allow=None: asked.append(url) or ("t", url))
+        self.assertEqual((result["status"], asked), (404, []))
+        self.assertEqual(affiliate.verdict({"product_id": PID}, result, known=[])["verdict"], "invalid")
+
+    def test_titles_of_walls_and_errors_are_not_product_names(self):
+        for title in (
+            "Access Denied",
+            "Just a moment...",
+            "404 Not Found",
+            "TikTok Shop",
+            "Attention Required! | Cloudflare",
+            "Error",
+            "Log in",
+        ):
+            self.assertEqual(self.inspect([SHARE, LONG], title=title)["title"], "", title)
+        self.assertEqual(self.inspect([SHARE, LONG], title="Bàn phím MCHOSE ACE68")["title"], "Bàn phím MCHOSE ACE68")
 
     def test_text_that_is_not_a_tiktok_link_is_refused_at_once(self):
         for url in ("https://example.com/view/product/%s" % PID, "http://vt.tiktok.com/a", "not a link"):
@@ -152,6 +216,28 @@ class VerdictTests(unittest.TestCase):
         result = affiliate.verdict({"product_id": PID}, found(), known=[{"share_creator_id": "7999999999999999999"}])
         self.assertTrue(result["needs_confirmation"])
         self.assertEqual(states(result)["Mã nhà sáng tạo"], "warn")
+
+    def test_one_shared_value_among_several_is_not_the_same_sharer(self):
+        """A campaign tag two people's links share must not make Bob's link look like Alice's."""
+        known = [{"share_creator_id": "ALICE", "ug_btm": "b8727,b0"}]
+        bob = found(markers={"share_creator_id": "BOB", "ug_btm": "b8727,b0"})
+        result = affiliate.verdict({"product_id": PID}, bob, known=known)
+        self.assertEqual((result["verdict"], result["needs_confirmation"]), ("exact", True))
+        self.assertEqual(states(result)["Mã nhà sáng tạo"], "warn")
+        alice = found(markers={"share_creator_id": "ALICE", "ug_btm": "another,tag"})
+        self.assertFalse(affiliate.verdict({"product_id": PID}, alice, known=known)["needs_confirmation"])
+
+    def test_every_sharer_mark_of_a_confirmed_link_must_agree_not_just_one_of_them(self):
+        known = [{"share_creator_id": "ALICE", "sec_user_id": "MS4wAlice"}]
+        mixed = found(markers={"share_creator_id": "ALICE", "sec_user_id": "MS4wBob"})
+        self.assertTrue(affiliate.verdict({"product_id": PID}, mixed, known=known)["needs_confirmation"])
+        same = found(markers={"share_creator_id": "ALICE", "sec_user_id": "MS4wAlice"})
+        self.assertFalse(affiliate.verdict({"product_id": PID}, same, known=known)["needs_confirmation"])
+
+    def test_a_confirmed_link_with_no_sharer_mark_in_it_proves_nothing_about_the_next_one(self):
+        known = [{"ug_btm": "b8727,b0"}]
+        result = affiliate.verdict({"product_id": PID}, found(markers={"ug_btm": "b8727,b0", "creator_id": "1"}), known=known)
+        self.assertTrue(result["needs_confirmation"])
 
     def test_a_creator_code_that_matches_is_marked_ok(self):
         result = affiliate.verdict({"product_id": PID}, found(), known=[{"share_creator_id": "7000000000000000001"}])

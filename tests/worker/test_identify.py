@@ -112,6 +112,52 @@ class FallbackTests(StoreCase):
             self.assertEqual(result["model"], "ACE68")
             self.assertIn("Chưa đọc được", result["warnings"][0])
 
+    def test_whatever_a_model_does_wrong_the_words_still_find_the_product_and_nothing_crashes(self):
+        failures = [
+            {"return_value": {"candidates": [{"content": None}]}},
+            {"return_value": {"candidates": {}}},
+            {"return_value": {"candidates": [{"content": {"parts": [{"text": 5}]}}]}},
+            {"return_value": {"candidates": [{"content": {"parts": "x"}}]}},
+            {"return_value": []},
+            {"side_effect": TimeoutError("slow")},
+            {"side_effect": ConnectionResetError("dropped")},
+            {"side_effect": KeyError("x")},
+        ]
+        for failure in failures:
+            with self.subTest(failure=str(failure)[:60]), mock.patch(GEN, **failure):
+                result = identify(self.s, photo("bàn phím mchose ace68"))
+            self.assertEqual(result["model"], "ACE68")
+            self.assertIn("Chưa đọc được", result["warnings"][0])
+            with mock.patch(GEN, **failure), self.assertRaises(ValueError):
+                identify(self.s, photo())  # no words to fall back to: an error the owner can read, not a crash
+
+    def test_words_that_name_nothing_are_no_fallback_when_the_model_fails(self):
+        with mock.patch(GEN, side_effect=ValueError("overloaded")), self.assertRaises(ValueError):
+            identify(self.s, photo("tìm cho tôi cái này"))
+
+    def test_a_pasted_share_link_loses_its_query_before_a_page_goes_to_the_model(self):
+        url = "https://example.com/p?share_creator_id=7&u_code=abc"
+        with mock.patch(LINK_TEXT, return_value=("Band 9 page", url)), mock.patch(GEN, return_value=answer(query="Band 9")) as ai:
+            identify(self.s, validate_input({"text": "tìm " + url}))
+        sent = json.dumps(ai.call_args.args[2])
+        self.assertIn("https://example.com/p", sent)
+        self.assertNotIn("share_creator_id", sent)
+
+    def test_every_way_a_page_can_fail_to_load_is_a_warning_not_an_abort(self):
+        import http.client
+
+        for failure in (
+            ValueError("x"),
+            OSError("y"),
+            http.client.BadStatusLine("z"),
+            http.client.IncompleteRead(b""),
+            http.client.LineTooLong("l"),
+        ):
+            with self.subTest(failure=type(failure).__name__), mock.patch(LINK_TEXT, side_effect=failure):
+                result = identify(self.s, validate_input({"text": "samsung galaxy s24 https://shop.example/p"}))
+            self.assertEqual(result["model"], "S24")
+            self.assertTrue(result["warnings"])
+
     def test_without_words_a_malformed_answer_is_an_error_worded_for_the_owner(self):
         with mock.patch(GEN, return_value={"candidates": [{"content": {"parts": [{"text": "[1, 2]"}]}}]}):
             with self.assertRaises(ValueError) as caught:
@@ -138,6 +184,16 @@ class QueryTests(StoreCase):
         for title in ("迈从 ACE68 Air 键盘", "MCHOSE ACE68 Turbo", "MCHOSE ACE68 V2", "KZZI K68", "MCHOSE ACE60"):
             with self.subTest(title=title):
                 self.assertEqual(match_identity(identity, title)["level"], "different")
+
+    def test_specifications_are_not_part_of_the_model_and_long_model_codes_are_read_whole(self):
+        for words, model in (
+            ("iPhone 15 Pro Max 256GB", "IPHONE 15"),
+            ("Galaxy S24 5G 128GB", "S24"),
+            ("Sony WH-1000XM4 tai nghe", "WH-1000XM4"),
+        ):
+            self.assertEqual(explicit(words)["model"], model, words)
+        self.assertEqual(explicit("tai nghe jbl tune 760")["brand"], "JBL")
+        self.assertEqual(explicit("Sony WH-1000XM4")["brand"], "Sony")
 
     def test_a_brand_with_no_hint_gets_a_plain_chinese_query_not_another_products_wording(self):
         plan = query_plan(explicit("Xiaomi Band 9 bàn phím"))

@@ -17,10 +17,15 @@ VERDICTS = {
     "invalid": ("Không hợp lệ", "bad"),
 }
 EMPTY = {"messages": [], "picked": {}, "accounts": {}}
+CONFIRM = {
+    "affiliate": "Đây đúng là link hoa hồng của tôi",
+    "short": "Tôi đã sao chép link này từ Showcase",
+    "plain": "Vẫn dùng link này (không có dấu hiệu hoa hồng)",
+}
 MARKS = {"ok": "✓", "warn": "⚠", "bad": "✗", "info": "ℹ"}
 WELCOME = (
     "<p><b>Gửi cho mình một trong những thứ bạn có về sản phẩm:</b> tên/model, ảnh, PDF/DOCX/TXT hoặc link.</p>"
-    '<ul class="plain"><li>Mình nhận diện sản phẩm, rồi tìm video về nó ngay trong phiên TikTok/Douyin của tài khoản bạn chọn.</li>'
+    '<ul class="plain"><li>Mình nhận diện sản phẩm, rồi tìm video về nó: TikTok qua phiên đã đăng nhập của tài khoản bạn chọn, Douyin qua hồ sơ riêng của tài khoản đó.</li>'
     "<li>Link hoa hồng chỉ có trong app TikTok (Showcase → sản phẩm → Chia sẻ → Sao chép link). Dán nó vào đây, mình kiểm tra "
     "có đúng sản phẩm đang bàn không rồi lưu lại cho bạn.</li></ul>"
     '<p class="small muted">Mình không thể tự lấy link hoa hồng hay biết link đó là của tài khoản nào: bạn xác nhận lần đầu, '
@@ -159,6 +164,11 @@ def link_card(message):
         return _working("Đang kiểm tra link…")
     if message["state"] == "error":
         return _failed(message)
+    if body.get("video"):
+        return (
+            "<h4>Link video</h4><p>Link này dẫn tới một <b>video</b>, không phải trang sản phẩm. Mình đã thêm video đó ngay bên dưới: "
+            "bấm tìm để lấy nó rồi xem và chọn.</p>"
+        )
     result, found = body["verdict"], body["found"]
     label, tone = VERDICTS[result["verdict"]]
     head = '<div class="row"><h4>Link chia sẻ</h4>%s</div><p>%s</p>%s' % (chip(label, tone), E(result["summary"]), checks_list(result))
@@ -173,7 +183,7 @@ def link_card(message):
     return head + (
         '<p class="small muted">Mình không đăng nhập Shop/Affiliate của bạn nên không tự biết link này có phải của bạn. '
         "Chỉ xác nhận khi chính bạn đã sao chép nó từ Showcase trong app TikTok.</p>%s"
-        % _button("Đây đúng là link hoa hồng của tôi", "confirm", "go", id=message["id"])
+        % _button(CONFIRM.get(result["kind"], CONFIRM["affiliate"]), "confirm", "go", id=message["id"])
     )
 
 
@@ -212,7 +222,7 @@ def composer(view):
         '<textarea name="text" rows="2" maxlength="12000" aria-label="Tin nhắn" '
         'placeholder="Tên/model, link, hoặc dán/thả ảnh, PDF, DOCX…"></textarea><button class="go send" type="submit">Gửi</button></div>'
         '<input type="file" name="files" multiple accept="%s" hidden>'
-        '<p class="small muted">Tối đa 3 tệp, 4 MiB/tệp, tổng 8 MiB. Ctrl/⌘+Enter để gửi.</p>'
+        '<p class="small muted">Tối đa 3 tệp, 4 MiB/tệp, tổng 8 MiB. Ctrl/⌘+Enter để gửi. Ảnh, tài liệu và nội dung trang của link bạn gửi được chuyển cho Gemini (Google) để nhận diện; hệ thống không lưu chúng.</p>'
         '<p role="status" aria-live="polite" data-chat-message></p></form>'
     ) % (view.csrf, select("account", accounts[0][0], accounts), ACCEPT)
 

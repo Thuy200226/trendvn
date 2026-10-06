@@ -22,7 +22,10 @@ class VideosMixin:
             if not isinstance(source_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", source_id):
                 continue
             candidate = {k: item.get(k) for k in ("source_id", "title", "platform", "media", "duration", "product_id")}
-            candidate["url"] = canonical_url(item.get("platform", "tiktok"), item.get("url", ""))
+            try:
+                candidate["url"] = canonical_url(item.get("platform", "tiktok"), item.get("url", ""))
+            except (ValueError, KeyError, AttributeError, TypeError):
+                continue  # one video the agent described badly is left out, not a reason to lose the others
             candidate["match"] = match_identity(identity, item.get("title", ""), str(item.get("product_id") or ""))
             out.append(candidate)
         return sorted(out, key=lambda i: i["match"]["score"], reverse=True)[:MAX_RESULTS]
@@ -62,6 +65,8 @@ class VideosMixin:
                 return row["id"]
             jid, now = uuid.uuid4().hex, time.time()
             platform = item.get("platform") or "tiktok"
+            if db.execute("SELECT 1 FROM jobs WHERE platform=? AND source_id=?", (platform, source_id)).fetchone():
+                raise ValueError("Video đã có trong hệ thống (cùng mã, có thể khác tên kênh); không chọn lại")
             meta = {"product_reference": body.get("identity", {}), "search_username": body.get("account_username")}
             db.execute(
                 "INSERT INTO jobs(id,platform,source_id,url,country,title,first_seen,last_seen,state,reason,updated,meta,search_id,search_account) "
@@ -74,18 +79,31 @@ class VideosMixin:
         return jid
 
     def videos_media_ready(self, jid):
-        """Claim a picked video for downloading: {'id','item','account'}. Only a video still waiting to be downloaded can be claimed."""
+        """Claim a picked video for downloading: {'id','item','account'}. Only a video still waiting to be downloaded can be claimed. A pick
+        whose answer is gone (older than the log keeps) or whose account changed can never be downloaded: it is rejected, not left waiting.
+        """
+        stale = False
         with self.transaction() as db:
             row = db.execute("SELECT * FROM jobs WHERE id=? AND state='search_selected'", (jid,)).fetchone()
             if not row:
                 raise ValueError("Video đã được tải hoặc không còn chờ tải")
-            message = self._videos_message(int(row["search_id"]))
-            item = next(
-                i
-                for i in message["body"]["results"]
-                if i["source_id"] == row["source_id"] and i.get("platform", "tiktok") == row["platform"]
-            )
-            db.execute("UPDATE jobs SET state='candidate',updated=? WHERE id=?", (time.time(), jid))
+            try:
+                message = self._videos_message(int(row["search_id"]))
+                item = next(
+                    i
+                    for i in message["body"]["results"]
+                    if i["source_id"] == row["source_id"] and i.get("platform", "tiktok") == row["platform"]
+                )
+            except (ValueError, StopIteration, KeyError):
+                stale = True
+                db.execute(
+                    "UPDATE jobs SET state='rejected',reason=?,updated=? WHERE id=?",
+                    ("Lượt chọn không còn dùng được (tin nhắn đã cũ hoặc tài khoản đã đổi); hãy tìm và chọn lại", time.time(), jid),
+                )
+            else:
+                db.execute("UPDATE jobs SET state='candidate',updated=? WHERE id=?", (time.time(), jid))
+        if stale:  # raised after the transaction closes, or the rejection would be rolled back with it
+            raise ValueError("Lượt chọn này không còn dùng được; hãy tìm và chọn lại")
         return {"id": jid, "item": item, "account": row["search_account"]}
 
     def video_download_failed(self, jid, reason):

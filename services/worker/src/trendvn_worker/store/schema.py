@@ -139,7 +139,13 @@ def _product_chat(db):
             db.execute("ALTER TABLE jobs ADD COLUMN " + column)
 
 
-MIGRATIONS = [_baseline, _accounts, _legacy_posts, _news_topic, _retention, _product_chat]
+def _product_chat_again(db):
+    """A database that ran the first version of migration 6 (a `searches` table, kept as it is) has version 6 and none of the chat tables:
+    the same idempotent step brings it to the same shape as one that ran the current migration 6."""
+    _product_chat(db)
+
+
+MIGRATIONS = [_baseline, _accounts, _legacy_posts, _news_topic, _retention, _product_chat, _product_chat_again]
 
 
 def migrate(db):

@@ -19,6 +19,8 @@ def found(**fields):
         "markers": {"share_creator_id": "7"},
         "tracked": True,
         "stopped": "",
+        "kind": "product",
+        "status": 200,
     }
     return base | fields
 
@@ -77,6 +79,26 @@ class LinkTests(StoreCase):
         self.assertEqual(body["verdict"]["verdict"], "different")
         self.assertNotIn("saved", body)
         self.assertIsNone(self.s.commission_get("main", PID))
+
+    def test_a_short_link_that_turns_out_to_be_a_video_becomes_a_video_to_look_up_not_an_invalid_product(self):
+        mid = self.pasted()
+        video = "https://www.tiktok.com/@creator/video/7234567890123456789"
+        self.check(mid, final=video, kind="video", product_id=None, title="")
+        body = self.s.chat_get(mid)["body"]
+        self.assertEqual(body["video"], video)
+        self.assertNotIn("verdict", body)
+        placeholder = self.s.chat_get(body["product"])
+        self.assertEqual(placeholder["body"]["identity"]["links"], [video])
+        self.assertTrue(placeholder["body"]["from_video"])
+
+    def test_a_placeholder_for_a_video_is_not_the_product_a_later_link_is_compared_with(self):
+        self.s.chat_add("bot", "product", {"identity": {"name": "MCHOSE ACE68", "query": "mchose ace68"}})
+        self.s.chat_add(
+            "bot",
+            "product",
+            {"identity": {"name": "", "query": "Video theo đường dẫn", "links": ["https://www.tiktok.com/@a/video/1234567890"]}},
+        )
+        self.assertEqual(self.s.chat_product()["body"]["identity"]["name"], "MCHOSE ACE68")
 
     def test_an_unreadable_link_ends_in_an_error_message(self):
         mid = self.pasted()

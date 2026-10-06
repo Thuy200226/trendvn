@@ -50,14 +50,14 @@ class RetentionMixin:
         """Candidates and undecided videos that waited too long become `rejected` (with the reason), freeing their files for removal."""
         with self.transaction() as db:
             stale = db.execute(
-                "SELECT id,state FROM jobs WHERE (state='candidate' AND first_seen<?) OR "
+                "SELECT id,state FROM jobs WHERE (state IN ('candidate','search_selected') AND first_seen<?) OR "
                 "(state IN ('needs_review','awaiting_approval','ready') AND updated<?) LIMIT ?",
                 (now - CANDIDATE_EXPIRY_DAYS * DAY, now - UNDECIDED_EXPIRY_DAYS * DAY, BATCH),
             ).fetchall()
             for row in stale:
                 why = (
                     "Quá %d ngày không được tải" % CANDIDATE_EXPIRY_DAYS
-                    if row["state"] == "candidate"
+                    if row["state"] in ("candidate", "search_selected")
                     else ("Quá %d ngày không ai quyết định" % UNDECIDED_EXPIRY_DAYS)
                 )
                 db.execute(

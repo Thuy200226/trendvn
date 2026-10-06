@@ -161,7 +161,7 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
                 return self.send(401, {"error": "Authentication required"})
             payload = json.loads(self.rfile.read(length))
             return self.api_post(path, payload)
-        except (ValueError, KeyError, TypeError, OverflowError) as error:
+        except (ValueError, KeyError, TypeError, OverflowError, RecursionError) as error:
             return self.send(400, {"error": str(error)[:700]})
         except Exception:
             log("ERROR POST %s\n%s" % (path, traceback.format_exc().rstrip()))

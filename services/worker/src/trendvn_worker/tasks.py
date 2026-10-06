@@ -175,7 +175,12 @@ class Tasks:
             tid = self.store.task_create(kind, job_id)
             if reference is not None:
                 self.references[job_id] = reference
-        threading.Thread(target=self._run, args=(tid, kind, job_id), daemon=True, name="task-" + kind).start()
+        try:
+            threading.Thread(target=self._run, args=(tid, kind, job_id), daemon=True, name="task-" + kind).start()
+        except Exception:  # no thread to be had: the task must not stay 'running' (it would block every browser job until a restart)
+            self.references.pop(job_id, None)
+            self.store.task_update(tid, state="error", error="Không khởi động được việc; thử lại sau")
+            raise
         return tid
 
     # ------------------------------------------------------------------ runners

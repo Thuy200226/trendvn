@@ -49,6 +49,52 @@ class ExclusionTests(unittest.TestCase):
         self.assertEqual(match_identity({}, "anything")["level"], "unverified")
 
 
+class ReviewFindingsTests(unittest.TestCase):
+    """Cases an independent review found wrong: what must stay a candidate, and what must be a different product."""
+
+    def level(self, identity, title):
+        return match_identity(identity, title)["level"]
+
+    def test_a_title_that_leaves_the_brand_out_is_still_a_candidate_unless_it_names_another_brand(self):
+        identity = {"name": "Samsung Galaxy Buds2 Pro", "brand": "Samsung", "model": "Buds2 Pro"}
+        self.assertEqual(self.level(identity, "Galaxy Buds2 Pro review"), "candidate")
+        self.assertEqual(self.level(identity, "Xiaomi Buds2 Pro review"), "different")
+        self.assertEqual(self.level({"name": "Apple Watch 9", "brand": "Apple"}, "Samsung Watch 9"), "different")
+
+    def test_a_specification_in_the_request_is_not_a_model_code_the_title_must_repeat(self):
+        identity = {"name": "iPhone 15 256GB", "model": "IPHONE 15"}
+        self.assertEqual(self.level(identity, "iPhone 15 chính hãng"), "candidate")
+        self.assertEqual(self.level(identity, "iPhone 14 chính hãng"), "different")
+        self.assertEqual(self.level({"name": "Redmi Note 12 5G 128GB"}, "Redmi Note 12 unboxing"), "candidate")
+        self.assertEqual(self.level({"name": "Redmi Note 12 5G 128GB"}, "Redmi Note 11 unboxing"), "different")
+
+    def test_a_variant_word_the_owner_asked_for_must_be_in_the_title(self):
+        self.assertEqual(self.level({"name": "Galaxy S24 Ultra", "model": "S24"}, "Samsung Galaxy S24 review"), "different")
+        self.assertEqual(self.level({"name": "iPhone 15 Pro Max"}, "iPhone 15 Pro review"), "different")
+        self.assertEqual(self.level({"name": "Galaxy S24 Ultra", "model": "S24"}, "Galaxy S24 Ultra review"), "candidate")
+
+    def test_a_plus_sign_is_the_plus_variant(self):
+        self.assertEqual(self.level({"name": "Galaxy S24", "model": "S24"}, "Galaxy S24+ review"), "different")
+        self.assertEqual(self.level({"name": "Galaxy S24+", "model": "S24"}, "Galaxy S24 Plus review"), "candidate")
+
+    def test_fullwidth_letters_and_digits_are_read_as_plain_ones(self):
+        self.assertEqual(
+            self.level({"name": "MCHOSE ACE68", "brand": "MCHOSE", "model": "ACE68"}, "ＭＣＨＯＳＥ ＡＣＥ６８ 键盘"), "candidate"
+        )
+
+    def test_a_page_title_is_never_turned_into_a_model_code_but_other_variants_still_exclude(self):
+        from trendvn_worker.search.identify import from_page
+
+        page = from_page("Bàn phím cơ MCHOSE ACE68 Air 8000Hz 3 mode kết nối chính hãng 2024", "1729384756102938475")
+        self.assertTrue(page["soft"])
+        for title in ("MCHOSE ACE68 Air bàn phím", "迈从ACE68 Air 键盘", "Review MCHOSE ACE68 Air sau 1 tháng"):
+            self.assertEqual(self.level(page, title), "candidate", title)
+        self.assertEqual(self.level(page, "MCHOSE ACE68 Pro bàn phím"), "different")
+        self.assertEqual(self.level(page, "Keychron K2 bàn phím"), "different")  # not the brand of the page
+        sony = from_page("Tai nghe Sony WH-1000XM4 chống ồn chính hãng pin 30 giờ", "1729384756102938476")
+        self.assertEqual(self.level(sony, "Sony WH-1000XM4 review"), "candidate")
+
+
 class TokenTests(unittest.TestCase):
     def test_accents_case_chinese_runs_and_model_boundaries_are_normalised(self):
         self.assertEqual(tokens("Bàn Phím ĐẸP"), {"ban", "phim", "dep"})

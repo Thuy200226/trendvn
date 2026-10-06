@@ -32,7 +32,7 @@
     card.querySelector('[data-tags]').textContent=(txt.match(/#[\p{L}\p{N}_]+/gu)||[]).length;
   });
   // Product chat: one thread for words, files and links. Files stay in memory (never in browser storage); answers are polled while one is
-  // being worked on and the thread is replaced in place, so a screen reader keeps its place.
+  // being worked on and the thread's content is replaced inside the same log element (a ticked confirmation survives the refresh).
   var chat=document.querySelector('[data-chat]'),chatFiles=[];
   if(chat){
     var form=chat.querySelector('[data-chat-form]'),csrf=chat.dataset.csrf,status=chat.querySelector('[data-chat-message]');
@@ -45,17 +45,25 @@
       if(!response.ok)throw Error(data.error||'Không thực hiện được');
       return data;
     };
+    var tickKey=function(box){var b=box.closest('article').querySelector('[data-chat-act="pick"]');return b?b.dataset.id+'|'+b.dataset.sourceId+'|'+b.dataset.platform:'';};
     var refresh=function(){
       return fetch('/fragment/chat',{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(html){
         if(!html)return;
         var t=thread(),near=t.scrollHeight-t.scrollTop-t.clientHeight<80,tmp=document.createElement('div');
         tmp.innerHTML=html;var fresh=tmp.firstElementChild;
-        if(fresh.innerHTML!==t.innerHTML){t.innerHTML=fresh.innerHTML;if(near)toBottom();}
+        if(fresh.innerHTML!==t.innerHTML){
+          var ticked=Array.from(t.querySelectorAll('[data-chat-confirm]:checked')).map(tickKey);
+          t.innerHTML=fresh.innerHTML;
+          t.querySelectorAll('[data-chat-confirm]').forEach(function(box){if(ticked.indexOf(tickKey(box))>=0)box.checked=true;});
+          if(near)toBottom();
+        }
         t.dataset.busy=fresh.dataset.busy;
       }).catch(function(){});
     };
     setInterval(function(){var t=thread();if(t&&t.dataset.busy==='1')refresh();},2500);
     toBottom();
+    // on a phone the other tabs are hidden: the thread has no height until its tab is shown, so go to its end then
+    window.addEventListener('hashchange',function(){if(tabOf(location.hash).tab==='search')setTimeout(toBottom,50);});
     chat.addEventListener('click',function(e){
       var b=e.target.closest('button[data-chat-act]'),c=e.target.closest('[data-copy]');
       if(c){
@@ -66,7 +74,7 @@
         return;
       }
       if(!b)return;
-      var act=b.dataset.chatAct,payload={csrf:csrf,action:act,account:form?form.elements.account.value:''};
+      var act=b.dataset.chatAct,payload={csrf:csrf,action:act};  // the account is the one the message was sent for, decided by the server
       if(act==='fill'){if(form){form.elements.text.value=b.dataset.text||'';form.elements.text.focus();}return;}
       if(b.dataset.id)payload.id=+b.dataset.id;
       if(b.dataset.source)payload.source=b.dataset.source;
@@ -114,6 +122,8 @@
     });
     textbox.addEventListener('keydown',function(e){if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();form.requestSubmit();}});
     document.addEventListener('click',function(e){var a=e.target.closest('[data-search-account]');if(a)form.elements.account.value=a.dataset.searchAccount;});
+    try{var saved=sessionStorage.getItem('trendvn.chat.account');if(saved&&Array.from(form.elements.account.options).some(function(o){return o.value===saved;}))form.elements.account.value=saved;}catch(e){}
+    form.elements.account.addEventListener('change',function(){try{sessionStorage.setItem('trendvn.chat.account',form.elements.account.value);}catch(e){}});
     form.addEventListener('submit',async function(e){
       e.preventDefault();e.stopPropagation();
       var text=textbox.value.trim();
@@ -144,7 +154,10 @@
     fetch('/fragment/tasks',{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(html){
       if(!html)return;
       var tmp=document.createElement('div');tmp.innerHTML=html;var fresh=tmp.firstElementChild;
-      if(fresh.dataset.running==='0'){location.reload();return;}
+      if(fresh.dataset.running==='0'){
+        if(dirty||chatFiles.length){panels.forEach(function(p){p.replaceWith(fresh.cloneNode(true));});return;}  // a draft or an edit is not thrown away
+        location.reload();return;
+      }
       panels.forEach(function(p){p.replaceWith(fresh.cloneNode(true));});
     }).catch(function(){});
   }

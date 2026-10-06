@@ -1,7 +1,8 @@
 """What a TikTok or Douyin link points at, judged from its text alone. No network: following a short link is search/fetch.py's job."""
 
+import ipaddress
 import re
-from urllib.parse import parse_qsl, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlsplit
 
 MAX_LINKS = 3
 ID = r"(\d{6,25})"
@@ -19,7 +20,9 @@ TIKTOK_VIDEO = re.compile(r"/@([A-Za-z0-9._-]{1,50})/video/%s/?" % ID)
 DOUYIN_VIDEO = re.compile(r"/video/%s/?" % ID)
 SHORT_PATH = re.compile(r"/t/[A-Za-z0-9]{3,40}/?")
 # Parameters that tie a link to a person (the creator who shared it) rather than to the product or the page.
-MARKER = re.compile(r"creator|affiliate|partner|sec_?user|sec_?uid|share_?user|u_code|ug_", re.I)
+MARKER = re.compile(r"(?<![a-z0-9])(?:creator|affiliate|partner|sec_?user|sec_?uid|share_?user|u_code|ug)(?![a-z0-9])", re.I)
+# Of those, the ones that name WHO shared (a campaign tag such as ug_btm says nothing about the sharer).
+WHO = re.compile(r"(?<![a-z0-9])(?:creator|affiliate|partner|sec_?user|sec_?uid|share_?user|u_code)(?![a-z0-9])", re.I)
 VALUE_LIMIT = 80
 
 
@@ -29,7 +32,7 @@ def tiktok_host(host):
 
 def _parts(value):
     """The URL's parts when it is a clean public https link (no credentials, no port, no whitespace), else None."""
-    if not isinstance(value, str) or not value or len(value) > 2000 or re.search(r"[\s\\\x00-\x1f\x7f]", value):
+    if not isinstance(value, str) or not value or len(value) > 2000 or not value.isascii() or re.search(r"[\s\\\x00-\x1f\x7f]", value):
         return None
     try:
         parts = urlsplit(value)
@@ -38,7 +41,13 @@ def _parts(value):
         return None
     if parts.scheme != "https" or not parts.hostname or parts.username or parts.password or port not in (None, 443):
         return None
-    return parts
+    if re.fullmatch(r"(?:0x[0-9a-f]+|\d+)", parts.hostname.lower().rsplit(".", 1)[-1]):
+        return None  # 2130706433, 0x7f.1, 127.1: a number where the top-level name should be
+    try:
+        ipaddress.ip_address(parts.hostname)
+    except ValueError:
+        return parts
+    return None  # a share link names a site, never a bare address
 
 
 def _query_product(query):
@@ -46,29 +55,37 @@ def _query_product(query):
 
 
 def classify(value):
-    """{'url','host','kind','platform','product_id','video_id','canonical'} or None for text that is not a clean https link.
-    kind: product | video | short (a link that has to be followed to know where it goes) | tiktok (any other TikTok page) | other."""
+    """{'url','host','kind','platform','product_id','video_id','canonical','conflict'} or None for text that is not a clean https link.
+    kind: product | video | short (a link that has to be followed to know where it goes) | tiktok (any other TikTok page) | other.
+    A video address is a video whatever its query says; an address that names two different products is no product (`conflict`)."""
     parts = _parts(value)
     if parts is None:
         return None
     host, path = parts.hostname.lower(), parts.path or "/"
-    link = {"url": value, "host": host, "kind": "other", "platform": None, "product_id": None, "video_id": None, "canonical": None}
+    link = {
+        "url": value, "host": host, "kind": "other", "platform": None, "product_id": None, "video_id": None, "canonical": None, "conflict": False,
+    }  # fmt: skip
     if tiktok_host(host):
         link.update(kind="tiktok", platform="tiktok")
-        product = next((m.fullmatch(path) for m in PRODUCT_PATHS if m.fullmatch(path)), None)
-        pid = product.group(1) if product else _query_product(parts.query)
         video = TIKTOK_VIDEO.fullmatch(path)
-        if pid:
-            link.update(kind="product", product_id=pid, canonical="https://www.tiktok.com/view/product/" + pid)
-        elif video:
-            link.update(kind="video", video_id=video.group(2), canonical=urlunsplit(("https", parts.netloc, path.rstrip("/"), "", "")))
+        if video:
+            link.update(
+                kind="video", video_id=video.group(2), canonical="https://www.tiktok.com/@%s/video/%s" % (video.group(1), video.group(2))
+            )
         elif host in SHORT_HOSTS or (host == "www.tiktok.com" and SHORT_PATH.fullmatch(path)):
             link["kind"] = "short"
+        else:
+            named = next((m.fullmatch(path) for m in PRODUCT_PATHS if m.fullmatch(path)), None)
+            ids = {i for i in (named.group(1) if named else None, _query_product(parts.query)) if i}
+            link["conflict"] = len(ids) > 1
+            if len(ids) == 1:
+                pid = ids.pop()
+                link.update(kind="product", product_id=pid, canonical="https://www.tiktok.com/view/product/" + pid)
     elif host in ("douyin.com", "www.douyin.com"):
-        link.update(kind="other", platform="douyin")
+        link.update(platform="douyin")
         video = DOUYIN_VIDEO.fullmatch(path)
         if video:
-            link.update(kind="video", video_id=video.group(1), canonical=urlunsplit(("https", parts.netloc, path.rstrip("/"), "", "")))
+            link.update(kind="video", video_id=video.group(1), canonical="https://www.douyin.com/video/" + video.group(1))
     return link
 
 
@@ -90,6 +107,11 @@ def product_link(text):
     """The TikTok product page or short link a message carries (the one to check as a share link), or None. A link the app shares comes
     with a line of words around it, so the words are not a reason to read it as anything else."""
     return next((link for link in from_text(text) if link["kind"] in ("product", "short")), None)
+
+
+def sharer(markers):
+    """The part of a link's marks that names the sharer: {name: value}."""
+    return {name: value for name, value in markers.items() if WHO.search(name)}
 
 
 def attribution(value):

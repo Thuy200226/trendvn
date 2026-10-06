@@ -27,8 +27,8 @@ def _start(app, mid, kind, key=None, reference=None):
     """Start the job behind an answer; when it cannot start the answer says so instead of staying 'running'."""
     try:
         app.tasks.start(kind, str(key or mid), reference)
-    except ValueError as error:
-        app.store.chat_set(mid, "error", error=str(error)[:300])
+    except Exception as error:  # a refusal or anything else: the answer says so instead of staying 'running' and holding a place
+        app.store.chat_set(mid, "error", error=str(error)[:300] or "Không bắt đầu được")
         raise
     return {"id": mid}
 

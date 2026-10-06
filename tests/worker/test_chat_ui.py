@@ -153,6 +153,32 @@ class LinkTests(unittest.TestCase):
         link["body"]["verdict"]["kind"] = "plain"
         self.assertIn("link thường", render(link))
 
+    def test_the_confirm_button_says_what_the_owner_is_vouching_for_by_kind_of_link(self):
+        for kind, words in (
+            ("affiliate", "link hoa hồng của tôi"),
+            ("short", "sao chép link này từ Showcase"),
+            ("plain", "không có dấu hiệu hoa hồng"),
+        ):
+            link = self.link("exact")
+            link["body"]["verdict"]["kind"] = kind
+            self.assertIn(words, render(link), kind)
+
+    def test_a_link_that_turned_out_to_be_a_video_says_so_and_offers_nothing_to_confirm(self):
+        html = render(
+            message(4, "link", {"url": "https://vt.tiktok.com/ZSv/", "video": "https://www.tiktok.com/@a/video/1234567890", "product": 5})
+        )
+        self.assertIn("một <b>video</b>", html)
+        self.assertNotIn("data-chat-act", html)
+
+    def test_the_composer_tells_the_owner_what_goes_to_google(self):
+        from trendvn_worker.ui.tabs import search
+
+        class View:
+            csrf = "x"
+            d = {"accounts": [{"id": "main", "username": "u", "enabled": True}]}
+
+        self.assertIn("Gemini (Google)", search.composer(View()))
+
     def test_a_running_or_failed_check_shows_neither_verdict_nor_buttons(self):
         self.assertIn("Đang kiểm tra link", render(message(4, "link", {"url": "x"}, state="running")))
         html = render(message(4, "link", {"url": "x", "error": "Chỉ nhận đường dẫn https của TikTok"}, state="error"))

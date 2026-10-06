@@ -61,6 +61,14 @@ class ChatHTTPTests(unittest.TestCase):
         code, _, _ = self.srv.req("POST", "/chat/act", "x", {"Content-Length": str((16 << 10) + 1), "Origin": self.origin})
         self.assertEqual(code, 413)
 
+    def test_deeply_nested_json_is_a_clean_refusal_not_a_crash(self):
+        code, _ = self.post("/chat/send", None, raw="[" * 5000 + "]" * 5000)
+        self.assertEqual(code, 403)  # valid JSON, but not an object carrying the page's token
+        code, data = self.post("/chat/send", None, raw='{"csrf":' + "[" * 20000)
+        self.assertEqual(code, 400)
+        code, _ = self.post("/chat/send", None, raw='{"csrf":' + "[" * 900 + "]" * 900 + "}")
+        self.assertEqual(code, 403)
+
     def test_the_fragment_is_only_for_this_machines_page(self):
         code, _, _ = self.srv.req("GET", "/fragment/chat", host="example.com")
         self.assertNotEqual(code, 200)

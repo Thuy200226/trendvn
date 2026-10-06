@@ -45,10 +45,19 @@ def read_links(links):
             if hit and hit["kind"] == "video":
                 videos.append(hit["canonical"])
             elif text:
-                pages.append({"url": final, "text": text})
-        except (ValueError, OSError) as error:
+                pages.append(
+                    {"url": final.split("?")[0], "text": text}
+                )  # the query of a share link names the sharer: no reason to send it on
+        except fetch.FETCH_ERRORS as error:
             warnings.append(str(error)[:180])
     return videos, pages, warnings
+
+
+def without_queries(text):
+    """The text with the query part of every link cut off: the query of a share link names the sharer and no model needs it."""
+    for link in from_text(text):
+        text = text.replace(link["url"], link["url"].split("?")[0])
+    return text
 
 
 def recognise(store, text, pages, files):
@@ -56,16 +65,21 @@ def recognise(store, text, pages, files):
     key, an answer that is not the schema), so the caller can fall back to the owner's own words."""
     # With files the picture is read on its own: told what the product "is", a model copies the words and hides a disagreement the
     # owner needs to hear about (measured on a real call: a photo of an MCHOSE box with the words "kzzi k68" was read as KZZI K68).
-    note = "" if files else "Reference text: " + text + "\n"
+    note = "" if files else "Reference text: " + without_queries(text) + "\n"
     parts = [{"text": note + "Public pages: " + json.dumps(pages, ensure_ascii=False)}]
     for f in files:
         parts.append({"text": "Document: " + f["text"]} if "text" in f else {"inline_data": {"mime_type": f["mime"], "data": f["data"]}})
     parts.append({"text": PROMPT})
-    data = generate(store, store.settings(), parts, SCHEMA, rounds=1, budget=120)
-    answer = (data.get("candidates") or [{}])[0].get("content", {}).get("parts", [])
     try:
-        found = parse_analysis("".join(p.get("text", "") for p in answer if isinstance(p, dict)))
+        data = generate(store, store.settings(), parts, SCHEMA, rounds=1, budget=120)
     except ValueError:
+        raise  # a busy model, a refused key, no key: already worded by the Gemini client
+    except Exception:  # a timeout or a dropped connection
+        raise ValueError("Mô hình không trả lời được lúc này; hãy nhập thêm tên/model") from None
+    try:
+        answer = (data.get("candidates") or [{}])[0].get("content", {}).get("parts", [])
+        found = parse_analysis("".join(p.get("text", "") for p in answer if isinstance(p, dict) and isinstance(p.get("text"), str)))
+    except Exception:  # an answer that is blocked, empty, not JSON or not the shape asked for
         raise ValueError("Không đọc được câu trả lời của mô hình; hãy nhập thêm tên/model") from None
     for key in FIELDS:
         if not isinstance(found.get(key), str) or len(found[key]) > 500:
@@ -95,6 +109,11 @@ def finish(identity, warnings, links):
     return identity
 
 
+def video_identity(videos, warnings=()):
+    """What a message that is only video links is about: no product yet, just those exact videos to look up and for the owner to check."""
+    return {"name": "", "query": "Video theo đường dẫn", "links": list(videos), "warnings": list(warnings), "uncertainty": VERIFY}
+
+
 def identify(store, reference):
     """The product the message is about: {'name','brand','model','variant','query','queries','uncertainty','warnings','links',...}.
     Raises ValueError (worded for the owner) when nothing reliable can be made of it."""
@@ -103,7 +122,7 @@ def identify(store, reference):
     videos, pages, warnings = read_links(links)
     words = prose(text, links)
     if videos and not files and not words:
-        return {"name": "", "query": "Video theo đường dẫn", "links": videos, "warnings": warnings, "uncertainty": VERIFY}
+        return video_identity(videos, warnings)
     if links and not pages and not files and not words:
         raise ValueError("Không đọc được đường dẫn; hãy nhập thêm tên/model hoặc dùng đường dẫn video đầy đủ")
     primary = explicit(words)
@@ -120,7 +139,7 @@ def identify(store, reference):
     try:
         seen = recognise(store, text, pages, files)
     except ValueError as error:
-        if not primary:
+        if not primary or not (primary["brand"] or primary["model"]):  # "tìm cái này" names nothing: searching those words would be a guess
             raise
         warnings.append("Chưa đọc được ảnh/tài liệu; đang tìm theo tên bạn nhập. " + str(error)[:180])
         return finish(primary, warnings, videos)
@@ -132,9 +151,12 @@ def identify(store, reference):
 
 
 def from_page(title, product_id):
-    """The product a shop page names: its title is the name (brand and model are read from it like from the owner's words) and the
-    product id is what makes a later match exact."""
-    title = " ".join(title.split())[:160]
-    identity = explicit(title) or {"name": title, "query": title, "brand": "", "model": "", "variant": ""}
-    identity.update(product_id=product_id, uncertainty="Tên lấy từ trang sản phẩm; mã sản phẩm là căn cứ chính xác")
+    """The product a shop page names. The page's title is a marketing line, not a model number, so the identity is `soft`: its brand and
+    the product id are what counts, and no digit in it becomes a model code a video must repeat. The product id is what makes a later
+    match exact."""
+    title = " ".join(title.split())[:300]
+    brand = (explicit(title[:160]) or {}).get("brand", "")
+    query = title[:90].rsplit(" ", 1)[0] if len(title) > 90 else title
+    identity = {"name": title, "query": query, "brand": brand, "model": "", "variant": "", "soft": True, "product_id": product_id}
+    identity["uncertainty"] = "Tên lấy từ trang sản phẩm; mã sản phẩm là căn cứ chính xác"
     return finish(identity, [], [])

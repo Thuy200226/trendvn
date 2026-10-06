@@ -248,6 +248,17 @@ class ChatTaskTests(TaskCase):
             with self.subTest(kind=kind, key=key), self.assertRaises(ValueError):
                 self.t.start(kind, key)
 
+    def test_a_thread_that_cannot_start_leaves_no_running_task_and_no_files_in_memory(self):
+        from unittest import mock
+
+        mid = self.s.chat_add("bot", "product", {}, state="running", account="main")
+        with mock.patch.object(tasks_mod.threading.Thread, "start", side_effect=RuntimeError("can't start new thread")):
+            with self.assertRaises(RuntimeError):
+                self.t.start("identify", str(mid), {"text": "x", "files": [{"name": "a.png"}]})
+        self.assertFalse(self.s.tasks_running())
+        self.assertEqual(self.t.references, {})
+        self.t.start("collect")  # the browser is not blocked afterwards
+
     def test_a_restart_turns_every_unfinished_answer_into_an_error(self):
         mid = self.videos()
         tasks_mod.Tasks(self.s, "t" * 40, lambda s: {}, self.lock)

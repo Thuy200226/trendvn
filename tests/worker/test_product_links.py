@@ -94,6 +94,47 @@ class AttributionTests(unittest.TestCase):
         self.assertLessEqual(len(found["markers"]["creator_id"]), 80)
 
 
+class HardeningTests(unittest.TestCase):
+    PID = "1729384756102938475"
+
+    def test_a_video_address_is_a_video_whatever_its_query_says(self):
+        link = classify("https://www.tiktok.com/@creator/video/7234567890123456789?product_id=" + self.PID)
+        self.assertEqual((link["kind"], link["product_id"]), ("video", None))
+
+    def test_an_address_that_names_two_different_products_is_no_product(self):
+        link = classify("https://www.tiktok.com/view/product/%s?product_id=9999999999" % self.PID)
+        self.assertEqual((link["kind"], link["product_id"], link["conflict"]), ("tiktok", None, True))
+        same = classify("https://www.tiktok.com/view/product/%s?product_id=%s" % (self.PID, self.PID))
+        self.assertEqual((same["kind"], same["product_id"], same["conflict"]), ("product", self.PID, False))
+
+    def test_video_addresses_come_back_in_one_canonical_form_the_agent_recognises(self):
+        for url, canonical in (
+            ("https://WWW.TIKTOK.COM/@a/video/1234567890", "https://www.tiktok.com/@a/video/1234567890"),
+            ("https://www.tiktok.com:443/@a/video/1234567890/?x=1", "https://www.tiktok.com/@a/video/1234567890"),
+            ("https://m.tiktok.com/@a/video/1234567890", "https://www.tiktok.com/@a/video/1234567890"),
+            ("https://douyin.com/video/7234567890123456789", "https://www.douyin.com/video/7234567890123456789"),
+        ):
+            self.assertEqual(classify(url)["canonical"], canonical, url)
+
+    def test_bare_addresses_and_non_ascii_text_are_not_links_to_follow(self):
+        for url in (
+            "https://127.0.0.1/a",
+            "https://[::1]/a",
+            "https://[::ffff:7f00:1]/a",
+            "https://2130706433/a",
+            "https://www.tiktok.com/vi\u1ec7t",
+            "https://t\u1ef7.tiktok.com/a",
+        ):
+            self.assertIsNone(classify(url), url)
+
+    def test_a_mark_is_a_whole_word_of_the_parameter_name_not_a_piece_of_it(self):
+        base = "https://www.tiktok.com/view/product/%s?" % self.PID
+        for name in ("rug_x", "debug_mode", "partnership", "creators"):
+            self.assertFalse(attribution(base + name + "=1")["tracked"], name)
+        for name in ("share_creator_id", "creator_id", "sec_user_id", "u_code", "ug_btm", "affiliate_id", "partner"):
+            self.assertTrue(attribution(base + name + "=1")["tracked"], name)
+
+
 class ProductLinkTests(unittest.TestCase):
     def test_the_share_text_of_the_app_gives_its_link_whatever_words_surround_it(self):
         text = "Xem sản phẩm này trên TikTok Shop nhé! https://vt.tiktok.com/ZSabc123/ Cảm ơn"

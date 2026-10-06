@@ -26,12 +26,7 @@ class CommissionMixin:
             db.execute(
                 "INSERT OR REPLACE INTO commission_links(account,product_id,created,url,title,markers,tracked) VALUES(?,?,?,?,?,?,?)",
                 (
-                    account, found["product_id"], time.time(), found["input"][:600], (found.get("title") or "")[:300],
+                    account, found["product_id"], time.time(), found["input"][:2000], (found.get("title") or "")[:300],
                     json.dumps(found.get("markers") or {}), 1 if found.get("tracked") else 0,
                 ),
             )  # fmt: skip
-
-    def commission_list(self, account):
-        with self.connect() as db:
-            rows = db.execute("SELECT * FROM commission_links WHERE account=? ORDER BY created DESC LIMIT 50", (account,)).fetchall()
-        return [dict(r) | {"markers": loads(r["markers"], {})} for r in rows]
