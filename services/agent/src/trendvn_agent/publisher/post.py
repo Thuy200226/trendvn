@@ -8,7 +8,7 @@ from ..config import RUNTIME
 from ..log import log
 from .challenge import Challenge, wait_for_upload_ui
 from .constants import HEADED, POST_LABELS, UPLOAD_URL
-from .profile import account_flag, logged_in, own_descriptions, profile_name, wrong_account
+from .profile import account_flag, logged_in, own_descriptions, profile_name, wrong_account, signed_in_as
 from .screenshots import export_shot, shot
 from .studio import dismiss_popups, set_caption, set_visibility, studio_shows, wait_uploaded
 from .text import norm, sha256
@@ -37,9 +37,17 @@ def _publish_one(job, dry_run, state):
         return "failed", "", "Không thấy file video đã dựng"
     if sha256(video) != job["output_hash"]:
         return "failed", "", "Hash video thay đổi sau khi dựng; không đăng"
+    if job.get("product"):
+        from ..shop.post import publish
+
+        return publish(job, video, dry_run, state)
     with chrome(profile_name(job.get("account")), locale="vi-VN", headless=not HEADED, viewport=(1280, 1000)) as ctx:
         if not logged_in(ctx):
             return "signed_out", "", "Chưa đăng nhập TikTok cho @%s trong hồ sơ riêng" % job["target"]
+        if job.get("search_account") or job.get("product"):
+            who = signed_in_as(ctx)
+            if not who or who.casefold() != job["target"].casefold():
+                return "signed_out", "", "Không xác minh được đúng tài khoản đã chọn; dừng đăng"
         mismatch = wrong_account(ctx, job["target"])
         if mismatch:
             return "signed_out", "", mismatch

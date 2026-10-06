@@ -42,6 +42,7 @@ def free_port():
 class FakeAgent(BaseHTTPRequestHandler):
     calls = []
     mode = "ok"
+    store = None
 
     def log_message(self, *a):
         pass
@@ -52,6 +53,33 @@ class FakeAgent(BaseHTTPRequestHandler):
         FakeAgent.calls.append((self.path, payload))
         if FakeAgent.mode == "busy":
             return self.reply(409, {"error": "busy"})
+        if self.path in ("/api/search", "/api/search/open"):
+            return self.reply(
+                200,
+                {
+                    "items": [
+                        {
+                            "source_id": "1234567890",
+                            "title": "Samsung Galaxy S24",
+                            "platform": "tiktok",
+                            "url": "https://www.tiktok.com/@creator/video/1234567890",
+                            "media": {"kind": "direct", "url": "https://example.com/video.mp4"},
+                        },
+                        {
+                            "source_id": "1234567891",
+                            "title": "Samsung Galaxy S23",
+                            "platform": "tiktok",
+                            "url": "https://www.tiktok.com/@creator/video/1234567891",
+                        },
+                    ]
+                },
+            )
+        if self.path == "/api/account/login":
+            return self.reply(200, {"logged_in": True, "username": FakeAgent.store.account(payload["account"])["username"]})
+        if self.path == "/api/search/download":
+            with FakeAgent.store.transaction() as db:
+                db.execute("UPDATE jobs SET state='queued',reason='' WHERE id=?", (payload["job_id"],))
+            return self.reply(200, {"state": "queued"})
         if self.path == "/api/collect":
             time.sleep(2.2)
             return self.reply(
@@ -267,6 +295,7 @@ def main():
         print(("PASS " if ok else "FAIL ") + name + (("  -> " + detail) if detail and not ok else ""), flush=True)
 
     ids = seed(tmp)
+    FakeAgent.store = Store(tmp)
     agent_port, port = free_port(), free_port()
     agent = ThreadingHTTPServer(("127.0.0.1", agent_port), FakeAgent)
     threading.Thread(target=agent.serve_forever, daemon=True).start()
@@ -610,6 +639,87 @@ def main():
             check(
                 "Adding without a topic is refused with a message", Store(tmp).account("no_topics") is None and pg.is_visible(".flash.bad")
             )
+
+            # Creator account login is browser-operated; never pretend it grants Shop API access.
+            go(pg, base + "/#search")
+            pg.locator("#search details").filter(has=pg.locator("summary", has_text="Kết nối TikTok Shop của nhà sáng tạo")).locator(
+                "summary"
+            ).first.click()
+            FakeAgent.calls.clear()
+            pg.click('form[action="/account-login"] button')
+            pg.wait_for_timeout(1000)
+            check(
+                "Creator login opens selected account without Shop keys",
+                bool(FakeAgent.calls) and FakeAgent.calls[0][0] == "/api/account/login" and FakeAgent.calls[0][1]["account"] == "main",
+            )
+
+            # Reference input and explicit selection, through the real HTTP worker and isolated fake agent.
+            go(pg, base + "/#search")
+            pg.fill('[data-search-form] textarea[name="text"]', "Samsung Galaxy S24")
+            pg.select_option('[data-search-form] select[name="source"]', "douyin")
+            FakeAgent.calls.clear()
+            pg.click("[data-search-form] button.go")
+            pg.wait_for_selector('.search-session form[action="/search-select"]', timeout=10000)
+            cards = pg.locator(".search-session article")
+            check("Search excludes different model from selection", cards.nth(1).locator("button").is_disabled())
+            check("Search pins selected account in browser request", FakeAgent.calls[0][1]["account"] == "main")
+            check("Search source selection reaches browser agent", FakeAgent.calls[0][1]["source"] == "douyin")
+            check("Query preview is visible before selection", "TikTok:" in pg.locator(".search-session").first.inner_text())
+            cards.first.locator('input[name="confirmed"]').check()
+            cards.first.locator("button").click()
+            pg.wait_for_timeout(1200)
+            with FakeAgent.store.connect() as db:
+                selected = db.execute("SELECT state,search_account FROM jobs WHERE source_id='1234567890'").fetchone()
+            check("Selected video enters existing processing queue", selected and tuple(selected) == ("queued", "main"))
+            go(pg, base + "/#search")
+            retry = pg.locator('form[action="/search-retry"]').first
+            retry.locator('input[name="name"]').fill("bàn phím mchose ace68")
+            retry.locator('select[name="source"]').select_option("douyin")
+            FakeAgent.calls.clear()
+            retry.locator('button[value="open"]').click()
+            pg.wait_for_timeout(1200)
+            check(
+                "Manual verification uses Chinese query and retained product model",
+                any(
+                    path == "/api/search/open" and payload["queries"]["douyin"] == "迈从 ACE68 磁轴键盘"
+                    for path, payload in FakeAgent.calls
+                ),
+            )
+            go(pg, base + "/#search")
+            captured = []
+
+            def intercept(route):
+                captured.append(route.request.post_data_json)
+                route.fulfill(status=200, content_type="application/json", body='{"task":"test"}')
+
+            pg.route("**/search-input", intercept)
+            pg.set_input_files(
+                '[data-search-form] input[type="file"]',
+                {"name": "reference.txt", "mimeType": "text/plain", "buffer": b"Samsung Galaxy S24"},
+            )
+            check("File picker displays attachment name safely", pg.locator("[data-search-files]").inner_text().startswith("reference.txt"))
+            pg.click("[data-search-form] button.go")
+            pg.wait_for_timeout(500)
+            check(
+                "Attachment submits actual content, not filename",
+                captured and captured[-1]["files"][0]["data"] == "U2Ftc3VuZyBHYWxheHkgUzI0",
+            )
+            go(pg, base + "/#search")
+            pg.locator("[data-search-drop]").evaluate(
+                "e => { const d=new DataTransfer(); d.setData('text/plain','https://shop.tiktok.com/view/product/123456'); e.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:d})); }"
+            )
+            check("Dragged URL enters reference text", "123456" in pg.input_value('[data-search-form] textarea[name="text"]'))
+            pg.locator("[data-search-drop]").evaluate(
+                "e => { const d=new DataTransfer(); d.setData('text/plain','Samsung S24'); e.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,clipboardData:d})); }"
+            )
+            check("Pasted text on drop area enters reference", "Samsung S24" in pg.input_value('[data-search-form] textarea[name="text"]'))
+            pg.locator("[data-search-drop]").evaluate(
+                "e => { const d=new DataTransfer(); d.items.add(new File(['%PDF-1.7\\n'], 'reference.pdf',{type:'application/pdf'})); e.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,clipboardData:d})); }"
+            )
+            check("Pasted file enters attachment list", "reference.pdf" in pg.locator("[data-search-files]").inner_text())
+            pg.click("[data-search-clear]")
+            check("Clear attachments removes transient files", not pg.locator("[data-search-files]").inner_text())
+            pg.unroute("**/search-input", intercept)
 
             check("No console or page errors during flows", not errors, "; ".join(errors[:3]))
             ctx.close()

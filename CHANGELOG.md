@@ -1,5 +1,19 @@
 # Lịch sử thay đổi
 
+## 1.8 — 2026-10-06 (sửa tìm sản phẩm và kết nối nhà sáng tạo)
+
+Giữ tên/model/biến thể người dùng nhập khi ảnh được AI nhận thành sản phẩm khác; báo riêng xung đột và vẫn tìm theo tên nếu nhận diện ảnh quá tải. Tạo từ khóa từng nguồn, ví dụ MCHOSE ACE68 → 迈从 ACE68 磁轴键盘, giữ model/biến thể khi dịch. Thêm chọn TikTok/Douyin hoặc cả hai, xem từ khóa, sửa tên và tìm lại trong cửa sổ tự xác minh; nguồn bị chặn không làm mất kết quả nguồn còn lại. Chọn video giữ cả nguồn và ID, tải đúng video đó vào luồng xử lý/duyệt cũ.
+
+Thêm nút đăng nhập TikTok đúng hồ sơ/username. Luồng Shop phân biệt rõ tài khoản nhà sáng tạo với quyền ứng dụng: chỉ có tài khoản thì có hướng dẫn kiểm tra hoa hồng trong TikTok; tự đồng bộ vẫn cần ứng dụng Shop được duyệt. Với ứng dụng đã được cấp quyền: đăng nhập/cấp quyền trong cửa sổ thật, callback cục bộ dùng một lần, kiểm token nhà sáng tạo/username/scopes và tự làm mới token đúng creator. Không lấy trạng thái đăng nhập làm bằng chứng hoa hồng/quyền giỏ hàng.
+
+## 1.7 — 2026-10-05 (tìm video và sản phẩm: docs/PRODUCT-SEARCH.md)
+
+Thêm tìm kiếm theo tài khoản bằng văn bản, ảnh, PDF, DOCX, TXT hoặc link HTTPS; hỗ trợ dán/kéo tệp. Kết quả đi qua lựa chọn và xác nhận rồi mới tải vào hàng đợi xử lý. Video luôn cần duyệt và giữ đúng tài khoản thực từ lúc tìm; khác model/thương hiệu/biến thể rõ ràng bị loại. Điểm khớp từ khóa không phải độ chắc chắn sản phẩm.
+
+Kết nối TikTok Shop API của nhà sáng tạo trong bảng điều khiển: xác minh username/quyền, đọc showcase và marketplace, đối chiếu mã sản phẩm/hoa hồng/tồn kho. Sản phẩm marketplace chưa vào showcase không được gắn giỏ. Khi chủ ghép sản phẩm và bấm đăng, API kiểm lại quyền và sản phẩm, kiểm MD5 tệp tải lên rồi gửi một lệnh đăng; phản hồi không rõ được giữ để kiểm tra, không tự gửi lại. Chạy thử dừng trước lệnh đăng. Hiện hỗ trợ video kèm sản phẩm tối đa 10 MiB và công khai; token hết hạn cần nhập lại.
+
+Ảnh/PDF dùng Gemini; URL công khai được kiểm DNS và chuyển hướng, tài liệu gốc được xóa khỏi yêu cầu khi hoàn tất. Bí mật kết nối chỉ lưu tại máy với quyền 0600, không hiển thị lại. Kiểm chứng tài khoản Shop thật cần chủ nhập kết nối và cung cấp sản phẩm mẫu; không tuyên bố tìm đúng mọi sản phẩm.
+
 ## 1.6 — 2026-10-02 (chất lượng đầu ra: docs/QUALITY.md)
 
 **Lỗi lớn nhất tìm được:** giọng đọc **đọc to cả câu hướng dẫn** đứng trước lời thuyết minh (model TTS mới coi `text` là bản chép nguyên văn): thêm 10 giây lời hướng dẫn vào mọi video lồng tiếng, làm lời trông quá dài rồi bị tăng tốc hoặc từ chối. Nay chỉ gửi lời thuyết minh; giọng, sắc thái và nhịp đi trong `speech_metadata.style` (Interactions API); model cũ vẫn nhận hướng dẫn dạng chữ. Kết luận cũ "đọc nhanh thì bỏ sót câu" cũng sai (16–19 ký tự/giây tự nhiên, vẫn đủ từng chữ).

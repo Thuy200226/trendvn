@@ -9,6 +9,27 @@ def dashboard_html(app, flash=None, host=""):
     data = store.dashboard_data()
     data["ready"] = store.ready_list()
     data["tasks"] = store.tasks_recent(6)
+    data["searches"] = store.searches_recent()
+    from ..ui.labels import STATE_LABELS
+
+    with store.connect() as db:
+        jobs = [
+            dict(r)
+            for r in db.execute(
+                "SELECT id,source_id,platform,title,state,reason,search_id,search_account FROM jobs WHERE search_id IS NOT NULL ORDER BY first_seen DESC LIMIT 100"
+            )
+        ]
+    for job in jobs:
+        job["state_label"] = STATE_LABELS.get(job["state"], job["state"])
+    for search in data["searches"]:
+        search["jobs"] = [j for j in jobs if j["search_id"] == search["id"]]
+        search["account_jobs"] = [
+            j
+            for j in jobs
+            if j["search_account"] == search["account"]
+            and j["state"] in ("search_selected", "queued", "ready", "awaiting_approval", "needs_review")
+        ]
+    data["shop_callback_url"] = "http://localhost:%s/shop-callback" % app.config.public_port
     data["discovery_at"] = (store.settings().get("hb_discovery") or {}).get("at")
     # n8n lives on the same machine as this page: reuse the host the visitor used, swapping in n8n's port
     visitor_host = (host.rsplit(":", 1)[0] if host else "localhost") or "localhost"

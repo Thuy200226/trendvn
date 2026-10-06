@@ -1,6 +1,7 @@
 """The life of a video: every state a job can be in."""
 
 STATES = (
+    "search_selected",
     "baseline",
     "candidate",
     "queued",

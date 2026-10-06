@@ -31,6 +31,37 @@
     card.querySelector('[data-len]').textContent=txt.replace(/#[\p{L}\p{N}_]+/gu,'').trim().length;
     card.querySelector('[data-tags]').textContent=(txt.match(/#[\p{L}\p{N}_]+/gu)||[]).length;
   });
+  // Product references: files stay in memory; never stored in browser local storage.
+  var searchForm=document.querySelector('[data-search-form]'),searchFiles=[];
+  if(searchForm){
+    var drop=searchForm.querySelector('[data-search-drop]'),picker=searchForm.elements.files,msg=searchForm.querySelector('[data-search-message]');
+    function showFiles(){var list=searchForm.querySelector('[data-search-files]');list.replaceChildren();searchFiles.forEach(function(f){var li=document.createElement('li');li.textContent=f.name+' ('+Math.round(f.size/1024)+' KiB)';list.appendChild(li);});}
+    function addFiles(files){
+      var next=searchFiles.concat(Array.from(files));
+      if(next.length>3||next.some(function(f){return f.size>4*1024*1024;})||next.reduce(function(n,f){return n+f.size;},0)>8*1024*1024){msg.textContent='Tối đa 3 tệp, 4 MiB/tệp, tổng 8 MiB.';return;}
+      if(next.some(function(f){return !/\.(png|jpe?g|webp|pdf|docx|txt)$/i.test(f.name);})){msg.textContent='Chỉ nhận PNG/JPEG/WebP, PDF, DOCX hoặc TXT.';return;}
+      searchFiles=next;msg.textContent='';dirty=true;showFiles();
+    }
+    picker.addEventListener('change',function(){addFiles(picker.files);picker.value='';});
+    drop.addEventListener('dragover',function(e){e.preventDefault();drop.classList.add('over');});
+    drop.addEventListener('dragleave',function(){drop.classList.remove('over');});
+    drop.addEventListener('drop',function(e){e.preventDefault();drop.classList.remove('over');if(e.dataTransfer.files.length)addFiles(e.dataTransfer.files);else{var txt=e.dataTransfer.getData('text/uri-list')||e.dataTransfer.getData('text/plain');if(txt)searchForm.elements.text.value+='\n'+txt;dirty=true;}});
+    searchForm.addEventListener('paste',function(e){var files=Array.from(e.clipboardData.items).filter(function(i){return i.kind==='file';}).map(function(i){return i.getAsFile();}).filter(Boolean);if(files.length){e.preventDefault();addFiles(files);}else if(e.target===drop){var txt=e.clipboardData.getData('text/plain');if(txt){e.preventDefault();searchForm.elements.text.value+='\n'+txt;dirty=true;}}});
+    searchForm.querySelector('[data-search-clear]').addEventListener('click',function(){searchFiles=[];showFiles();});
+    document.addEventListener('click',function(e){var a=e.target.closest('[data-search-account]');if(a){searchForm.elements.account.value=a.dataset.searchAccount;dirty=true;}});
+    function readFile(f){return new Promise(function(resolve,reject){var reader=new FileReader();reader.onerror=function(){reject(Error('Không đọc được tệp'));};reader.onload=function(){resolve({name:f.name,data:String(reader.result).split(',')[1]});};reader.readAsDataURL(f);});}
+    searchForm.addEventListener('submit',async function(e){
+      e.preventDefault();e.stopPropagation();if(searchForm.dataset.sent)return;searchForm.dataset.sent='1';
+      var button=searchForm.querySelector('button[type="submit"],button.go');button.disabled=true;msg.textContent='Đang kiểm tra và gửi yêu cầu…';
+      try{
+        var files=await Promise.all(searchFiles.map(readFile));
+        var response=await fetch('/search-input',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf:searchForm.elements.csrf.value,account:searchForm.elements.account.value,mode:searchForm.elements.mode.value,source:searchForm.elements.source.value,text:searchForm.elements.text.value,files:files})});
+        var data=await response.json();if(!response.ok)throw Error(data.error||'Không gửi được tìm kiếm');
+        location.hash='#search';location.reload();
+      }catch(error){msg.textContent=error.message;delete searchForm.dataset.sent;button.disabled=false;}
+    });
+  }
+
   // one click, one action: a second click while the first is being sent does nothing
   document.addEventListener('submit',function(e){
     var f=e.target;if(f.dataset.sent){e.preventDefault();return;}

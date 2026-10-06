@@ -8,7 +8,7 @@ from ..domain.accounts import account_flag
 from .components import task_panel  # noqa: F401  (re-exported for the tabs)
 from .format import escape as E
 
-BROWSER_TASKS = ("collect", "publish", "dryrun", "stats", "update")
+BROWSER_TASKS = ("collect", "publish", "dryrun", "stats", "update", "search", "search_download", "shop_sync")
 PROCESS_TASKS = ("process", "update")
 
 
@@ -51,9 +51,11 @@ class View:
         """The enabled accounts that take a video of this topic (a video without a topic goes anywhere)."""
         return [a for a in self.d.get("accounts", []) if a["enabled"] and (topic is None or topic in a["topics"])]
 
-    def destination(self, topic):
+    def destination(self, topic, account_id=None):
         """Where the 'Đăng ngay' button sends a video of this topic. Same rule as the worker: of the accounts that take the topic the one
         with the fewest posts today, and when none does, the default account (the first enabled one)."""
+        if account_id:
+            return next((a for a in self.d.get("accounts", []) if a["enabled"] and a["id"] == account_id), None)
         takers = self.takers(topic)
         if takers:
             return min(takers, key=lambda a: (a["logged_in"] is False, a["published_today"]))

@@ -77,3 +77,5 @@ data/                   (tự tạo, không đóng gói) dữ liệu: worker/ ag
 - **Nguồn Mỹ** cần IP Mỹ (`TRENDVN_US_PROXY` trong `.env`); không có thì tự bỏ qua, không bao giờ gắn nhầm nội dung Việt là xu hướng Mỹ.
 - **Bản quyền và điều khoản nền tảng là trách nhiệm của bạn.** Hệ thống chỉ chặn trùng lặp và nội dung nhạy cảm theo quy tắc, không kiểm tra bản quyền.
 - Mặc định tất cả chỉ mở trên chính máy này (`127.0.0.1`). Xem từ xa: dùng đường hầm SSH/VPN ([docs/DEPLOY.md](docs/DEPLOY.md)).
+
+Tìm video/sản phẩm theo ảnh, tài liệu hoặc đường dẫn ở **Thêm → Tìm sản phẩm**. Chọn tài khoản, xem kết quả rồi đưa video vào xử lý như trước. Có lựa chọn TikTok/Douyin và từ khóa tiếng Trung giữ đúng model. Đăng nhập nhà sáng tạo từ trang; đồng bộ Shop tự động cần ứng dụng được cấp quyền; xem [hướng dẫn và giới hạn](docs/PRODUCT-SEARCH.md).

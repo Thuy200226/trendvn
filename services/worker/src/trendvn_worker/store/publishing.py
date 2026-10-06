@@ -105,7 +105,10 @@ class PublishingMixin:
             if refusal:
                 (held_with_video if row else held_without).append(refusal)
             elif row:
-                return self._reserve(db, row, account, cfg, now, False)
+                try:
+                    return self._reserve(db, row, account, cfg, now, False)
+                except ValueError as error:
+                    held_with_video.append({"status": "blocked", "reason": str(error)})
             else:
                 has_room = True
         soonest = lambda refusals: min(refusals, key=lambda r: (r["status"] == "blocked", r.get("retry_after", 0)))  # noqa: E731
@@ -155,7 +158,18 @@ class PublishingMixin:
             "ORDER BY COALESCE(json_extract(meta,'$.score'),0) DESC, first_seen",
             (now - 3600,),
         )
-        return next((row for row in rows if accepts(account, row["topic"])), None)
+        return next(
+            (
+                row
+                for row in rows
+                if (
+                    row["search_account"] == account["id"] and loads(row["meta"], {}).get("search_username") == account["username"]
+                    if row["search_account"]
+                    else accepts(account, row["topic"])
+                )
+            ),
+            None,
+        )
 
     @staticmethod
     def _chosen_video(db, job_id):
@@ -166,6 +180,11 @@ class PublishingMixin:
     def _account_for_manual(self, db, row, accounts, now):
         """The account a hand-picked video goes to: one that takes its topic (not one known to be signed out, then the one with the fewest
         posts today), else the default account."""
+        if row["search_account"]:
+            chosen = next((a for a in accounts if a["id"] == row["search_account"]), None)
+            if not chosen or loads(row["meta"], {}).get("search_username") != chosen["username"]:
+                raise ValueError("Tài khoản đã chọn cho video đang tắt hoặc đã bị xóa; không chuyển sang tài khoản khác")
+            return chosen
         fitting = [a for a in accounts if accepts(a, row["topic"])]
         if not fitting:
             return accounts[0]
@@ -174,6 +193,9 @@ class PublishingMixin:
 
     def _reserve(self, db, row, account, cfg, now, manual):
         """Mark the video as being published (with a lease the agent must present when it reports back) and return the claim."""
+        if row["search_account"] and loads(row["meta"], {}).get("search_username") != account["username"]:
+            raise ValueError("Tài khoản thực đã thay đổi; hãy tìm lại video")
+        product = self._product_for_publish(row, account)
         token = uuid.uuid4().hex
         db.execute(
             "UPDATE jobs SET state='publishing',publish_lease=?,prev_state=?,account=?,target=?,updated=? WHERE id=?",
@@ -195,7 +217,21 @@ class PublishingMixin:
             "account": account["id"],
             "target": account["username"],
             "visibility": effective(account, cfg)["visibility"],
+            "search_account": row["search_account"],
+            "product": product,
         }
+
+    def _product_for_publish(self, row, account):
+        product = loads(row["product_binding"], {})
+        if not product:
+            return None
+        from ..search.catalog import search_catalog
+
+        found = search_catalog(self, account["id"], {"product_id": product.get("product_id"), "query": ""}, allow_stale=True)
+        current = next((p for p in found if p["product_id"] == product.get("product_id")), None)
+        if not current or not current["can_attach"] or not product.get("confirmed"):
+            raise ValueError("Sản phẩm hoặc quyền hoa hồng/gắn giỏ đã thay đổi; cần xác minh lại trước khi đăng")
+        return current
 
     def publish_peek(self, job_id=None, account_id=None):
         """A rendered video for rehearsals (the next one, or a chosen one, for the account asked for or the best fit); changes nothing and
@@ -219,6 +255,11 @@ class PublishingMixin:
             if not row or not accounts:
                 return {"status": "idle", "reason": "No rendered video is waiting"}
             account = asked or self._account_for_manual(db, row, accounts, time.time())
+            if row["search_account"] and row["search_account"] != account["id"]:
+                raise ValueError("Video được tìm cho tài khoản khác; không chuyển tài khoản khi chạy thử")
+            if row["search_account"] and loads(row["meta"], {}).get("search_username") != account["username"]:
+                raise ValueError("Tài khoản thực đã thay đổi; hãy tìm lại video")
+            product = self._product_for_publish(row, account)
         a = loads(row["analysis"], {})
         return {
             "status": "ready",
@@ -230,6 +271,8 @@ class PublishingMixin:
             "account": account["id"],
             "target": account["username"],
             "visibility": effective(account, cfg)["visibility"],
+            "search_account": row["search_account"],
+            "product": product,
         }
 
     def publish_finish(self, jid, lease, outcome, url="", reason=""):

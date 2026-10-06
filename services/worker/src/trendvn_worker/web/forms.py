@@ -221,8 +221,40 @@ FORMS = {
     "/account-delete": account_delete,
 }
 
+
+def _search_select(app, form):
+    from .search_forms import select_video
+
+    return select_video(app, form)
+
+
+def _search_pair(app, form):
+    from .search_forms import pair_product
+
+    return pair_product(app, form)
+
+
+FORMS.update({"/search-select": _search_select, "/search-pair": _search_pair})
+
+
+def _shop_connect(app, form):
+    from .shop_forms import connect
+
+    return connect(app, form)
+
+
+def _shop_sync(app, form):
+    from .shop_forms import sync
+
+    return sync(app, form)
+
+
+FORMS.update({"/shop-connect": _shop_connect, "/shop-sync": _shop_sync})
+
 # what the page says after each successful form (shown once, as a green banner)
 FLASH = {
+    "shop_saved": "Đã lưu kết nối tại máy. Đang xác minh đúng tài khoản và đồng bộ danh sách TikTok Shop.",
+    "product_paired": "Đã chọn sản phẩm cho video; quyền gắn giỏ sẽ được kiểm lại trước khi đăng.",
     "started": "Đã bắt đầu. Tiến độ hiện ngay trên trang, không cần tải lại.",
     "caption_saved": "Đã lưu mô tả và hashtag.",
     "caption_reset": "Đã trả về mô tả do hệ thống soạn.",
@@ -239,3 +271,30 @@ FLASH = {
     "account_saved": "Đã lưu tài khoản.",
     "account_deleted": "Đã xóa tài khoản.",
 }
+
+
+def _search_retry(app, form):
+    from .search_forms import retry
+
+    return retry(app, form)
+
+
+def _account_login(app, form):
+    from .search_forms import account_login
+
+    return account_login(app, form)
+
+
+def _shop_app(app, form):
+    from .shop_forms import save_app
+
+    return save_app(app, form)
+
+
+def _shop_authorize(app, form):
+    from .shop_forms import authorize
+
+    return authorize(app, form)
+
+
+FORMS.update({"/search-retry": _search_retry, "/account-login": _account_login, "/shop-app": _shop_app, "/shop-authorize": _shop_authorize})

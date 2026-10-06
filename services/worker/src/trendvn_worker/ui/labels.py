@@ -5,6 +5,7 @@ import re
 from ..domain.platforms import REGISTRY
 
 STATE_LABELS = {
+    "search_selected": "Chờ tải video đã chọn",
     "baseline": "Mốc ban đầu",
     "candidate": "Ứng viên",
     "queued": "Chờ xử lý",
@@ -20,6 +21,7 @@ STATE_LABELS = {
     "rejected": "Đã bỏ",
 }
 STATE_TONE = {
+    "search_selected": "warn",
     "published": "good",
     "ready": "good",
     "awaiting_approval": "warn",

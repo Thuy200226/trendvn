@@ -3,6 +3,7 @@
 import re
 
 from ..domain import topics
+from ..jsonsafe import loads
 from ..domain.accounts import account_flag
 from .components import chip, platform_badge, state_chip
 from .format import escape as E, headline, left_text, meta_of, num
@@ -52,6 +53,16 @@ FAILED_REST_SECONDS = 3600  # the scheduler skips a video that failed to post th
 
 def _destination_line(view, job):
     """Which topic the video is about and which accounts take it; says so when none does."""
+    if job.get("search_account"):
+        account = view.destination(None, job["search_account"])
+        product = loads(job.get("product_binding"), {})
+        basket = " · Giỏ hàng: " + product.get("title", "") + " (" + product.get("product_id", "") + ")" if product else ""
+        text = (
+            "Tài khoản đã chọn: @" + meta_of(job).get("search_username", account["username"])
+            if account
+            else "Tài khoản đã chọn đang tắt hoặc đã bị xóa; cần xử lý trước khi đăng"
+        )
+        return '<div class="note small">%s</div>' % E(text + basket)
     topic = job.get("topic")
     if len(view.d.get("accounts", [])) < 2 and not topic:
         return ""
@@ -77,7 +88,7 @@ def _destination_line(view, job):
 def _confirm_text(view, job):
     """The question asked before 'Đăng ngay': where it goes, how visible, and any rule the click overrides."""
     d, cfg = view.d, view.cfg
-    account = view.destination(job.get("topic"))
+    account = view.destination(job.get("topic"), job.get("search_account"))
     warnings = []
     # the rules that apply are the account's own (its limit, its golden hours), not the channel's totals
     today, limit, inside = (
@@ -135,7 +146,8 @@ def _waiting_line(view, job):
     elif not view.d["publisher_enabled"]:
         text = "Công tắc Tự đăng đang tắt nên lịch chưa đăng video nào. Bật ở tab Tổng quan."
     else:
-        takers = view.takers(job.get("topic"))
+        takers = [view.destination(None, job["search_account"])] if job.get("search_account") else view.takers(job.get("topic"))
+        takers = [a for a in takers if a]
         if not takers:
             return ""  # the destination line says that no account takes this topic
         everyone = _everyone_hold(view, job)

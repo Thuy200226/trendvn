@@ -11,6 +11,7 @@ from .queue import QueueMixin
 from .reporting import ReportingMixin
 from .retention import RetentionMixin
 from .task_log import TaskLogMixin
+from .search import SearchMixin
 
 
 class Store(
@@ -25,5 +26,6 @@ class Store(
     FeedbackMixin,
     ReportingMixin,
     RetentionMixin,
+    SearchMixin,
 ):
     """The whole database API (ingest, queue, publishing, captions, tasks, feedback, reporting)."""

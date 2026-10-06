@@ -38,7 +38,8 @@ class IngestMixin:
             # a stream with its own category (a Douyin tab) knows better than the keywords that guessed when the video first appeared
             keep = "COALESCE(?,topic_hint)" if report.topic else "COALESCE(topic_hint,?)"
             db.execute(
-                "UPDATE jobs SET last_seen=?,updated=?,meta=COALESCE(?,meta),topic_hint=%s WHERE id=?" % keep,
+                "UPDATE jobs SET last_seen=?,updated=?,meta=CASE WHEN search_id IS NOT NULL THEN meta ELSE COALESCE(?,meta) END,topic_hint=%s WHERE id=?"
+                % keep,
                 (report.observed, now, item.meta, hint, job_id),
             )
         else:
@@ -97,7 +98,7 @@ class IngestMixin:
     def candidates_without_media(self, limit=20, platform=None):
         """Videos found but not downloaded, best score first. Newest-first would let a burst of weak new videos push the best ones past
         `limit`; `platform` keeps another platform's rows out of the way."""
-        where, args = "state='candidate'", []
+        where, args = "state='candidate' AND search_id IS NULL", []
         if platform is not None:
             where += " AND platform=?"
             args.append(platform)

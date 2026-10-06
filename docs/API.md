@@ -81,3 +81,14 @@ curl -s -H "Authorization: Bearer $TOKEN" localhost:5681/api/status | python3 -m
 curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
      -d '{"daily_limit": 1, "post_windows": [[19, 22]]}' localhost:5681/api/settings
 ```
+
+## Tìm sản phẩm theo tài khoản
+
+Form nội bộ `POST /search-input` nhận JSON `{csrf, account, mode: videos|products, text, files:[{name,data}]}` với dữ liệu tệp base64; giới hạn thân 12 MiB, dữ liệu tệp 8 MiB. Trả ID tìm kiếm/tác vụ. `/search-select`, `/search-pair`, `/shop-connect`, `/shop-sync` là form có CSRF và kiểm nguồn trang. Không có API nhập catalog từ nguồn công khai.
+
+Agent nhận các POST xác thực `/api/search` (`account,query,links`), `/api/search/download` (`account,job_id,item`) và `/api/shop/search` (`account,query,product_id?`). Kết quả tìm tối đa20; download chỉ gọi sau lựa chọn. Claim/peek của video tìm kiếm bổ sung `search_account` và `product` nếu đã ghép giỏ. Video không chuyển tài khoản theo chủ đề.
+
+
+### Tìm lại và kết nối nhà sáng tạo (1.8)
+
+Form cục bộ có CSRF/Origin: `/search-retry` (search/name/source, action retry/open), `/account-login` (account), `/shop-app` (account/app_key/app_secret), `/shop-authorize` (account). `/search-input` nhận thêm source auto/tiktok/douyin. Tìm lại tạo phiên riêng; action open chỉ một nguồn. Agent được xác thực, chia sẻ khóa trình duyệt: `/api/search/open`, `/api/account/login`, `/api/shop/authorize`; cửa sổ tự thao tác tối đa 4 phút. GET `/shop-callback` chỉ loopback/peer tin cậy, nhận state/code một lần; không dành cho API token từ xa.

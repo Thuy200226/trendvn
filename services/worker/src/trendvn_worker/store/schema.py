@@ -122,7 +122,20 @@ def _retention(db):
     db.execute("CREATE INDEX IF NOT EXISTS idx_jobs_hash ON jobs(content_hash)")
 
 
-MIGRATIONS = [_baseline, _accounts, _legacy_posts, _news_topic, _retention]
+def _product_search(db):
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS searches (id TEXT PRIMARY KEY, account TEXT NOT NULL, mode TEXT, created REAL, state TEXT, reference TEXT, identity TEXT, results TEXT, error TEXT, note TEXT)"
+    )
+    db.execute("CREATE INDEX IF NOT EXISTS idx_searches_created ON searches(created)")
+    if "account_username" not in {r[1] for r in db.execute("PRAGMA table_info(searches)")}:
+        db.execute("ALTER TABLE searches ADD COLUMN account_username TEXT")
+    present = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
+    for column in ("search_id TEXT", "search_account TEXT", "product_binding TEXT"):
+        if column.split()[0] not in present:
+            db.execute("ALTER TABLE jobs ADD COLUMN " + column)
+
+
+MIGRATIONS = [_baseline, _accounts, _legacy_posts, _news_topic, _retention, _product_search]
 
 
 def migrate(db):

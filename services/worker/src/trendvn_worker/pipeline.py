@@ -126,7 +126,10 @@ def _process(store, cfg, job):
             jid, lease, "needs_review", reason="Possible visual duplicate of " + twin, fingerprint=json.dumps(fp), duration=duration
         )
         return {"id": jid, "status": "needs_review"}
-    a, route = analyze(store, path, duration, cfg, folder, lenient=approved)
+    if job.get("search_account"):
+        a, route = analyze(store, path, duration, cfg, folder, lenient=approved, product_search=True)
+    else:
+        a, route = analyze(store, path, duration, cfg, folder, lenient=approved)
     if not approved and not str(a.get("caption_vi") or "").strip():
         raise ValueError("Gemini không soạn được mô tả tiếng Việt; cần bạn xem lại")
     a["segments"], fastest = fit_reading_speed(a["segments"], duration)
@@ -147,7 +150,7 @@ def _process(store, cfg, job):
             info["warning"] = info.get("warning") or "Phụ đề hơi nhanh (%.0f ký tự/giây)" % fastest
     digest = file_hash(out)
     _write_manifest(folder, job, cfg, a, route, digest, info)
-    approval = cfg["require_approval"] and not approved
+    approval = bool(job.get("search_account")) or (cfg["require_approval"] and not approved)
     state = "awaiting_approval" if approval else "ready"
     store.finish(
         jid,

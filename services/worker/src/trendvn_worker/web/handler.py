@@ -27,7 +27,7 @@ STALE_PAGE = (
 MAX_BODY = 2 * 1024 * 1024
 LOGIN_FORM_MAX = 4096
 # polled by the page or by Docker every few seconds: not worth a log line
-QUIET_PATHS = ("/health", "/fragment/", "/media/", "/favicon")
+QUIET_PATHS = ("/health", "/fragment/", "/media/", "/favicon", "/shop-callback")
 SOCKET_TIMEOUT = 30  # seconds a client may stall mid-request before its connection is dropped (slow-client protection)
 
 
@@ -102,6 +102,23 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
     def _get(self):
         url = urlsplit(self.path)
         path = url.path
+        if path == "/shop-callback":
+            if self.headers.get("Host", "") not in self.app.config.loopback_hosts or not self.local_ui() or self.wrong_peer():
+                return self.send(403, {"error": "Chỉ nhận cấp quyền tại máy này"})
+            from .shop_callback import capture, page
+
+            try:
+                status = capture(self.app, parse_qs(url.query))
+                message = (
+                    "Đã nhận cấp quyền. Hệ thống đang đối chiếu đúng tài khoản và quyền hoa hồng."
+                    if status == "received"
+                    else "Bạn chưa đồng ý cấp quyền. Có thể mở lại bước kết nối."
+                )
+                return self.send(200, page(message), "text/html; charset=utf-8")
+            except ValueError:
+                return self.send(
+                    400, page("Phiên cấp quyền không hợp lệ, hết hạn hoặc đã dùng. Hãy mở lại bước kết nối."), "text/html; charset=utf-8"
+                )
         if path == "/health":
             return self.send(200, {"ok": True, "project": "trendvn", "version": VERSION})
         if path in ("/", "/login") and self.wrong_peer():
@@ -149,8 +166,17 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
             return self.logout()
         try:
             length = self.body_length()
-            if not 0 < length <= MAX_BODY:
+            if not 0 < length <= (12 << 20 if path == "/search-input" else MAX_BODY):
                 return self.send(413, {"error": "Request too large or empty"})
+            if path == "/search-input":
+                if not self.local_ui() or not self.access.form_origin_ok(self.headers):
+                    return self.send(403, {"error": "Local form only"})
+                payload = json.loads(self.rfile.read(length))
+                if not isinstance(payload, dict) or not same(payload.get("csrf", ""), self.app.csrf):
+                    return self.send(403, {"error": "Trang đã cũ; hãy tải lại trước khi tìm"})
+                from .search_forms import submit
+
+                return self.send(200, submit(self.app, payload))
             if path in forms.FORMS:
                 return self.form_post(path, length)
             if not self.access.authorized(self.headers):

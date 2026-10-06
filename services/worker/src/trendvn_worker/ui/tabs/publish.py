@@ -3,16 +3,23 @@
 from ..cards import ready_card
 from ..components import task_panel
 from ..format import escape as E
+from ..format import meta_of
 from ..labels import VISIBILITY_LABEL
 
 
 def blocked_reason(view, job=None):
     """Why posting this video cannot start right now (shown on its card), or ''. The verification pause holds every account; an unconfirmed
     post holds only its own account, the one this video would go to."""
+    if job and job.get("search_account") and not view.destination(None, job["search_account"]):
+        return "Tài khoản đã chọn đang tắt hoặc đã bị xóa; không thể đăng."
+    if job and job.get("search_account"):
+        account = view.destination(None, job["search_account"])
+        if account and meta_of(job).get("search_username") != account["username"]:
+            return "Tài khoản thực đã thay đổi từ lúc tìm; cần tìm lại để chọn đúng tài khoản."
     if view.challenge_on:
         return "TikTok đang đòi xác minh%s: giải một lần bằng %s (xem mục Cần xem)." % (view.challenge_who, view.challenge_command)
     if view.d["unresolved_publishes"]:
-        destination = view.destination((job or {}).get("topic"))
+        destination = view.destination((job or {}).get("topic"), (job or {}).get("search_account"))
         if view.unconfirmed_for(destination):
             who = " của @%s" % destination["username"] if destination else ""
             return "Có bài đăng%s chưa xác nhận: xử lý ở mục Cần xem trước." % who

@@ -74,7 +74,7 @@ def _remember(folder, path, duration, cfg, answer):
         pass  # a missing cache only costs a call later
 
 
-def analyze(store, path, duration, cfg, folder, lenient=False):
+def analyze(store, path, duration, cfg, folder, lenient=False, product_search=False):
     """(analysis, route): the model's answer (asked once per job and prompt version), validated against this run's settings."""
     answer = _remembered(folder, path, duration, cfg)
     if answer is None:
@@ -89,7 +89,7 @@ def analyze(store, path, duration, cfg, folder, lenient=False):
             pass
     a = copy.deepcopy(answer)  # validation edits the analysis (repaired timestamps, cleaned lines): the remembered answer stays raw
     route = validate_analysis(
-        a, duration, cfg["audio_confidence"], strict=True, lenient=lenient, accepted_topics=store.wanted_topics(),
+        a, duration, cfg["audio_confidence"], strict=True, lenient=lenient, accepted_topics=None if product_search else store.wanted_topics(),
         voiceover_scope=cfg.get("voiceover_scope", "monologue"),
     )  # fmt: skip
     return a, route
