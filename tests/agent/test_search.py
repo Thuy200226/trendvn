@@ -157,6 +157,21 @@ class SearchRoutingTests(StoreCase):
                 self.assertEqual([i["platform"] for i in result["items"]], ["tiktok"])
                 self.assertIn("douyin: ", result["note"])
 
+    def test_what_each_source_turned_out_to_be_is_reported_so_the_dashboard_can_offer_sign_in(self):
+        from trendvn_agent.channels import SignedOut, Wall
+
+        with mock.patch("trendvn_agent.search.report") as report:
+            self.run_search({"account": "main", "source": "auto", "query": "x"}, douyin={"side_effect": Wall("captcha")})
+        self.assertEqual([c.args for c in report.call_args_list], [("main", "douyin", "wall"), ("main", "tiktok", "ok", "creator")])
+        with mock.patch("trendvn_agent.search.report") as report:
+            with self.assertRaises(ValueError):
+                self.run_search({"account": "main", "source": "tiktok", "query": "x"}, tiktok={"side_effect": SignedOut("no session")})
+        self.assertEqual([c.args for c in report.call_args_list], [("main", "tiktok", "out")])
+        with mock.patch("trendvn_agent.search.report") as report:
+            with self.assertRaises(ValueError):
+                self.run_search({"account": "main", "source": "tiktok", "query": "x"}, tiktok={"side_effect": TimeoutError("slow")})
+        report.assert_not_called()  # a timeout says nothing about the sign-in
+
     def test_when_every_source_fails_the_reasons_are_the_error(self):
         with self.assertRaises(ValueError) as caught:
             self.run_search(
@@ -215,7 +230,7 @@ class DouyinWallTests(StoreCase):
 class TikTokSearchTests(StoreCase):
     ACCOUNT = {"id": "main", "username": "creator"}
 
-    def run_search(self, human, found=True, links=()):
+    def run_search(self, human, found=True, links=(), screen=False):
         events = []
 
         def read(ctx, url, capture, human, direct):
@@ -227,6 +242,7 @@ class TikTokSearchTests(StoreCase):
             mock.patch("trendvn_agent.search._account", return_value=self.ACCOUNT),
             mock.patch("trendvn_agent.search._verify", side_effect=lambda ctx, account: events.append(("verify",))),
             mock.patch("trendvn_agent.search._read_page", side_effect=read),
+            mock.patch("trendvn_agent.search.wants_window", return_value=screen),
             mock.patch("trendvn_agent.search.chrome") as chrome,
         ):
             result = _tiktok_search({"account": "main", "query": "mchose ace68", "links": list(links)}, human)
@@ -238,6 +254,11 @@ class TikTokSearchTests(StoreCase):
         self.assertEqual(chrome.call_args.kwargs["headless"], True)
         self.assertEqual(events[1][1], "https://www.tiktok.com/search/video?q=mchose%20ace68")
         self.assertEqual(result["items"][0]["source_id"], "1234567890")
+
+    def test_with_a_screen_the_search_runs_in_a_window_like_publishing_does(self):
+        _, events, chrome = self.run_search(False, screen=True)
+        self.assertEqual(chrome.call_args.kwargs["headless"], False)
+        self.assertEqual([e[0] for e in events], ["verify", "read"])  # still verified before reading: a window is not a reason to skip it
 
     def test_in_the_owners_window_the_account_is_verified_after_the_results_and_only_when_there_are_some(self):
         _, events, chrome = self.run_search(True)
@@ -263,3 +284,16 @@ class TikTokSearchTests(StoreCase):
         with self.assertRaises(ValueError) as caught:
             self.run_search(False, found=False)
         self.assertIn("TikTok không trả video", str(caught.exception))
+
+
+class ChannelRouteTests(StoreCase):
+    def test_a_channel_request_needs_a_known_channel_and_account(self):
+        from trendvn_agent import server
+
+        with mock.patch("trendvn_agent.search._account", return_value={"id": "main", "username": "creator"}):
+            self.assertEqual(server._channel_args({"channel": "douyin", "account": "main"})[2], "douyin")
+            for payload in ({"channel": "myspace", "account": "main"}, {"account": "main"}, {"channel": None}):
+                with self.subTest(payload=payload), self.assertRaises(ValueError):
+                    server._channel_args(payload)
+        self.assertIn("/api/channel/login", server.ROUTES)
+        self.assertIn("/api/channel/check", server.ROUTES)

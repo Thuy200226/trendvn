@@ -282,3 +282,105 @@ class MigrationTests(StoreCase):
             self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], len(schema.MIGRATIONS))
             self.assertEqual(db.execute("SELECT id FROM searches").fetchall()[0][0], "old")  # nothing of the owner's is dropped
             self.assertEqual(db.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+
+
+class ChannelTests(StoreCase):
+    def test_what_is_known_of_each_sign_in_is_kept_per_account_and_channel_and_the_latest_report_wins(self):
+        self.assertEqual(self.s.channel_states(), {})
+        self.s.channel_report("main", "douyin", "wall")
+        self.s.channel_report("main", "tiktok", "ok", who="creator")
+        self.s.channel_report("main", "douyin", "ok", who="")
+        states = self.s.channel_states()["main"]
+        self.assertEqual((states["douyin"]["state"], states["tiktok"]["state"], states["tiktok"]["who"]), ("ok", "ok", "creator"))
+        self.assertGreater(states["douyin"]["at"], 0)
+
+    def test_an_unknown_account_channel_or_state_is_refused(self):
+        for args in (("nobody", "douyin", "ok"), ("main", "myspace", "ok"), ("main", "douyin", "maybe")):
+            with self.subTest(args=args), self.assertRaises(ValueError):
+                self.s.channel_report(*args)
+
+    def test_a_deleted_account_takes_its_sign_in_records_and_saved_links_with_it(self):
+        other = self.s.add_account({"username": "other_shop", "topics": ["food"]})["id"]
+        self.s.channel_report(other, "douyin", "ok")
+        self.s.channel_report("main", "douyin", "ok")
+        self.s.commission_save(other, CommissionTests.FOUND)
+        self.s.delete_account(other)
+        self.assertEqual(list(self.s.channel_states()), ["main"])
+        self.assertEqual(self.s.commission_list(other), [])
+
+
+class ClearHistoryTests(StoreCase):
+    def test_clearing_removes_finished_messages_but_not_work_in_progress_or_picks_waiting_for_download(self):
+        old = self.s.chat_add("user", "say", {"text": "old"}, account="main")
+        product = self.s.chat_add("bot", "product", {"identity": {"name": "S24"}}, account="main")
+        running = self.s.chat_add("bot", "videos", {}, state="running", account="main")
+        name = self.s.account("main")["username"]
+        picked = self.s.chat_add("bot", "videos", {"identity": {}, "account_username": name, "results": [result()]}, account="main")
+        jid = self.s.videos_select(picked, "1234567890", True)
+        removed = self.s.chat_clear()
+        self.assertEqual(removed, 2)
+        left = {m["id"] for m in self.s.chat_thread()}
+        self.assertEqual(left, {running, picked})
+        self.assertNotIn(old, left)
+        self.assertNotIn(product, left)
+        self.assertEqual(self.s.videos_media_ready(jid)["account"], "main")  # the pick can still be downloaded
+
+    def test_once_the_pick_is_downloaded_its_answer_can_be_cleared_and_the_video_stays_in_the_system(self):
+        name = self.s.account("main")["username"]
+        picked = self.s.chat_add("bot", "videos", {"identity": {}, "account_username": name, "results": [result()]}, account="main")
+        jid = self.s.videos_select(picked, "1234567890", True)
+        self.s.videos_media_ready(jid)
+        with self.s.transaction() as db:
+            db.execute("UPDATE jobs SET state='queued' WHERE id=?", (jid,))
+        self.assertEqual(self.s.chat_clear(), 1)
+        self.assertEqual(self.s.chat_thread(), [])
+        with self.s.connect() as db:
+            self.assertEqual(db.execute("SELECT state FROM jobs WHERE id=?", (jid,)).fetchone()[0], "queued")
+
+    def test_clearing_never_touches_saved_links_or_sign_in_records(self):
+        self.s.commission_save("main", CommissionTests.FOUND)
+        self.s.channel_report("main", "douyin", "ok")
+        self.s.chat_add("user", "say", {"text": "x"}, account="main")
+        self.s.chat_clear()
+        self.assertIsNotNone(self.s.commission_get("main", CommissionTests.FOUND["product_id"]))
+        self.assertEqual(self.s.channel_states()["main"]["douyin"]["state"], "ok")
+
+    def test_only_what_is_older_than_the_cutoff_goes_when_one_is_given(self):
+        old = self.s.chat_add("user", "say", {"text": "old"})
+        recent = self.s.chat_add("user", "say", {"text": "recent"})
+        with self.s.transaction() as db:
+            db.execute("UPDATE chat SET created=? WHERE id=?", (time.time() - 40 * 86400, old))
+        self.assertEqual(self.s.chat_clear(before=time.time() - 30 * 86400), 1)
+        self.assertEqual([m["id"] for m in self.s.chat_thread()], [recent])
+
+    def test_housekeeping_forgets_search_history_older_than_a_month_and_nothing_else(self):
+        from trendvn_worker.store import retention
+
+        old = self.s.chat_add("user", "say", {"text": "old"})
+        running = self.s.chat_add("bot", "videos", {}, state="running")
+        recent = self.s.chat_add("user", "say", {"text": "recent"})
+        self.s.commission_save("main", CommissionTests.FOUND)
+        with self.s.transaction() as db:
+            db.execute("UPDATE chat SET created=? WHERE id IN (?,?)", (time.time() - (retention.KEEP_CHAT_DAYS + 1) * 86400, old, running))
+        result = self.s.prune()
+        self.assertGreaterEqual(result["rows_trimmed"], 1)
+        self.assertEqual({m["id"] for m in self.s.chat_thread()}, {running, recent})
+        self.assertIsNotNone(self.s.commission_get("main", CommissionTests.FOUND["product_id"]))
+
+    def test_clearing_an_empty_history_is_fine(self):
+        self.assertEqual(self.s.chat_clear(), 0)
+
+
+class SavedLinkListTests(StoreCase):
+    def test_saved_links_are_listed_newest_first_per_account_and_can_be_forgotten_one_by_one(self):
+        found = CommissionTests.FOUND
+        self.s.commission_save("main", found)
+        self.s.commission_save(
+            "main", dict(found, product_id="1729384756102938999", input="https://vt.tiktok.com/ZSsecond/", title="Second")
+        )
+        listed = self.s.commission_list("main")
+        self.assertEqual([item["title"] for item in listed], ["Second", "Bàn phím"])
+        self.assertEqual(self.s.commission_list("nobody"), [])
+        self.assertTrue(self.s.commission_forget("main", found["product_id"]))
+        self.assertFalse(self.s.commission_forget("main", found["product_id"]))
+        self.assertEqual([item["title"] for item in self.s.commission_list("main")], ["Second"])

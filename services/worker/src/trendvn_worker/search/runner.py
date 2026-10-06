@@ -7,6 +7,8 @@ from .identify import from_page, identify, video_identity
 
 SEARCH_TIMEOUT = 180
 HUMAN_TIMEOUT = 360  # a window where the owner solves the site's own check by hand
+SIGN_IN_TIMEOUT = 11 * 60  # the agent waits up to ten minutes for the owner to sign in
+CHECK_TIMEOUT = 90  # reading a profile's cookies
 
 
 def recognise_product(store, mid, reference):
@@ -57,6 +59,23 @@ def find_videos(store, mid, agent, human=False):
     return "Tìm thấy %d ứng viên. Hãy xem và chọn trong khung chat." % len(results)
 
 
+def sign_in(store, mid, agent, check=False):
+    """Open the owner's window to sign in to a channel (or only look whether the profile is signed in), and say how it went in the chat."""
+    message = store.chat_get(mid)
+    channel = message["body"]["channel"]
+    payload = {"account": message["account"], "channel": channel}
+    if check:
+        result = agent("/api/channel/check", payload, CHECK_TIMEOUT)
+        ok = bool(result.get("logged_in"))
+        store.chat_set(mid, "done", ok=ok, who="")
+        return "Đã đăng nhập" if ok else "Chưa đăng nhập"
+    result = agent("/api/channel/login", payload, SIGN_IN_TIMEOUT)
+    if not result.get("ok"):
+        raise ValueError(result.get("reason") or "Chưa đăng nhập được")
+    store.chat_set(mid, "done", ok=True, who=result.get("who", ""))
+    return "Đã đăng nhập"
+
+
 def download_video(store, jid, agent):
     selected = store.videos_media_ready(jid)
     result = agent("/api/search/download", {"account": selected["account"], "job_id": jid, "item": selected["item"]}, SEARCH_TIMEOUT)
@@ -73,6 +92,8 @@ def run(store, kind, key, agent, reference=None):
             return True, recognise_product(store, mid, reference)
         if kind == "link":
             return True, check_link(store, mid)
+        if kind in ("channel_login", "channel_check"):
+            return True, sign_in(store, mid, agent, check=kind == "channel_check")
         return True, find_videos(store, mid, agent, human=kind == "search_human")
     except Exception as error:
         text = str(error)[:700]

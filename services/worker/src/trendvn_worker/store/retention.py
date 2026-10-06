@@ -20,6 +20,7 @@ KEEP_OBSERVATIONS_DAYS = 30  # one row per video per scan
 KEEP_EVENTS_DAYS = 60
 KEEP_TASKS_DAYS = 14
 KEEP_SCREENSHOTS_DAYS = 14
+KEEP_CHAT_DAYS = 30  # finished chat messages (the search history); saved links, picked videos and sign-ins are not history
 ORPHAN_GRACE_HOURS = 24  # a file no job knows about is only removed after this, so one being written right now is never touched
 BATCH = 200  # most jobs whose files are removed per call; the rest wait for the next call
 RETRY_AFTER_FAILURE_HOURS = 24  # a job whose files could not be removed (read-only folder, odd path) is tried again after this long
@@ -164,7 +165,7 @@ class RetentionMixin:
                 ("DELETE FROM notif_log WHERE at<?", 7),
             ):
                 trimmed += db.execute(sql, (now - days * DAY,)).rowcount
-        return {"rows_trimmed": trimmed}
+        return {"rows_trimmed": trimmed + self.chat_clear(before=now - KEEP_CHAT_DAYS * DAY)}
 
     # ------------------------------------------------------------------ files nothing refers to
     def _remove_orphans(self, now):

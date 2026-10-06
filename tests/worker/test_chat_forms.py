@@ -98,6 +98,64 @@ class FindTests(FormCase):
             chat_forms.act(self.app, {"action": "find", "id": self.product(), "source": "tiktok", "account": "nobody"})
 
 
+class ChannelActionTests(FormCase):
+    def test_signing_in_opens_a_login_answer_pinned_to_the_account_and_starts_the_window_job(self):
+        mid = chat_forms.act(self.app, {"action": "login", "channel": "douyin", "account": "main"})["id"]
+        message = self.s.chat_get(mid)
+        self.assertEqual((message["kind"], message["state"], message["account"]), ("login", "running", "main"))
+        self.assertEqual(message["body"], {"channel": "douyin", "account_username": self.s.account("main")["username"], "mode": "login"})
+        self.assertEqual(self.tasks.start.call_args.args[:2], ("channel_login", str(mid)))
+
+    def test_checking_only_reads_the_profile_and_is_its_own_job(self):
+        mid = chat_forms.act(self.app, {"action": "check", "channel": "tiktok", "account": "main"})["id"]
+        self.assertEqual(self.s.chat_get(mid)["body"]["mode"], "check")
+        self.assertEqual(self.tasks.start.call_args.args[0], "channel_check")
+
+    def test_an_unknown_channel_or_account_starts_nothing(self):
+        for payload in (
+            {"channel": "myspace", "account": "main"},
+            {"channel": "douyin", "account": "nobody"},
+            {"channel": "douyin"},
+            {"account": "main"},
+        ):
+            with self.subTest(payload=payload), self.assertRaises(ValueError):
+                chat_forms.act(self.app, dict(payload, action="login"))
+        self.assertEqual(self.s.chat_thread(), [])
+        self.tasks.start.assert_not_called()
+
+    def test_a_window_that_cannot_open_leaves_an_error_answer_not_a_hanging_one(self):
+        self.tasks.start.side_effect = TaskBusy("Đang có việc dùng trình duyệt")
+        with self.assertRaises(ValueError):
+            chat_forms.act(self.app, {"action": "login", "channel": "douyin", "account": "main"})
+        self.assertEqual(self.s.chat_thread()[-1]["state"], "error")
+
+
+class HistoryActionTests(FormCase):
+    def test_clearing_reports_how_many_messages_went_and_keeps_work_in_progress(self):
+        self.say("Samsung S24")
+        keep = self.s.chat_add("bot", "login", {"channel": "douyin"}, state="running", account="main")
+        self.s.chat_set(self.s.chat_thread()[1]["id"], "done")
+        self.assertEqual(chat_forms.act(self.app, {"action": "clear"}), {"removed": 2})
+        self.assertEqual([m["id"] for m in self.s.chat_thread()], [keep])
+
+    def test_a_saved_link_can_be_forgotten_once_and_only_for_the_account_it_belongs_to(self):
+        found = {"input": SHARE, "product_id": "1729384756102938475", "title": "t", "markers": {}, "tracked": False}
+        self.s.commission_save("main", found)
+        for payload in (
+            {"account": "main", "product_id": "999"},
+            {"account": "main"},
+            {"account": "main", "product_id": 5},
+            {"product_id": found["product_id"]},
+        ):
+            with self.subTest(payload=payload), self.assertRaises(ValueError):
+                chat_forms.act(self.app, dict(payload, action="forget"))
+        self.assertIsNotNone(self.s.commission_get("main", found["product_id"]))
+        self.assertEqual(chat_forms.act(self.app, {"action": "forget", "account": "main", "product_id": found["product_id"]}), {"ok": True})
+        self.assertIsNone(self.s.commission_get("main", found["product_id"]))
+        with self.assertRaises(ValueError):
+            chat_forms.act(self.app, {"action": "forget", "account": "main", "product_id": found["product_id"]})
+
+
 class PickAndConfirmTests(FormCase):
     ITEM = {
         "source_id": "1234567890", "platform": "tiktok", "title": "S24", "url": "https://www.tiktok.com/@a/video/1234567890",

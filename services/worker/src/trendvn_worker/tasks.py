@@ -26,9 +26,21 @@ BROWSER_KINDS = {
     "search",
     "search_download",
     "search_human",
+    "channel_login",
+    "channel_check",
 }
-CHAT_KINDS = ("identify", "link", "search", "search_human", "search_download")  # the jobs behind the product chat (search/runner.py)
+CHAT_KINDS = (
+    "identify",
+    "link",
+    "search",
+    "search_human",
+    "search_download",
+    "channel_login",
+    "channel_check",
+)  # the jobs behind the product chat (search/runner.py)
 LABELS = {
+    "channel_login": "Đăng nhập kênh tìm kiếm",
+    "channel_check": "Kiểm tra đăng nhập kênh tìm kiếm",
     "identify": "Nhận diện sản phẩm",
     "link": "Kiểm tra link hoa hồng",
     "search_human": "Tự xác minh và tìm lại",

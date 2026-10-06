@@ -163,3 +163,45 @@ class VideoTests(StoreCase):
         ok, line = runner.run(self.s, "search_download", jid, mock.Mock(return_value={"state": "duplicate"}))
         self.assertTrue(ok)
         self.assertIn("trùng", line)
+
+
+class SignInTests(StoreCase):
+    def asked(self, mode="login", channel="douyin"):
+        body = {"channel": channel, "account_username": self.s.account("main")["username"], "mode": mode}
+        return self.s.chat_add("bot", "login", body, state="running", account="main")
+
+    def test_a_sign_in_waits_long_enough_for_the_owner_and_finishes_its_answer_with_who_signed_in(self):
+        mid = self.asked()
+        agent = mock.Mock(return_value={"ok": True, "who": "creator", "channel": "tiktok"})
+        ok, line = runner.run(self.s, "channel_login", str(mid), agent)
+        path, payload, timeout = agent.call_args.args
+        self.assertEqual(
+            (ok, path, payload, timeout), (True, "/api/channel/login", {"account": "main", "channel": "douyin"}, runner.SIGN_IN_TIMEOUT)
+        )
+        self.assertGreaterEqual(runner.SIGN_IN_TIMEOUT, 11 * 60)  # more than the ten minutes the agent itself waits
+        message = self.s.chat_get(mid)
+        self.assertEqual((message["state"], message["body"]["ok"], message["body"]["who"]), ("done", True, "creator"))
+
+    def test_a_window_that_ended_without_a_sign_in_is_an_error_answer_with_the_agents_reason(self):
+        mid = self.asked()
+        ok, line = runner.run(
+            self.s, "channel_login", str(mid), mock.Mock(return_value={"ok": False, "reason": "Chưa thấy đăng nhập Douyin"})
+        )
+        self.assertFalse(ok)
+        self.assertEqual((self.s.chat_get(mid)["state"], self.s.chat_get(mid)["body"]["error"]), ("error", "Chưa thấy đăng nhập Douyin"))
+
+    def test_a_check_is_a_finished_answer_whether_or_not_the_profile_is_signed_in(self):
+        for logged_in in (True, False):
+            mid = self.asked("check")
+            agent = mock.Mock(return_value={"logged_in": logged_in})
+            ok, _ = runner.run(self.s, "channel_check", str(mid), agent)
+            self.assertTrue(ok)
+            self.assertEqual(agent.call_args.args[0::2], ("/api/channel/check", runner.CHECK_TIMEOUT))
+            message = self.s.chat_get(mid)
+            self.assertEqual((message["state"], message["body"]["ok"]), ("done", logged_in))
+
+    def test_an_agent_that_cannot_open_the_window_ends_the_answer_in_error(self):
+        mid = self.asked()
+        ok, line = runner.run(self.s, "channel_login", str(mid), mock.Mock(side_effect=ValueError("Máy không có màn hình")))
+        self.assertEqual((ok, self.s.chat_get(mid)["state"]), (False, "error"))
+        self.assertIn("màn hình", self.s.chat_get(mid)["body"]["error"])

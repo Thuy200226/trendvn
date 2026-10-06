@@ -30,3 +30,14 @@ class CommissionMixin:
                     json.dumps(found.get("markers") or {}), 1 if found.get("tracked") else 0,
                 ),
             )  # fmt: skip
+
+    def commission_list(self, account):
+        """The links saved for an account, newest first."""
+        with self.connect() as db:
+            rows = db.execute("SELECT * FROM commission_links WHERE account=? ORDER BY created DESC LIMIT 100", (account,)).fetchall()
+        return [dict(r) | {"markers": loads(r["markers"], {})} for r in rows]
+
+    def commission_forget(self, account, product_id):
+        """Drop one saved link; True when there was one."""
+        with self.transaction() as db:
+            return db.execute("DELETE FROM commission_links WHERE account=? AND product_id=?", (account, product_id)).rowcount > 0

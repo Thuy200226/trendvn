@@ -19,6 +19,15 @@ from trendvn_agent import log as agent_log  # noqa: E402
 from trendvn_worker import pipeline  # noqa: E402
 from trendvn_worker.store import Store  # noqa: E402
 
+from trendvn_agent import channels as agent_channels  # noqa: E402
+
+
+def _no_real_worker(*args, **kwargs):
+    raise RuntimeError("tests never call the real worker")
+
+
+agent_channels.worker = _no_real_worker  # the agent reports sign-in states to the worker: a test must never reach the live one
+
 # the agent log of the real installation (data/agent/agent.log) must not collect lines written by tests
 _LOG_FOLDER = tempfile.TemporaryDirectory()
 agent_log.DATA = Path(_LOG_FOLDER.name)

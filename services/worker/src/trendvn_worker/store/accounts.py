@@ -131,6 +131,8 @@ class AccountsMixin:
             if not db.execute("SELECT count(*) FROM accounts WHERE enabled=1 AND id<>?", (account_id,)).fetchone()[0]:
                 raise ValueError("Phải còn ít nhất một tài khoản đang bật")
             db.execute("DELETE FROM accounts WHERE id=?", (account_id,))
+            for table in ("channel_logins", "commission_links"):  # what belongs to the account only: its sign-in records and saved links
+                db.execute("DELETE FROM %s WHERE account=?" % table, (account_id,))
             db.execute(
                 "UPDATE settings SET value='false' WHERE key='publisher_challenge' AND value=?", (json.dumps(account_id),)
             )  # its CAPTCHA is moot

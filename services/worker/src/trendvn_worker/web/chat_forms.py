@@ -3,6 +3,7 @@ Both arrive as JSON from the page's script and are checked here; the handler has
 
 from ..domain.product_links import product_link
 from ..domain.product_search import validate_input
+from ..store.channels import CHANNELS
 
 SOURCES = ("auto", "tiktok", "douyin")
 SAID_LIMIT = 1000  # of the owner's words kept in the log; the full text only goes to the job that reads it
@@ -92,7 +93,44 @@ def _message_id(payload):
     return mid
 
 
-ACTIONS = {"find": find, "pick": pick, "confirm": confirm}
+def _sign_in(app, payload, kind):
+    channel = payload.get("channel")
+    if channel not in CHANNELS:
+        raise ValueError("Kênh không hợp lệ")
+    account = _account(app, payload)
+    body = {
+        "channel": channel,
+        "account_username": app.store.account(account)["username"],
+        "mode": "check" if kind == "channel_check" else "login",
+    }
+    mid = app.store.chat_add("bot", "login", body, state="running", account=account)
+    return _start(app, mid, kind)
+
+
+def login(app, payload):
+    """Open a window on this machine for the owner to sign in to a search channel for an account."""
+    return _sign_in(app, payload, "channel_login")
+
+
+def check(app, payload):
+    """Look whether the account's profile is signed in on a channel (reads cookies, opens no page)."""
+    return _sign_in(app, payload, "channel_check")
+
+
+def clear(app, payload):
+    """Forget the finished part of the chat history. Saved links, picked videos and sign-ins are not history."""
+    return {"removed": app.store.chat_clear()}
+
+
+def forget(app, payload):
+    """Drop one saved commission link."""
+    account, product = _account(app, payload), payload.get("product_id")
+    if not isinstance(product, str) or not app.store.commission_forget(account, product):
+        raise ValueError("Không có link đã lưu này")
+    return {"ok": True}
+
+
+ACTIONS = {"find": find, "pick": pick, "confirm": confirm, "login": login, "check": check, "clear": clear, "forget": forget}
 
 
 def act(app, payload):

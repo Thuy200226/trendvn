@@ -79,6 +79,13 @@ def media_failed(app, payload):
     return OK
 
 
+@route("/api/channel/report")
+def channel_report(app, payload):
+    """The browser agent says what it found out about an account's session on a search channel (signed in, signed out, a wall)."""
+    app.store.channel_report(_text(payload, "account"), _text(payload, "channel"), _text(payload, "state"), _text(payload, "who", ""))
+    return OK
+
+
 @route("/api/heartbeat")
 def heartbeat(app, payload):
     app.store.heartbeat(payload["component"], payload["ok"], payload.get("detail"))

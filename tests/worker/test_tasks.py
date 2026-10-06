@@ -259,6 +259,18 @@ class ChatTaskTests(TaskCase):
         self.assertEqual(self.t.references, {})
         self.t.start("collect")  # the browser is not blocked afterwards
 
+    def test_a_sign_in_window_uses_the_browser_so_it_never_overlaps_a_search_or_a_collection(self):
+        body = {"channel": "douyin", "account_username": "u", "mode": "login"}
+        first = self.s.chat_add("bot", "login", body, state="running", account="main")
+        FakeAgentHandler.delay, FakeAgentHandler.body = 0.6, {"ok": True, "who": "", "channel": "douyin"}
+        task = self.t.start("channel_login", str(first))
+        for kind, key in (("search", str(self.videos())), ("collect", None), ("channel_check", str(first))):
+            with self.assertRaises(tasks_mod.TaskBusy):
+                self.t.start(kind, key)
+        row = self.wait(task)
+        self.assertEqual((row["state"], FakeAgentHandler.hits[0][0]), ("done", "/api/channel/login"))
+        self.assertEqual(self.s.chat_get(first)["state"], "done")
+
     def test_a_restart_turns_every_unfinished_answer_into_an_error(self):
         mid = self.videos()
         tasks_mod.Tasks(self.s, "t" * 40, lambda s: {}, self.lock)

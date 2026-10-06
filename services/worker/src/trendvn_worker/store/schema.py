@@ -145,7 +145,15 @@ def _product_chat_again(db):
     _product_chat(db)
 
 
-MIGRATIONS = [_baseline, _accounts, _legacy_posts, _news_topic, _retention, _product_chat, _product_chat_again]
+def _channel_logins(db):
+    """What is known of each account's sign-in on each search channel (TikTok, Douyin): the last report, never a password or a cookie."""
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS channel_logins (account TEXT NOT NULL, channel TEXT NOT NULL, state TEXT NOT NULL, who TEXT, at REAL NOT NULL, "
+        "PRIMARY KEY (account, channel))"
+    )
+
+
+MIGRATIONS = [_baseline, _accounts, _legacy_posts, _news_topic, _retention, _product_chat, _product_chat_again, _channel_logins]
 
 
 def migrate(db):

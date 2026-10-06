@@ -16,7 +16,9 @@ VERDICTS = {
     "different": ("Sản phẩm khác", "bad"),
     "invalid": ("Không hợp lệ", "bad"),
 }
-EMPTY = {"messages": [], "picked": {}, "accounts": {}}
+CHANNEL_NAMES = {"tiktok": "TikTok", "douyin": "Douyin"}
+STATE_CHIPS = {"ok": ("Sẵn sàng", "good"), "out": ("Chưa đăng nhập", "bad"), "wall": ("Đòi xác minh", "warn"), None: ("Chưa kiểm", "mute")}
+EMPTY = {"messages": [], "picked": {}, "accounts": {}, "roster": [], "channels": {}, "saved": {}}
 CONFIRM = {
     "affiliate": "Đây đúng là link hoa hồng của tôi",
     "short": "Tôi đã sao chép link này từ Showcase",
@@ -45,9 +47,12 @@ def _failed(message, extra=""):
     return '<p class="note warn" role="alert">%s</p>%s' % (E(message["body"].get("error") or "Chưa làm được"), extra)
 
 
-def _button(label, action, cls="ghost", **data):
+def _button(label, action, cls="ghost", aria=None, **data):
+    """A button that asks the chat to do something. `aria` names it for a screen reader when the visible label alone is not enough
+    (four identical 'Đăng nhập' buttons in a column)."""
     attrs = "".join(' data-%s="%s"' % (k.replace("_", "-"), E(str(v))) for k, v in data.items())
-    return '<button type="button" class="%s" data-chat-act="%s"%s>%s</button>' % (cls, action, attrs, E(label))
+    named = ' aria-label="%s"' % E(aria) if aria else ""
+    return '<button type="button" class="%s" data-chat-act="%s"%s%s>%s</button>' % (cls, action, attrs, named, E(label))
 
 
 def user_bubble(message, names, now):
@@ -123,9 +128,15 @@ def videos_card(message, picked, product_id):
     if message["state"] == "error":
         retry = "".join(_button(label, "find", "ghost", id=body.get("product", product_id), source=s, **extra) for label, s, extra in (
             ("Thử lại", body.get("source", "tiktok"), {}),
-            ("Mở cửa sổ để tự xác minh rồi tìm lại", body.get("source", "tiktok"), {"human": "true"}),
+            ("Mở cửa sổ chờ tôi xác minh rồi tìm lại", body.get("source", "tiktok"), {"human": "true"}),
         ) if body.get("source") != "auto" or "human" not in extra)  # fmt: skip
-        return '<h4>Video cho %s</h4>%s<div class="btns">%s</div>' % (E(where), _failed(message), retry)
+        sources = ("tiktok", "douyin") if body.get("source") == "auto" else (body.get("source", "tiktok"),)
+        sign_in = "".join(
+            _button("Đăng nhập " + CHANNEL_NAMES[c], "login", "ghost", channel=c, account=message["account"])
+            for c in sources
+            if c in CHANNEL_NAMES
+        )
+        return '<h4>Video cho %s</h4>%s<div class="btns">%s%s</div>' % (E(where), _failed(message), retry, sign_in)
     cards = "".join(
         candidate(
             i,
@@ -187,6 +198,26 @@ def link_card(message):
     )
 
 
+def login_card(message):
+    body = message["body"]
+    name, who = CHANNEL_NAMES.get(body.get("channel"), "?"), "@" + body.get("account_username", "?")
+    again = _button("Đăng nhập " + name, "login", "go", channel=body.get("channel"), account=message["account"])
+    if _busy(message):
+        if body.get("mode") == "check":
+            return "<h4>Kiểm tra %s · %s</h4>%s" % (E(name), E(who), _working("Đang đọc phiên đã lưu…"))
+        return '<h4>Đăng nhập %s · %s</h4>%s<p class="small muted">%s</p>' % (
+            E(name),
+            E(who),
+            _working("Đã mở cửa sổ Chrome trên máy chạy TrendVN (không phải trình duyệt bạn đang xem). Đăng nhập trong cửa sổ đó."),
+            "Quét mã QR hoặc dùng số điện thoại như bình thường, tối đa 10 phút; cửa sổ tự đóng khi xong. Mình không nhập mật khẩu thay bạn.",
+        )
+    if message["state"] == "error":
+        return '<h4>Đăng nhập %s · %s</h4>%s<div class="btns">%s</div>' % (E(name), E(who), _failed(message), again)
+    if body.get("ok"):
+        return '<h4>%s · %s</h4><p class="note">✓ Đã đăng nhập: tìm kiếm trên %s dùng được.</p>' % (E(name), E(who), E(name))
+    return '<h4>%s · %s</h4><p class="note warn">Chưa đăng nhập.</p><div class="btns">%s</div>' % (E(name), E(who), again)
+
+
 def bot_bubble(message, data):
     kind = message["kind"]
     if kind == "product":
@@ -195,6 +226,8 @@ def bot_bubble(message, data):
         inner = videos_card(message, data["picked"], message["body"].get("product"))
     elif kind == "link":
         inner = link_card(message)
+    elif kind == "login":
+        inner = login_card(message)
     else:
         inner = "<p>%s</p>" % E(message["body"].get("text", ""))
     return '<div class="msg bot" data-state="%s"><div class="bubble stack">%s</div></div>' % (message["state"], inner)
@@ -209,6 +242,94 @@ def chat_thread(data, now=None):
         or '<div class="msg bot"><div class="bubble stack">%s</div></div>' % WELCOME
     )
     return '<div id="chat-thread" class="thread" role="log" aria-live="polite" data-busy="%d">%s</div>' % (1 if busy else 0, rows)
+
+
+def _sign_in_row(account, channel, entry, now):
+    label, tone = STATE_CHIPS.get((entry or {}).get("state"), STATE_CHIPS[None])
+    since = " · " + ago(entry["at"], now) if entry else ""
+    who, name = "@" + account["username"], CHANNEL_NAMES[channel]
+    buttons = _button(
+        "Đăng nhập", "login", "go", aria="Đăng nhập %s cho %s" % (name, who), channel=channel, account=account["id"]
+    ) + _button("Kiểm tra", "check", "ghost", aria="Kiểm tra đăng nhập %s của %s" % (name, who), channel=channel, account=account["id"])
+    return (
+        '<div class="chan"><div class="row"><b>%s</b><span>%s<small class="muted">%s</small></span></div><div class="btns two">%s</div></div>'
+        % (
+            E(CHANNEL_NAMES[channel]),
+            chip(label, tone),
+            E(since),
+            buttons,
+        )
+    )
+
+
+def _saved_rows(account, links):
+    rows = []
+    for link in links:
+        rows.append(
+            '<div class="saved"><p class="ttl">%s</p><div class="copy"><input readonly value="%s" aria-label="Link đã lưu">'
+            '<button type="button" class="ghost" data-copy aria-label="Chép link: %s">Chép link</button></div>%s</div>'
+            % (
+                E((link.get("title") or "Sản phẩm " + link["product_id"])[:90]),
+                E(link["url"]),
+                E((link.get("title") or link["product_id"])[:60]),
+                _button(
+                    "Xóa link này",
+                    "forget",
+                    "ghost danger",
+                    aria="Xóa link đã lưu: " + (link.get("title") or link["product_id"])[:60],
+                    account=account["id"],
+                    product_id=link["product_id"],
+                    ask="Xóa link đã lưu này?",
+                ),
+            )
+        )
+    return "".join(rows)
+
+
+def chat_side(data, now=None):
+    """The column beside the chat: which channels each account is signed in on, the links saved, and the history to clear."""
+    now = now or time.time()
+    roster = data.get("roster", [])
+    sign_ins = (
+        "".join(
+            '<div class="acct-row stack"><p class="ttl">@%s</p>%s</div>'
+            % (E(a["username"]), "".join(_sign_in_row(a, c, data.get("channels", {}).get(a["id"], {}).get(c), now) for c in CHANNEL_NAMES))
+            for a in roster
+        )
+        or '<p class="note warn">Chưa có tài khoản nào đang bật.</p>'
+    )
+    saved = (
+        "".join(
+            '<div class="stack"><p class="small muted">@%s</p>%s</div>'
+            % (E(a["username"]), _saved_rows(a, data.get("saved", {}).get(a["id"], [])))
+            for a in roster
+            if data.get("saved", {}).get(a["id"])
+        )
+        or '<p class="hint">Chưa có link nào. Dán link chia sẻ vào chat, kiểm tra xong và xác nhận thì nó nằm ở đây.</p>'
+    )
+    return (
+        '<aside id="chat-side" class="stack">'
+        '<section class="card stack"><h3>Kênh tìm kiếm</h3>'
+        '<p class="hint">TikTok và Douyin chỉ cho tìm video khi đã đăng nhập. Cửa sổ đăng nhập mở trên máy chạy TrendVN; bạn tự đăng nhập '
+        "(quét mã QR hoặc số điện thoại), hệ thống không nhập mật khẩu hộ và chỉ nhớ phiên trong hồ sơ trình duyệt riêng của tài khoản.</p>%s</section>"
+        '<section class="card stack"><h3>Link hoa hồng đã lưu</h3>%s</section>'
+        '<section class="card stack"><h3>Lịch sử tìm kiếm</h3><p class="hint">Xóa các tin đã xong trong khung chat. Link đã lưu, video đã chọn '
+        "và trạng thái đăng nhập được giữ nguyên.</p>%s</section></aside>"
+    ) % (
+        sign_ins,
+        saved,
+        _button(
+            "Xóa lịch sử tìm kiếm",
+            "clear",
+            "ghost danger",
+            ask="Xóa toàn bộ lịch sử tìm kiếm trong khung chat? Link đã lưu và video đã chọn vẫn giữ.",
+        ),
+    )
+
+
+def chat_fragment(data, now=None):
+    """What the page polls: the thread and the side column (a sign-in changes the second while the first is being written)."""
+    return chat_thread(data, now) + chat_side(data, now)
 
 
 def composer(view):
@@ -228,8 +349,10 @@ def composer(view):
 
 
 def render(view):
-    return '<div class="card chat stack" data-chat data-csrf="%s"><h2>Tìm sản phẩm</h2>%s%s</div>' % (
+    chat = view.d.get("chat") or EMPTY
+    return '<div class="chat-layout" data-chat data-csrf="%s"><div class="card chat stack"><h2>Tìm sản phẩm</h2>%s%s</div>%s</div>' % (
         E(view.csrf),
-        chat_thread(view.d.get("chat") or EMPTY, view.now),
+        chat_thread(chat, view.now),
         composer(view),
+        chat_side(chat, view.now),
     )

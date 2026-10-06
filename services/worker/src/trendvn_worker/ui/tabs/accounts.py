@@ -27,7 +27,10 @@ def _login_chip(account):
 
 def _login_hint(account):
     command = "./trendvn tiktok login" + ("" if account["id"] == "main" else " --account " + account["id"])
-    return '<p class="small muted">Đăng nhập một lần: chạy <code>%s</code> rồi tự đăng nhập trong cửa sổ Chrome hiện ra.</p>' % E(command)
+    return (
+        '<p class="small muted">Đăng nhập một lần: bấm Đăng nhập trong <a href="#search" data-search-account="%s">tab Tìm</a> (TikTok và Douyin), '
+        "hoặc chạy <code>%s</code>, rồi tự đăng nhập trong cửa sổ Chrome hiện ra.</p>" % (E(account["id"]), E(command))
+    )
 
 
 def _overrides(account):

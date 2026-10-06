@@ -49,8 +49,8 @@
     var refresh=function(){
       return fetch('/fragment/chat',{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(html){
         if(!html)return;
-        var t=thread(),near=t.scrollHeight-t.scrollTop-t.clientHeight<80,tmp=document.createElement('div');
-        tmp.innerHTML=html;var fresh=tmp.firstElementChild;
+        var t=thread(),side=document.getElementById('chat-side'),near=t.scrollHeight-t.scrollTop-t.clientHeight<80,tmp=document.createElement('div');
+        tmp.innerHTML=html;var fresh=tmp.querySelector('#chat-thread'),freshSide=tmp.querySelector('#chat-side');
         if(fresh.innerHTML!==t.innerHTML){
           var ticked=Array.from(t.querySelectorAll('[data-chat-confirm]:checked')).map(tickKey);
           t.innerHTML=fresh.innerHTML;
@@ -58,6 +58,7 @@
           if(near)toBottom();
         }
         t.dataset.busy=fresh.dataset.busy;
+        if(side&&freshSide&&freshSide.innerHTML!==side.innerHTML)side.innerHTML=freshSide.innerHTML;
       }).catch(function(){});
     };
     setInterval(function(){var t=thread();if(t&&t.dataset.busy==='1')refresh();},2500);
@@ -76,7 +77,11 @@
       if(!b)return;
       var act=b.dataset.chatAct,payload={csrf:csrf,action:act};  // the account is the one the message was sent for, decided by the server
       if(act==='fill'){if(form){form.elements.text.value=b.dataset.text||'';form.elements.text.focus();}return;}
+      if(b.dataset.ask&&!window.confirm(b.dataset.ask))return;
       if(b.dataset.id)payload.id=+b.dataset.id;
+      if(b.dataset.channel)payload.channel=b.dataset.channel;
+      if(b.dataset.account)payload.account=b.dataset.account;
+      if(b.dataset.productId)payload.product_id=b.dataset.productId;
       if(b.dataset.source)payload.source=b.dataset.source;
       if(b.dataset.human)payload.human=true;
       if(act==='pick'){

@@ -89,7 +89,29 @@ def search_open(payload):
     return search(payload, human=True)
 
 
+def _channel_args(payload):
+    from . import channels
+    from .search import _account
+
+    channel = payload.get("channel")
+    if channel not in channels.NAMES:
+        raise ValueError("Kênh không hợp lệ")
+    return channels, _account(payload), channel
+
+
+def channel_login(payload):
+    channels, account, channel = _channel_args(payload)
+    return channels.login(account, channel)
+
+
+def channel_check(payload):
+    channels, account, channel = _channel_args(payload)
+    return channels.check(account, channel)
+
+
 ROUTES = {
+    "/api/channel/login": channel_login,
+    "/api/channel/check": channel_check,
     "/api/search/open": search_open,
     "/api/search": search_videos,
     "/api/search/download": search_download,

@@ -5,7 +5,7 @@ import time
 
 from ..jsonsafe import loads
 
-KINDS = ("say", "product", "videos", "link", "note")
+KINDS = ("say", "product", "videos", "link", "login", "note")
 STATES = ("pending", "running", "done", "error")
 KEEP = 300  # messages kept; older ones go (a long chat is not a record anyone needs, and attachments never are kept at all)
 BUSY_LIMIT = 3  # answers that may be unfinished at once: a sign-in window or a slow video call must not pile up work behind it
@@ -73,6 +73,23 @@ class ChatMixin:
             if identity.get("name") or identity.get("product_id"):
                 return dict(row) | {"body": body}
         return None
+
+    def chat_clear(self, before=None):
+        """Forget the finished part of the history (only what is older than `before`, a Unix time, when given); returns how many messages
+        went. What is still being worked on stays, and so does the answer a video was picked from while that video waits to be downloaded
+        (the download needs it). Picked or downloaded videos, saved links and sign-in records are not history and are never touched."""
+        with self.transaction() as db:
+            waiting = {
+                int(r[0])
+                for r in db.execute("SELECT search_id FROM jobs WHERE search_id IS NOT NULL AND state IN ('search_selected','candidate')")
+                if str(r[0]).isdigit()
+            }
+            rows = db.execute(
+                "SELECT id FROM chat WHERE state IN ('done','error') AND created<?", (float("inf") if before is None else before,)
+            )
+            ids = [r[0] for r in rows if r[0] not in waiting]
+            db.executemany("DELETE FROM chat WHERE id=?", [(i,) for i in ids])
+        return len(ids)
 
     def chat_recover(self):
         """After a restart nothing is really running: whatever was unfinished becomes an error the owner can retry."""

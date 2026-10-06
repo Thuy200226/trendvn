@@ -5,6 +5,7 @@ import unittest
 
 from tests.support import StoreCase, TZ, at  # noqa: F401  (also puts the source folders on sys.path)
 from trendvn_worker import ui
+from trendvn_worker.ui.tabs.search import chat_side
 from trendvn_worker.web.pages import chat_data
 
 NOW = 1_800_000_000.0
@@ -186,6 +187,110 @@ class LinkTests(unittest.TestCase):
         self.assertNotIn("data-chat-act", html)
 
 
+class SignInTests(unittest.TestCase):
+    ROSTER = [{"id": "main", "username": "chu_shop"}, {"id": "pets", "username": "pets_shop"}]
+
+    def side(self, channels=None, saved=None):
+        data = {"messages": [], "picked": {}, "accounts": {}, "roster": self.ROSTER, "channels": channels or {}, "saved": saved or {}}
+        return chat_side(data, NOW)
+
+    def test_every_account_gets_a_row_per_channel_with_what_is_known_and_a_way_to_sign_in_or_check(self):
+        html = self.side(
+            {
+                "main": {
+                    "douyin": {"state": "wall", "who": "", "at": NOW - 120},
+                    "tiktok": {"state": "ok", "who": "chu_shop", "at": NOW - 7200},
+                }
+            }
+        )
+        for words in ("@chu_shop", "@pets_shop", "Đòi xác minh", "Sẵn sàng", "2 phút trước", "2 giờ trước", "Chưa kiểm"):
+            self.assertIn(words, html)
+        logins = re.findall(r'data-chat-act="login" data-channel="(\w+)" data-account="(\w+)"', html)
+        self.assertEqual(sorted(logins), [("douyin", "main"), ("douyin", "pets"), ("tiktok", "main"), ("tiktok", "pets")])
+        self.assertEqual(len(re.findall(r'data-chat-act="check"', html)), 4)
+
+    def test_identical_buttons_are_told_apart_for_a_screen_reader(self):
+        html = self.side({}, {"main": [{"title": "Bàn phím", "url": "https://vt.tiktok.com/ZS/", "product_id": "1729384756102938475"}]})
+        labels = re.findall(r'aria-label="([^"]+)"', html)
+        for words in (
+            "Đăng nhập Douyin cho @chu_shop",
+            "Đăng nhập TikTok cho @pets_shop",
+            "Kiểm tra đăng nhập Douyin của @chu_shop",
+            "Xóa link đã lưu: Bàn phím",
+        ):
+            self.assertIn(words, labels)
+        buttons = re.findall(r'<button[^>]*data-chat-act="(?:login|check)"[^>]*>', html)
+        self.assertEqual(len(buttons), len({b for b in buttons}))  # no two sign-in buttons are alike
+
+    def test_the_side_says_who_does_the_signing_in_and_what_is_kept(self):
+        html = self.side()
+        self.assertIn("hệ thống không nhập mật khẩu hộ", html)
+        self.assertIn("Cửa sổ đăng nhập mở trên máy chạy TrendVN", html)
+
+    def test_saved_links_can_be_copied_and_forgotten_with_a_question_first(self):
+        saved = {"main": [{"title": "Bàn phím <b>", "url": "https://vt.tiktok.com/ZSabc/", "product_id": "1729384756102938475"}]}
+        html = self.side(saved=saved)
+        self.assertIn("data-copy", html)
+        self.assertIn('value="https://vt.tiktok.com/ZSabc/"', html)
+        self.assertIn("Bàn phím &lt;b&gt;", html)
+        self.assertIn('data-chat-act="forget" data-account="main" data-product-id="1729384756102938475" data-ask=', html)
+        self.assertIn("Chưa có link nào", self.side())
+
+    def test_clearing_the_history_asks_first_and_says_what_stays(self):
+        html = self.side()
+        self.assertRegex(html, r'data-chat-act="clear" data-ask="[^"]*vẫn giữ')
+
+    def test_with_no_enabled_account_there_is_nothing_to_sign_in_and_it_says_so(self):
+        data = {"messages": [], "picked": {}, "accounts": {}, "roster": [], "channels": {}, "saved": {}}
+        self.assertIn("Chưa có tài khoản nào đang bật", chat_side(data, NOW))
+
+    def test_the_fragment_the_page_polls_carries_both_the_thread_and_the_side(self):
+        from trendvn_worker.ui.tabs.search import chat_fragment
+
+        data = {"messages": [], "picked": {}, "accounts": {}, "roster": self.ROSTER, "channels": {}, "saved": {}}
+        html = chat_fragment(data, NOW)
+        self.assertLess(html.index('id="chat-thread"'), html.index('id="chat-side"'))
+
+
+class LoginCardTests(unittest.TestCase):
+    def login(self, state="running", mode="login", **fields):
+        return message(7, "login", {"channel": "douyin", "account_username": "chu_shop", "mode": mode} | fields, state=state)
+
+    def test_while_the_window_is_open_the_card_says_where_it_is_and_that_nothing_is_typed_for_the_owner(self):
+        html = render(self.login())
+        for words in ("Đăng nhập Douyin", "@chu_shop", "máy chạy TrendVN", "không nhập mật khẩu thay bạn", "10 phút"):
+            self.assertIn(words, html)
+        self.assertIn('data-busy="1"', html)
+
+    def test_a_finished_sign_in_says_it_worked_and_a_failed_one_offers_to_try_again(self):
+        self.assertIn("Đã đăng nhập", render(self.login("done", ok=True)))
+        failed = render(self.login("error", error="Chưa thấy đăng nhập Douyin trong thời gian chờ"))
+        self.assertIn("Chưa thấy đăng nhập Douyin", failed)
+        self.assertIn('data-chat-act="login" data-channel="douyin" data-account="main"', failed)
+
+    def test_a_check_that_found_nobody_signed_in_offers_the_window(self):
+        html = render(self.login("done", mode="check", ok=False))
+        self.assertIn("Chưa đăng nhập", html)
+        self.assertIn('data-chat-act="login"', html)
+        self.assertIn("Đang đọc phiên đã lưu", render(self.login(mode="check")))
+
+    def test_a_failed_search_offers_to_sign_in_to_the_channels_it_used(self):
+        body = {
+            "identity": identity(),
+            "source": "auto",
+            "account_username": "chu_shop",
+            "product": 2,
+            "results": [],
+            "error": "Douyin đòi xác minh",
+        }
+        html = render(message(3, "videos", body, state="error"))
+        self.assertIn("Đăng nhập TikTok", html)
+        self.assertIn("Đăng nhập Douyin", html)
+        single = render(message(3, "videos", body | {"source": "douyin"}, state="error"))
+        self.assertNotIn("Đăng nhập TikTok", single)
+        self.assertIn("Đăng nhập Douyin", single)
+
+
 class PageTests(StoreCase):
     def page(self):
         data = self.s.dashboard_data()
@@ -214,6 +319,25 @@ class PageTests(StoreCase):
         self.assertIn("mchose ace68", html)
         self.assertIn("Chờ tải video đã chọn", html)
         self.assertEqual(chat_data(self.s)["product"], None)
+
+    def test_the_page_carries_the_sign_ins_saved_links_and_history_beside_the_chat(self):
+        self.s.channel_report("main", "douyin", "wall")
+        self.s.commission_save(
+            "main",
+            {
+                "input": "https://vt.tiktok.com/ZSabc/",
+                "product_id": "1729384756102938475",
+                "title": "Bàn phím",
+                "markers": {},
+                "tracked": False,
+            },
+        )
+        html = self.page()
+        self.assertIn('class="chat-layout" data-chat', html)
+        self.assertIn("Đòi xác minh", html)
+        self.assertIn('value="https://vt.tiktok.com/ZSabc/"', html)
+        self.assertIn('data-chat-act="clear"', html)
+        self.assertLess(html.index('id="chat-thread"'), html.index('id="chat-side"'))
 
     def test_the_chat_without_any_account_asks_for_one_instead_of_offering_a_form(self):
         with self.s.transaction() as db:

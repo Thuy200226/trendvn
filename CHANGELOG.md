@@ -1,5 +1,14 @@
 # Lịch sử thay đổi
 
+## 1.8 — 2026-10-06 (đăng nhập kênh tìm kiếm, xóa lịch sử, tab cân đối)
+
+**Đăng nhập Douyin và TikTok để tìm kiếm.** Đo trên máy thật: khách không tìm kiếm được ở cả hai nguồn (TikTok trả phản hồi rỗng; Douyin chuyển Chrome ẩn tới trang xác minh ngay ở trang chủ). Cột bên cạnh khung chat có mục **Kênh tìm kiếm**: tình trạng đăng nhập của từng tài khoản trên từng kênh, nút **Đăng nhập** (mở cửa sổ Chrome thật cho chủ tự đăng nhập, tối đa 10 phút) và **Kiểm tra** (đọc cookie, không mở trang); thẻ lỗi của lần tìm cũng có nút đăng nhập đúng kênh. Tình trạng được agent ghi lại sau mỗi lần đăng nhập, kiểm tra và tìm kiếm. Khi máy có màn hình, tìm kiếm chạy bằng cửa sổ thật như đăng bài (Douyin từ chối Chrome ẩn); trang xác minh trắng của Douyin giờ được nhận ra thay vì báo "chưa trả video".
+
+**Link đã lưu và lịch sử.** Danh sách link hoa hồng đã lưu (chép, xóa từng link) nằm ở cột bên cạnh, tách khỏi lịch sử chat. **Xóa lịch sử tìm kiếm** xóa tin đã xong, giữ tin đang chạy, video đã chọn, link đã lưu và tình trạng đăng nhập; tin đã xong quá 30 ngày tự bị dọn. Xóa tài khoản xóa luôn tình trạng đăng nhập và link đã lưu của nó (migration 8).
+
+**Bố cục.** Tab Tìm hai cột trên màn hình rộng (khung chat + cột bên cạnh), cột bên cạnh nằm dưới khung nhập trên điện thoại. Thanh điều hướng điện thoại dàn đều khoảng cách giữa bảy mục thay vì chia theo độ dài nhãn, nhãn đầu và cuối không còn sát mép.
+
+
 ## 1.7 — 2026-10-06 (tìm sản phẩm trong một khung chat: docs/PRODUCT-SEARCH.md)
 
 **Một khung chat cho mọi thứ về sản phẩm** (tab mới **Tìm**, thay cho mục "Tìm sản phẩm" nằm trong Thêm): gửi tên/model, ảnh, PDF/DOCX/TXT hoặc link; hệ thống nhận diện sản phẩm, tìm video ngay trong phiên TikTok/Douyin của tài khoản bạn chọn, và kiểm tra link chia sẻ bạn dán từ ứng dụng TikTok. Mọi câu trả lời hiện trong cùng luồng tin, có nút cho bước tiếp theo; tiến độ tự cập nhật, không tải lại trang.

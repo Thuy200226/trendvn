@@ -3,6 +3,7 @@
 from .accounts import AccountsMixin
 from .base import StoreBase
 from .captions import CaptionMixin
+from .channels import ChannelsMixin
 from .chat import ChatMixin
 from .commission import CommissionMixin
 from .feedback import FeedbackMixin
@@ -29,6 +30,7 @@ class Store(
     ReportingMixin,
     RetentionMixin,
     ChatMixin,
+    ChannelsMixin,
     VideosMixin,
     CommissionMixin,
 ):

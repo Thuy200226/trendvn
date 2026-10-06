@@ -44,12 +44,28 @@ Khi dán, hệ thống làm theo thứ tự:
 - Từ khóa Douyin giữ nguyên hãng/model/biến thể khi dịch; dòng sản phẩm có từ riêng ở chợ Trung Quốc nằm ở bảng `LINE_HINTS` trong `services/worker/src/trendvn_worker/domain/search_queries.py` (thêm một dòng là thêm một dòng sản phẩm), bí danh hãng ở `BRAND_ALIASES`.
 - Ảnh không được đưa vào ô tìm ảnh của TikTok: Gemini mô tả, rồi tìm bằng chữ.
 
-## Tìm video cần đăng nhập (đã đo ngày 2026-10-06)
+## Đăng nhập các kênh tìm kiếm
 
-Khách chưa đăng nhập **không tìm kiếm video được** ở cả hai nguồn:
-- **TikTok:** API tìm kiếm trả phản hồi rỗng cho khách (trang hiện "Đã xảy ra lỗi… máy chủ"). Cần hồ sơ đã đăng nhập của tài khoản: `./trendvn tiktok login` (thêm `--account <mã>` cho tài khoản khác). Chưa đăng nhập thì hệ thống báo đúng lệnh này.
-- **Douyin:** khách bị chuyển tới trang trắng tên "验证码中间页" (xác minh mã). Bấm **Mở cửa sổ để tự xác minh rồi tìm lại**, tự xác minh/đăng nhập một lần trong cửa sổ đó (hồ sơ riêng `search-cn-<mã tài khoản>` nhớ phiên); không có cách tìm theo từ khóa mà không qua bước này. Hệ thống không giải và không né xác minh.
-- **Không cần đăng nhập:** dán thẳng link video (TikTok hoặc Douyin) vào chat thì chỉ đọc đúng video đó; và các luồng thu thập theo chủ đề (tab chủ đề `jingxuan` của Douyin) không dùng tìm kiếm.
+Khách chưa đăng nhập **không tìm video theo từ khóa được** (đã đo ngày 2026-10-06 trên chính máy này):
+- **TikTok:** API tìm kiếm trả phản hồi rỗng cho khách (trang hiện "Đã xảy ra lỗi… máy chủ").
+- **Douyin:** Chrome ẩn (headless) bị chuyển tới trang trắng tên "验证码中间页" (xác minh mã) ngay cả ở trang chủ; Chrome có cửa sổ vào được trang chủ nhưng trang **tìm kiếm** vẫn đòi xác minh với khách.
+
+Vì vậy cột bên cạnh khung chat có mục **Kênh tìm kiếm**: mỗi tài khoản đang bật có một dòng TikTok và một dòng Douyin, mỗi dòng có tình trạng (Sẵn sàng / Chưa đăng nhập / Đòi xác minh / Chưa kiểm, kèm thời điểm biết được) và hai nút:
+- **Đăng nhập** mở một cửa sổ Chrome thật **trên máy chạy TrendVN** (không phải trình duyệt bạn đang xem bảng điều khiển). Bạn tự đăng nhập trong đó (quét mã QR hoặc số điện thoại), tối đa 10 phút; cửa sổ tự đóng khi thấy phiên đăng nhập. Hệ thống không nhập mật khẩu hộ, không đọc nội dung phiên: chỉ nhìn tên cookie phiên của kênh trong hồ sơ trình duyệt riêng và ghi lại "đã đăng nhập hay chưa". TikTok dùng chính hồ sơ đăng bài của tài khoản (một lần đăng nhập dùng cho cả đăng bài và tìm kiếm) và kiểm đúng tên `@tài_khoản`; Douyin có hồ sơ riêng `search-cn-<mã tài khoản>`.
+- **Kiểm tra** chỉ đọc cookie của hồ sơ (vài giây, không mở trang).
+Thẻ lỗi của một lần tìm cũng có sẵn nút đăng nhập đúng kênh. Máy không có màn hình thì không mở được cửa sổ: hệ thống báo và chỉ cách dùng `./trendvn tiktok login` trên máy có màn hình.
+
+Khi máy có màn hình, tìm kiếm TikTok và Douyin chạy bằng **cửa sổ Chrome thật** (như đăng bài) vì Douyin từ chối Chrome ẩn; cửa sổ hiện vài giây rồi tự đóng. Đặt `TRENDVN_PUBLISH_HEADED=0` để ép chạy ẩn. Trong lúc cửa sổ đăng nhập mở, agent bận (các việc dùng trình duyệt khác, kể cả lịch tự động, phải đợi hoặc báo bận).
+
+**Chưa kiểm chứng:** việc đăng nhập Douyin thật (cần tài khoản Douyin của bạn; nhận diện phiên dựa vào các cookie `sessionid`, `sessionid_ss`, `sid_tt`, `uid_tt` hoặc `LOGIN_STATUS=1`). Nếu Douyin đổi tên cookie, mục Kênh tìm kiếm có thể báo "Chưa đăng nhập" dù bạn đã đăng nhập; lần tìm kiếm thành công kế tiếp tự sửa lại tình trạng.
+
+**Không cần đăng nhập:** dán thẳng link video (TikTok hoặc Douyin) vào chat thì chỉ đọc đúng video đó; luồng thu thập theo chủ đề (tab `jingxuan` của Douyin) không dùng tìm kiếm.
+
+Kênh khác (Kuaishou, Instagram): chưa có tìm kiếm. Kuaishou trả lỗi cho khách ở trang tìm kiếm (đã đo); thêm một kênh là thêm một mục trong `services/agent/src/trendvn_agent/channels.py` và một mô-đun đọc trang như `search_douyin.py`.
+
+## Link đã lưu và lịch sử
+
+Cột bên cạnh cũng liệt kê **Link hoa hồng đã lưu** (mỗi tài khoản, mới nhất trước; nút **Chép link** và **Xóa link này**) để bạn lấy lại link bất cứ lúc nào, kể cả sau khi xóa lịch sử. **Xóa lịch sử tìm kiếm** (hỏi lại trước khi làm) xóa các tin đã xong trong khung chat; không xóa tin đang chạy, video đã chọn hay đã tải, link đã lưu và tình trạng đăng nhập. Một video đã chọn nhưng chưa tải xong giữ lại tin nhắn nó cần cho tới khi tải xong. Hệ thống cũng tự xóa tin đã xong cũ hơn 30 ngày khi dọn dẹp định kỳ. Lịch sử tìm kiếm **trên tài khoản TikTok/Douyin** (mục "tìm kiếm gần đây" của chính nền tảng) không bị xóa bởi nút này.
 
 ## Tìm video và kiểm khớp
 

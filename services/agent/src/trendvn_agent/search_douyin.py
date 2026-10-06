@@ -4,6 +4,8 @@ import re
 from urllib.parse import quote
 
 from .browser import chrome
+from .channels import Wall
+from .publisher.constants import wants_window
 from .collector.sources.douyin import parse_douyin
 from .search_capture import Capture, wait_for_results
 
@@ -39,8 +41,9 @@ def blocked(page):
 
 def check(page):
     if blocked(page):
-        raise ValueError(
-            "Douyin đòi xác minh (khách chưa đăng nhập không tìm kiếm được). Bấm Mở cửa sổ để tự xác minh/đăng nhập, rồi tìm lại."
+        raise Wall(
+            "Douyin đòi xác minh (khách chưa đăng nhập không tìm kiếm được). Bấm Đăng nhập Douyin trong khung Kênh tìm kiếm, "
+            "hoặc Mở cửa sổ để tự xác minh rồi tìm lại."
         )
 
 
@@ -55,7 +58,8 @@ def search(account, query, links=(), human=False):
     direct = [u for u in links[:3] if isinstance(u, str) and VIDEO.fullmatch(u)]
     urls = direct or ["https://www.douyin.com/search/" + quote(query) + "?type=video"]
     capture = Capture(("/search/", "/aweme/detail/"), payload_videos, direct)
-    with chrome("search-cn-" + account["id"], locale="zh-CN", region="CN", headless=not human) as ctx:
+    # Douyin turns a hidden (headless) Chrome away even from its home page (measured 2026-10-06): with a screen it is searched in a window
+    with chrome("search-cn-" + account["id"], locale="zh-CN", region="CN", headless=not (human or wants_window())) as ctx:
         for url in urls:
             page = ctx.new_page()
             page.on("response", capture.on_response)

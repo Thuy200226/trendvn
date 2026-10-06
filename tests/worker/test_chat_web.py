@@ -87,5 +87,36 @@ class ChatHTTPTests(unittest.TestCase):
         self.assertIn('data-human="true"', html)
 
 
+class ChannelReportAPITests(unittest.TestCase):
+    """The browser agent tells the worker what it found out about a session (token-protected, not the dashboard's own form)."""
+
+    def test_the_report_is_kept_and_a_bad_one_is_a_client_error(self):
+        from types import SimpleNamespace
+
+        from tests.support import StoreCase
+        from trendvn_worker.web import api
+
+        class Case(StoreCase):
+            def runTest(self):
+                pass
+
+        case = Case()
+        case.setUp()
+        try:
+            app = SimpleNamespace(store=case.s)
+            api.handle(app, "/api/channel/report", {"account": "main", "channel": "douyin", "state": "wall", "who": ""})
+            self.assertEqual(case.s.channel_states()["main"]["douyin"]["state"], "wall")
+            for payload in (
+                {"account": "main", "channel": "douyin", "state": "maybe"},
+                {"account": "nobody", "channel": "douyin", "state": "ok"},
+                {"account": 5, "channel": "douyin", "state": "ok"},
+                {"channel": "douyin"},
+            ):
+                with self.assertRaises((ValueError, KeyError)):
+                    api.handle(app, "/api/channel/report", payload)
+        finally:
+            case.tearDown()
+
+
 if __name__ == "__main__":
     unittest.main()

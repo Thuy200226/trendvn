@@ -74,8 +74,13 @@ class FakeAgent(BaseHTTPRequestHandler):
                     ]
                 },
             )
-        if self.path == "/api/account/login":
-            return self.reply(200, {"logged_in": True, "username": FakeAgent.store.account(payload["account"])["username"]})
+        if self.path == "/api/channel/login":
+            time.sleep(1.2)  # the owner's window is open for a while: the card shows it
+            FakeAgent.store.channel_report(payload["account"], payload["channel"], "ok", "")
+            return self.reply(200, {"ok": True, "who": "", "channel": payload["channel"]})
+        if self.path == "/api/channel/check":
+            FakeAgent.store.channel_report(payload["account"], payload["channel"], "out", "")
+            return self.reply(200, {"logged_in": False, "channel": payload["channel"]})
         if self.path == "/api/search/download":
             with FakeAgent.store.transaction() as db:
                 db.execute("UPDATE jobs SET state='queued',reason='' WHERE id=?", (payload["job_id"],))
@@ -300,6 +305,9 @@ def seed_chat(s):
         {"url": todo["input"], "found": todo, "verdict": verdict | {"verdict": "found", "summary": "Đã đọc được sản phẩm từ link."}},
         account="main",
     )
+    s.channel_report("main", "douyin", "wall")
+    s.channel_report("main", "tiktok", "ok", "chu_shop")
+    s.commission_save("main", found | {"title": long_name})
 
 
 AUDIT_JS = r"""
@@ -787,6 +795,44 @@ def main():
             pg.locator("[data-copy]").last.click()
             pg.wait_for_timeout(400)  # the browser may refuse the clipboard first and the script then copies another way
             check("Chat: the copy button says it copied", pg.locator("[data-copy]").last.inner_text() == "Đã chép")
+            # signing in to a search channel: a window opens on the machine, the card says so, and the column beside the chat learns the result
+            go(pg, base + "/#search")
+            side = pg.locator("#chat-side")
+            check("Side: every state the system knows is shown", "Đòi xác minh" in side.inner_text() and "Sẵn sàng" in side.inner_text())
+            pg.locator('#chat-side button[data-chat-act="login"][data-channel="douyin"]').click()
+            pg.wait_for_selector("#chat-thread >> text=Đã mở cửa sổ Chrome trên máy chạy TrendVN", timeout=8000)
+            check(
+                "Sign-in: while the window is open the card says whose window it is and that nothing is typed for the owner",
+                "không nhập mật khẩu thay bạn" in pg.inner_text("#chat-thread"),
+            )
+            pg.wait_for_selector("#chat-thread >> text=Đã đăng nhập: tìm kiếm trên Douyin dùng được", timeout=15000)
+            pg.wait_for_function("() => /Douyin[\\s\\S]*Sẵn sàng/.test(document.getElementById('chat-side').innerText)", timeout=8000)
+            check(
+                "Sign-in: the column beside the chat shows Douyin ready without a reload", "Đòi xác minh" not in pg.inner_text("#chat-side")
+            )
+            pg.locator('#chat-side button[data-chat-act="check"][data-channel="tiktok"]').click()
+            pg.wait_for_selector("#chat-thread >> text=Chưa đăng nhập.", timeout=10000)
+            check(
+                "Check: a profile that is signed out is said so and offers the window",
+                pg.locator('#chat-thread button[data-chat-act="login"][data-channel="tiktok"]').count() >= 1,
+            )
+            # saved links: forget; history: clear keeps what is not history
+            saved_before, in_db = pg.locator("#chat-side .saved").count(), len(Store(tmp).commission_list("main"))
+            pg.locator('#chat-side button[data-chat-act="forget"]').first.click()
+            pg.wait_for_function("n => document.querySelectorAll('#chat-side .saved').length < n", arg=saved_before, timeout=8000)
+            check(
+                "Saved links: forgetting one removes it from the column and the database",
+                len(Store(tmp).commission_list("main")) == in_db - 1 >= 0,
+            )
+            pg.locator('#chat-side button[data-chat-act="clear"]').click()
+            pg.wait_for_function("() => document.getElementById('chat-thread').innerText.includes('Gửi cho mình')", timeout=8000)
+            with FakeAgent.store.connect() as db:
+                kept = db.execute("SELECT state FROM jobs WHERE source_id='1234567890'").fetchone()
+            check(
+                "History: clearing empties the thread but keeps the picked video and the sign-in states",
+                kept and kept[0] == "queued" and "Sẵn sàng" in pg.inner_text("#chat-side"),
+            )
+
             # files stay in memory, are sent as content, and can be removed
             captured = []
 
