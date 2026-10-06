@@ -18,14 +18,30 @@ def video_items(payload):
     return [dict(i, platform="douyin") for i in parse_douyin({"aweme_list": awemes}) if VIDEO.fullmatch(i["url"])]
 
 
+CAPTCHA_TITLE = (
+    "验证码",
+    "captcha",
+    "verify",
+)  # Douyin's own wall is a blank page titled "验证码中间页" ("verification code interstitial")
+
+
 def blocked(page):
+    """A verification wall: its widget on the page, or the blank interstitial page Douyin serves a visitor who is not signed in."""
+    try:
+        title = (page.title() or "").lower()
+    except Exception:  # the page is navigating: ask again on the next round
+        title = ""
+    if any(word in title for word in CAPTCHA_TITLE):
+        return True
     nodes = page.locator('[id*="captcha"], [class*="captcha"], [class*="verify-wrap"]')
     return any(nodes.nth(i).is_visible() for i in range(nodes.count()))
 
 
 def check(page):
     if blocked(page):
-        raise ValueError("Douyin yêu cầu xác minh. Bấm Mở cửa sổ để tự xác minh/đăng nhập, rồi tìm lại.")
+        raise ValueError(
+            "Douyin đòi xác minh (khách chưa đăng nhập không tìm kiếm được). Bấm Mở cửa sổ để tự xác minh/đăng nhập, rồi tìm lại."
+        )
 
 
 def payload_videos(data):

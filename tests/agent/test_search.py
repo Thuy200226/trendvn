@@ -180,6 +180,38 @@ class SearchRoutingTests(StoreCase):
                 self.run_search({"account": "main", "source": "tiktok", "queries": queries})
 
 
+class DouyinWallTests(StoreCase):
+    """What a visitor who is not signed in meets on Douyin (measured 2026-10-06): a blank page titled '验证码中间页', no widget at all."""
+
+    def page(self, title, widget=False):
+        page = mock.Mock()
+        page.title.return_value = title
+        page.locator.return_value.count.return_value = 1 if widget else 0
+        page.locator.return_value.nth.return_value.is_visible.return_value = widget
+        return page
+
+    def test_the_blank_verification_page_is_a_wall_even_with_no_widget_on_it(self):
+        from trendvn_agent.search_douyin import blocked, check
+
+        self.assertTrue(blocked(self.page("验证码中间页")))
+        with self.assertRaises(ValueError) as caught:
+            check(self.page("验证码中间页"))
+        self.assertIn("xác minh", str(caught.exception))
+
+    def test_a_widget_is_a_wall_and_a_normal_results_page_is_not(self):
+        from trendvn_agent.search_douyin import blocked
+
+        self.assertTrue(blocked(self.page("抖音搜索", widget=True)))
+        self.assertFalse(blocked(self.page("迈从 ACE68 - 抖音搜索")))
+
+    def test_a_page_that_is_changing_under_us_is_asked_again_not_a_crash(self):
+        from trendvn_agent.search_douyin import blocked
+
+        page = self.page("x")
+        page.title.side_effect = RuntimeError("Execution context was destroyed")
+        self.assertFalse(blocked(page))
+
+
 class TikTokSearchTests(StoreCase):
     ACCOUNT = {"id": "main", "username": "creator"}
 
@@ -213,6 +245,15 @@ class TikTokSearchTests(StoreCase):
         self.assertEqual(chrome.call_args.kwargs["headless"], False)
         with self.assertRaises(ValueError):
             self.run_search(True, found=False)
+
+    def test_a_signed_out_profile_is_told_how_to_sign_in_for_that_very_account(self):
+        from trendvn_agent.search import _verify
+
+        for account_id, flag in (("main", ""), ("pets", " --account pets")):
+            with mock.patch("trendvn_agent.search.logged_in", return_value=False), self.assertRaises(ValueError) as caught:
+                _verify(mock.Mock(), {"id": account_id, "username": "creator"})
+            self.assertIn("./trendvn tiktok login" + flag, str(caught.exception))
+            self.assertTrue(str(caught.exception).endswith(flag or "login"))
 
     def test_exact_links_are_opened_instead_of_a_search_and_other_text_is_not_a_link(self):
         _, events, _ = self.run_search(False, links=[TIKTOK, "https://evil.example/x"])

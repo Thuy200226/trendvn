@@ -38,7 +38,10 @@ def _account(payload):
 
 def _verify(ctx, account):
     if not logged_in(ctx):
-        raise ValueError("Chưa đăng nhập TikTok cho @" + account["username"])
+        flag = "" if account["id"] == "main" else " --account " + account["id"]
+        raise ValueError(
+            "Chưa đăng nhập TikTok cho @%s (khách không tìm kiếm được): chạy ./trendvn tiktok login%s" % (account["username"], flag)
+        )
     who = signed_in_as(ctx)
     if not who or who.casefold() != account["username"].casefold():
         raise ValueError("Không xác minh được phiên tìm kiếm đúng @" + account["username"])

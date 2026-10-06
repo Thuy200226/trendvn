@@ -44,6 +44,13 @@ Khi dán, hệ thống làm theo thứ tự:
 - Từ khóa Douyin giữ nguyên hãng/model/biến thể khi dịch; dòng sản phẩm có từ riêng ở chợ Trung Quốc nằm ở bảng `LINE_HINTS` trong `services/worker/src/trendvn_worker/domain/search_queries.py` (thêm một dòng là thêm một dòng sản phẩm), bí danh hãng ở `BRAND_ALIASES`.
 - Ảnh không được đưa vào ô tìm ảnh của TikTok: Gemini mô tả, rồi tìm bằng chữ.
 
+## Tìm video cần đăng nhập (đã đo ngày 2026-10-06)
+
+Khách chưa đăng nhập **không tìm kiếm video được** ở cả hai nguồn:
+- **TikTok:** API tìm kiếm trả phản hồi rỗng cho khách (trang hiện "Đã xảy ra lỗi… máy chủ"). Cần hồ sơ đã đăng nhập của tài khoản: `./trendvn tiktok login` (thêm `--account <mã>` cho tài khoản khác). Chưa đăng nhập thì hệ thống báo đúng lệnh này.
+- **Douyin:** khách bị chuyển tới trang trắng tên "验证码中间页" (xác minh mã). Bấm **Mở cửa sổ để tự xác minh rồi tìm lại**, tự xác minh/đăng nhập một lần trong cửa sổ đó (hồ sơ riêng `search-cn-<mã tài khoản>` nhớ phiên); không có cách tìm theo từ khóa mà không qua bước này. Hệ thống không giải và không né xác minh.
+- **Không cần đăng nhập:** dán thẳng link video (TikTok hoặc Douyin) vào chat thì chỉ đọc đúng video đó; và các luồng thu thập theo chủ đề (tab chủ đề `jingxuan` của Douyin) không dùng tìm kiếm.
+
 ## Tìm video và kiểm khớp
 
 Quy tắc loại ứng viên (chỉ "khác sản phẩm" mới bị loại; còn lại là ứng viên cho bạn xem): **khác model** (mã có chữ số trong lời bạn, trừ thông số như 256GB, 5G), **khác biến thể** bạn nêu hoặc tiêu đề có thêm từ biến thể bạn không nêu (Pro, Max, Ultra, Plus/`+`, Lite, Air…), **tiêu đề nêu hãng khác** trong danh sách hãng đã biết (`KNOWN_BRANDS`). Tiêu đề chỉ không nhắc hãng thì vẫn là ứng viên (điểm thấp hơn). Sản phẩm lấy từ link (tên trang quảng cáo) chỉ dùng hãng và các luật biến thể, không bắt video lặp lại số trong tiêu đề.
