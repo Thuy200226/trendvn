@@ -6,8 +6,9 @@ import unittest
 from urllib.parse import quote
 
 from tests.support import StoreCase  # noqa: F401  (also puts the source folders on sys.path)
-from trendvn_worker.ui.labels import vi_error
+from trendvn_worker.ui.labels import TEXT_LIMIT, vi_error
 from trendvn_worker.ui.messages import FALLBACK, user_message
+from trendvn_worker.web.handler import ERR_SHOWN
 
 HOSTILE = (
     "x" * 60000,
@@ -50,6 +51,35 @@ class BoundedTextTests(unittest.TestCase):
     def test_the_part_of_a_long_line_that_matters_is_still_read_when_it_comes_first(self):
         text = "Gemini 503 hết thời gian " + "x" * 50000
         self.assertEqual(user_message(text), "Gemini đang bận. Video được giữ trong hàng chờ để thử lại.")
+
+
+class EachBoundHoldsOnItsOwn(unittest.TestCase):
+    """The layers back each other up, so a test of the whole (milliseconds) would still pass if one of them were lost."""
+
+    def test_a_line_is_read_only_up_to_the_limit(self):
+        self.assertEqual(len(vi_error("x" * 5000)), TEXT_LIMIT)
+        self.assertEqual(user_message("x" * 1500 + " Gemini 503 hết thời gian"), ("x" * 450))  # the words past the limit are never read
+
+    def test_a_field_name_is_read_at_most_sixty_characters_long(self):
+        near, far = "daily_limit must be an integer between 1 and 10", "d" * 80 + " must be an integer between 1 and 10"
+        self.assertNotEqual(vi_error(near), near)
+        self.assertNotIn("d" * 70, vi_error(far))  # only the last sixty characters can be taken for the field's name
+
+    def test_a_query_is_recognised_only_when_its_words_are_close_together(self):
+        self.assertEqual(user_message("SELECT a FROM t"), FALLBACK)
+        far = "SELECT " + "a" * 300 + " FROM t"
+        self.assertTrue(user_message(far).startswith("SELECT aaa"))
+
+    def test_the_error_of_the_address_is_read_up_to_its_own_limit(self):
+        from tests.worker.test_web import Server
+
+        server = Server()
+        try:
+            for filler, shown in ((ERR_SHOWN - 40, True), (ERR_SHOWN + 40, False)):
+                _, _, body = server.req("GET", "/?err=" + "d" * filler + "+Gemini+503+timeout")
+                self.assertEqual("Gemini đang bận" in body.decode(), shown, filler)
+        finally:
+            server.stop()
 
 
 class AddressErrorTests(unittest.TestCase):

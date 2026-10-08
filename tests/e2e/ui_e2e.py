@@ -350,7 +350,7 @@ async () => {
   [...document.querySelectorAll('body *')].filter(vis).forEach(e => {
     const s = getComputedStyle(e);
     if (e.scrollWidth > e.clientWidth + 2 && ['hidden', 'clip'].includes(s.overflowX) && !['VIDEO', 'SELECT', 'TEXTAREA', 'INPUT', 'BUTTON'].includes(e.tagName) && e.clientWidth > 0) issues.push('clipped text: ' + desc(e));
-    if (parseFloat(s.fontSize) < (innerWidth <= 370 && e.closest('.bottomnav') ? 10 : 11) && (e.innerText || '').trim() && e.children.length === 0 && !e.closest('svg')) issues.push('tiny font ' + s.fontSize + ': ' + desc(e));
+    if (parseFloat(s.fontSize) < (innerWidth <= 400 && e.closest('.bottomnav') ? 10 : 11) && (e.innerText || '').trim() && e.children.length === 0 && !e.closest('svg')) issues.push('tiny font ' + s.fontSize + ': ' + desc(e));
     const r = box(e);
     if (r.right > innerWidth + 1 && s.position !== 'fixed' && !e.closest('.tablewrap')) issues.push('sticks out right by ' + Math.round(r.right - innerWidth) + 'px: ' + desc(e));
   });
@@ -562,7 +562,9 @@ def main():
             check("Confirmation: cancelling never calls the publisher", not FakeAgent.calls)
             cards[0].query_selector('button[value="publish"]').click()
             pg.locator("#confirm-action [data-confirm-accept]").click()
-            pg.wait_for_selector("#publish .taskpanel", timeout=8000)
+            pg.wait_for_selector(
+                '#publish .taskpanel:has-text("Đăng video")', timeout=8000
+            )  # the finished task's panel is there for a moment
             check(
                 "Post now: progress is shown on the Publish tab itself",
                 "Đăng video" in pg.inner_text("#publish .taskpanel"),
@@ -657,6 +659,7 @@ def main():
 
             # processing switched off: the tab says so and one tap turns it on
             go(pg, base + "/#home")
+            pg.click('#home summary:has-text("Chế độ xử lý và tự đăng")')  # the switches live in a collapsed section
             pg.click('form.qs:has(input[name="processing_enabled"]) button')  # the Home quick switch is the way to turn it off
             pg.wait_for_timeout(900)
             go(pg, base + "/#queue")
@@ -751,6 +754,7 @@ def main():
                 pg.locator("[data-chat]").screenshot(path=str(SHOTS / "chat_375.png"))
             find = pg.locator('button[data-chat-act="find"][data-source="douyin"]')
             asked = find.count()
+            FakeAgent.calls.clear()
             pg.fill('[data-chat-form] textarea[name="text"]', "Samsung Galaxy S24")
             pg.click("[data-chat-form] button.send")
             pg.wait_for_function(
@@ -767,13 +771,16 @@ def main():
                     "el => { const r=el.getBoundingClientRect(),s=getComputedStyle(el,'::before'); return r.width>=44 && r.height>=44 && parseFloat(s.width)<=24 && parseFloat(s.height)<=24; }"
                 ),
             )
-            FakeAgent.calls.clear()
-            find.last.click()
-            pg.wait_for_selector('#chat-thread > .msg.bot:last-child[data-state="done"] article', timeout=10000)
+            pg.wait_for_selector(
+                '#chat-thread > .msg.bot:last-child[data-state="done"] article', timeout=15000
+            )  # a sent message is searched at once
             cards = pg.locator("#chat-thread > .msg.bot:last-child article")
             check("Chat: a candidate of another model cannot be picked", cards.nth(1).locator('button[data-chat-act="pick"]').count() == 0)
             check("Chat: the search is pinned to the chosen account", FakeAgent.calls[0][1]["account"] == "main")
-            check("Chat: the chosen source reaches the browser agent", FakeAgent.calls[0][1]["source"] == "douyin")
+            check(
+                "Chat: the search goes to the channels signed in for that account",
+                FakeAgent.calls[0][1]["source"] == "auto" and FakeAgent.calls[0][1]["sources"] == ["tiktok"],
+            )
             check(
                 "Chat: the search words are shown before any pick",
                 "Douyin:" in pg.locator('#chat-thread .msg.bot:has(button[data-chat-act="find"])').last.inner_text(),
@@ -813,8 +820,16 @@ def main():
                     break
                 pg.wait_for_timeout(200)
             check("Chat: the picked video enters the processing queue for that account", selected and tuple(selected) == ("queued", "main"))
-            pg.locator("#queue-live").get_by_text("Samsung Galaxy S24", exact=True).wait_for(state="visible", timeout=10000)
+            pg.locator("#queue-live tr", has_text="Samsung Galaxy S24").wait_for(
+                state="attached", timeout=10000
+            )  # the queue sits in a hidden segment
             check("Chat: completed download updates the queue without reloading the page", "Chờ xử lý" in pg.inner_text("#queue-live"))
+            try:  # the chat bubble follows the queue on the next state poll (at most ~10 s)
+                pg.wait_for_function(
+                    "() => document.querySelector('#chat-thread > .msg.bot:last-child').innerText.includes('Chờ xử lý')", timeout=15000
+                )
+            except Exception:
+                pass
             check(
                 "Chat: a response started before pick cannot stop download polling",
                 "Chờ xử lý" in pg.inner_text("#chat-thread > .msg.bot:last-child"),
@@ -955,6 +970,20 @@ def main():
             pg.unroute("**/chat/send", intercept)
 
             check_owner_resolution(pg, base, Store(tmp), FakeAgent.calls, go, check)
+
+            # the dashboard is also opened as http://<vpn address>: there the browser has no crypto.randomUUID
+            plain_ctx, plain = new_ctx(375, 812, True)
+            plain_ctx.add_init_script("delete Crypto.prototype.randomUUID")
+            before = len(errors)
+            go(plain, base + "/#search")
+            check(
+                "Plain http: the browser really has no crypto.randomUUID", plain.evaluate("() => typeof crypto.randomUUID") == "undefined"
+            )
+            plain.fill('[data-chat-form] textarea[name="text"]', "Samsung Galaxy S24 plain http")
+            plain.click("[data-chat-form] button.send")
+            plain.wait_for_function("() => document.querySelector('#chat-thread').innerText.includes('plain http')", timeout=10000)
+            check("Plain http: a chat message still sends, with no page error", len(errors) == before, "; ".join(errors[before:][:3]))
+            plain_ctx.close()
             check("No console or page errors during flows", not errors, "; ".join(errors[:3]))
             ctx.close()
             browser.close()

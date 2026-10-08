@@ -50,6 +50,26 @@ class DiscoveryTests(StoreCase):
         self.assertEqual(chat_forms.send(app, payload), again)  # and now the key stands for the live answer: no third start
         self.assertEqual(tasks.start.call_count, 2)
 
+    def test_only_an_answer_that_failed_gives_its_request_key_back(self):
+        for state, kept in (("error", False), ("done", True), ("running", True)):
+            key = state[0] * 32
+            mid = self.s.chat_ask("main", "tin nhắn " + state, "product", {}, request_key=key)
+            self.s.chat_set(mid, state)
+            self.s.chat_release_request(mid)
+            self.assertEqual(self.s.chat_request(key) is not None, kept, state)
+
+    def test_a_request_key_never_crosses_accounts_whatever_state_its_answer_is_in(self):
+        self.s.add_account({"username": "other_shop", "id": "other", "topics": ["food"]})
+        for state in ("running", "done", "error"):
+            tasks = mock.Mock()
+            app = SimpleNamespace(store=self.s, tasks=tasks)
+            payload = {"account": "main", "text": "mchose " + state, "files": [], "request_key": state[0] * 32, "source": "tiktok"}
+            first = chat_forms.send(app, payload)
+            self.s.chat_set(first["id"], state)
+            with self.assertRaises(ValueError):
+                chat_forms.send(app, dict(payload, account="other"))
+            self.assertEqual(self.s.chat_get(first["id"])["state"], state)  # nothing of the first answer was touched
+
     def test_a_request_still_running_or_finished_is_never_started_a_second_time(self):
         for state in ("running", "done"):
             tasks = mock.Mock()

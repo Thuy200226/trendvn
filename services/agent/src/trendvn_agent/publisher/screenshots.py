@@ -8,12 +8,11 @@ KEEP_SHOTS = 20  # a failure's screenshot (and the page text saved beside it) is
 
 
 def prune_shots(folder, keep=KEEP_SHOTS):
-    """Keep the newest `keep` screenshots of the folder; an older one goes with the text file saved beside it, and so does any text file
-    left without its screenshot."""
+    """Keep the newest `keep` screenshots of the folder; an older one goes, and with it the text file saved beside it (a text file left
+    without its screenshot is removed)."""
     pictures = sorted(folder.glob("*.png"), key=lambda p: (p.stat().st_mtime, p.name))
     for old in pictures[:-keep] if keep else pictures:
         old.unlink(missing_ok=True)
-        old.with_suffix(".txt").unlink(missing_ok=True)
     for text in folder.glob("*.txt"):
         if not text.with_suffix(".png").exists():
             text.unlink(missing_ok=True)

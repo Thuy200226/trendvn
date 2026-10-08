@@ -233,6 +233,21 @@ class SearchRoutingTests(StoreCase):
         _, asked = self.run_four({"query": "mchose ace68"}, sources=("tiktok", "instagram"))
         self.assertEqual(asked, {"tiktok": "mchose ace68", "instagram": "mchose ace68"})
 
+    def test_each_source_uses_its_own_words_before_borrowing_any(self):
+        plan = {"tiktok": "t words", "instagram": "i words", "douyin": "抖 words", "kuaishou": "快 words"}
+        _, asked = self.run_four({"queries": plan, "query": "plain"})
+        self.assertEqual(asked, plan)
+
+    def test_the_latin_sources_borrow_from_each_other_before_the_plain_query(self):
+        _, asked = self.run_four({"queries": {"instagram": "i words"}, "query": "plain"}, sources=("tiktok", "instagram"))
+        self.assertEqual(asked, {"tiktok": "i words", "instagram": "i words"})
+        _, asked = self.run_four({"queries": {}, "query": "plain"}, sources=("tiktok", "instagram"))
+        self.assertEqual(asked, {"tiktok": "plain", "instagram": "plain"})
+
+    def test_the_chinese_sources_borrow_from_each_other_and_never_from_the_plain_query(self):
+        _, asked = self.run_four({"queries": {"kuaishou": "快 words"}, "query": "plain"}, sources=("douyin", "kuaishou"))
+        self.assertEqual(asked, {"douyin": "快 words", "kuaishou": "快 words"})
+
     def test_when_every_source_is_skipped_the_notes_are_the_error(self):
         with self.assertRaises(ValueError) as caught:
             self.run_four({"queries": {"tiktok": "x"}}, sources=("douyin", "kuaishou"))

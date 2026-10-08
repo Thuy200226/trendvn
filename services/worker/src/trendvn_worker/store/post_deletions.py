@@ -42,7 +42,7 @@ class PostDeletionsMixin:
                 "SELECT d.*,j.state job_state,j.account job_account,j.publish_url,j.target,a.username current_username FROM post_deletions d JOIN jobs j ON j.id=d.job_id JOIN accounts a ON a.id=d.account WHERE d.job_id=? AND d.grant_token=?",
                 (jid, grant),
             ).fetchone()
-            if not row or row["state"] != "pending" or time.time() - row["updated"] > 300:
+            if not row or row["state"] != "pending" or time.time() - row["updated"] > PENDING_SECONDS:
                 raise ValueError("Yêu cầu xóa đã nhận hoặc đã hết hạn")
             if (
                 row["job_state"] != "published"

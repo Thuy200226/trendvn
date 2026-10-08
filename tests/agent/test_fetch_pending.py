@@ -41,6 +41,20 @@ class FetchPendingTests(StoreCase):
         self.assertEqual(asked[0]["platform"], "douyin")
         self.assertEqual(report["downloaded"], 3)
 
+    def test_a_video_the_scan_did_not_see_is_never_downloaded_even_if_the_worker_lists_it(self):
+        downloaded = []
+        seen = {"s1": {"source_id": "s1", "score": 1}}
+        items = [{"id": "x" + sid, "platform": "douyin", "source_id": sid, "topic_hint": None} for sid in ("s1", "other")]
+        with mock.patch.multiple(
+            run,
+            worker=lambda path, payload=None, **kw: {"items": items} if path == "/api/media/pending" else {"state": "queued"},
+            worker_get=lambda path, timeout=30: {"counts": {}, "backlog": 0, "thresholds": {"max_backlog": 4}},
+            download=lambda ctx, item, platform: downloaded.append(item["source_id"]) or "f.mp4",
+            free_bytes=lambda: 50 << 30,
+        ):
+            run.fetch_pending(None, "douyin", seen, 3, [])
+        self.assertEqual(downloaded, ["s1"])
+
     def test_a_very_long_scan_sends_at_most_three_hundred_ids(self):
         seen = {"s%d" % n: {"source_id": "s%d" % n, "score": n} for n in range(450)}
         _, asked = self.ask(seen)

@@ -86,6 +86,24 @@ class TaskStepTests(DeletionCase):
     def test_the_wait_for_the_agent_is_longer_than_the_agents_own_slowest_path(self):
         self.assertGreaterEqual(tasks_mod.DELETE_TIMEOUT, 300)
 
+    def test_the_agent_is_really_given_that_long(self):
+        agent = mock.Mock(return_value={"status": "deleted", "reason": "ok"})
+        self.run_step(agent)
+        self.assertEqual(agent.call_args.kwargs["timeout"], tasks_mod.DELETE_TIMEOUT)
+
+    def test_the_owner_is_told_which_of_the_two_it_was(self):
+        _, steps = self.run_step(mock.Mock(side_effect=AgentError("Trình duyệt agent đang bận việc khác")))
+        self.assertTrue(steps.end.call_args.args[2].startswith("Chưa thử xóa bài"))
+
+        def took_it(path, payload, token, timeout=0):
+            self.s.delete_post_claim(payload["job_id"], payload["grant"])
+            raise AgentError("hết thời gian chờ")
+
+        with self.s.transaction() as db:  # a second attempt at the same post: forget the first
+            db.execute("DELETE FROM post_deletions WHERE job_id=?", (self.jid,))
+        _, steps = self.run_step(took_it)
+        self.assertTrue(steps.end.call_args.args[2].startswith("Chưa xác nhận kết quả xóa"))
+
 
 class FinishTests(DeletionCase):
     def test_deleted_can_only_come_from_a_deletion_the_agent_really_started(self):
