@@ -147,6 +147,7 @@ class QueueMixin:
         now = time.time()
         processing = self._recover_processing(now - 1800)
         unknown = self.expire_stale_publishing(now)
+        self.delete_post_expire(now)
         pruned = self.prune(now)
         free = free_bytes(self.root)
         if (

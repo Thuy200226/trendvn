@@ -7,6 +7,19 @@ from ..labels import ROUTE_LABEL
 from ..messages import user_message
 
 
+def _checked_form(view, post, label, outcome, question):
+    fields = {
+        "id": post["id"],
+        "url": post.get("publish_url") or "",
+        "account": post.get("account") or "main",
+        "confirmed": "true",
+        "outcome": outcome,
+    }
+    return action_form(
+        view.csrf, "/post-delete-checked", label, fields, css="ghost", data_confirm="%s\n%s" % (question, post.get("publish_url") or "")
+    )
+
+
 def _delete_action(view, post):
     state = post.get("delete_state")
     if state in ("deleted", "pending", "deleting", "unknown", "failed"):
@@ -18,22 +31,24 @@ def _delete_action(view, post):
             "failed": "Chưa xóa được",
         }[state]
         detail = "<p>%s</p><small>%s</small>" % (E(label), E(user_message(post.get("delete_reason") or "", state in ("unknown", "failed"))))
-        if state in ("unknown", "failed"):
-            detail += action_form(
-                view.csrf,
-                "/post-delete-checked",
+        if (
+            state == "unknown"
+        ):  # the post may be gone: the owner looks at TikTok and says what they saw (the system never deletes again by itself)
+            detail += _checked_form(
+                view,
+                post,
                 "Đã kiểm tra: bài đã xóa",
-                {
-                    "id": post["id"],
-                    "url": post.get("publish_url") or "",
-                    "account": post.get("account") or "main",
-                    "confirmed": "true",
-                    "outcome": "deleted",
-                },
-                css="ghost",
-                data_confirm="Bạn đã kiểm tra đúng bài trong tài khoản sở hữu và xác nhận nó đã xóa? Chỉ cập nhật trạng thái, không gửi lệnh xóa.\n%s"
-                % (post.get("publish_url") or ""),
+                "deleted",
+                "Bạn đã kiểm tra đúng bài trong tài khoản sở hữu và xác nhận nó đã xóa? Chỉ cập nhật trạng thái, không gửi lệnh xóa.",
             )
+            detail += _checked_form(
+                view,
+                post,
+                "Đã kiểm tra: bài vẫn còn",
+                "present",
+                "Bạn đã mở đúng bài và kiểm tra nó vẫn còn trên TikTok? Chỉ xác nhận sau khi kiểm tra.",
+            )
+        elif state == "failed":  # nothing was deleted: it may be tried again
             detail += action_form(
                 view.csrf,
                 "/post-delete",
@@ -42,15 +57,6 @@ def _delete_action(view, post):
                 css="ghost danger",
                 disabled=view.busy_browser,
                 data_confirm="Thử gửi lại lệnh xóa bài trên TikTok?\n%s" % (post.get("publish_url") or ""),
-            )
-            detail += action_form(
-                view.csrf,
-                "/post-delete-checked",
-                "Đã kiểm tra: bài vẫn còn",
-                {"id": post["id"], "url": post.get("publish_url") or "", "account": post.get("account") or "main", "confirmed": "true", "outcome": "present"},
-                css="ghost",
-                data_confirm="Bạn đã mở đúng bài và kiểm tra nó vẫn còn trên TikTok? Chỉ xác nhận sau khi kiểm tra.\n%s"
-                % (post.get("publish_url") or ""),
             )
         return detail
     who = post.get("target") or "?"

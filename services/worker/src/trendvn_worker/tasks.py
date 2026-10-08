@@ -41,6 +41,7 @@ CHAT_KINDS = (
     "channel_login",
     "channel_check",
 )  # the jobs behind the product chat (search/runner.py)
+DELETE_TIMEOUT = 300  # seconds to wait for the agent to delete a post: longer than the slowest path through TikTok Studio (about 215 s)
 LABELS = {
     "queue_download": "Tải ứng viên vào chờ xử lý",
     "delete_post": "Xóa bài trên TikTok",
@@ -122,9 +123,12 @@ def summarize_collect(report):
             new = sum(s.get("new", 0) for s in streams if not s.get("baseline"))
             media = (r.get("summary") or {}).get("media") or {}
             base = any(s.get("baseline") for s in streams)
+            why = (
+                " (%s)" % media["note"][:90] if media.get("note") else ""
+            )  # e.g. the queue is full: the owner should know why nothing came
             lines.append(
-                "%s: đọc %d, đạt ngưỡng %d, %s, tải %d"
-                % (name, seen, good, "lần đầu: chỉ ghi mốc" if base else "mới %d" % new, media.get("downloaded", 0))
+                "%s: đọc %d, đạt ngưỡng %d, %s, tải %d%s"
+                % (name, seen, good, "lần đầu: chỉ ghi mốc" if base else "mới %d" % new, media.get("downloaded", 0), why)
             )
     return "\n".join(lines) or "Không có nguồn nào chạy."
 
@@ -304,13 +308,21 @@ class Tasks:
         index = steps.begin("Xác minh tài khoản và xóa đúng bài trên TikTok")
         grant = self.references.pop(job_id)
         try:
-            result = call_agent("/api/post-delete", grant, self.token, timeout=180)
+            result = call_agent("/api/post-delete", grant, self.token, timeout=DELETE_TIMEOUT)
         except Exception as error:
-            try:
-                self.store.delete_post_finish(job_id, grant["grant"], "unknown", str(error))
-            except ValueError:
-                pass  # the agent may already have finished; never overwrite a confirmed result
-            steps.end(index, "error", "Chưa xác nhận kết quả xóa; kiểm tra TikTok trước khi tiếp tục. " + str(error)[:200])
+            # how far the agent got decides what this means (see delete_post_abort): never started = failed, started = for the owner to check
+            self.store.delete_post_abort(job_id, grant["grant"], str(error)[:300])
+            row = self.store.delete_post_state(job_id)
+            steps.end(
+                index,
+                "error",
+                (
+                    "Chưa thử xóa bài; thử lại khi trình duyệt rảnh. "
+                    if row == "failed"
+                    else "Chưa xác nhận kết quả xóa; kiểm tra TikTok trước khi tiếp tục. "
+                )
+                + str(error)[:200],
+            )
             return False
         ok = result.get("status") == "deleted"
         steps.end(index, "done" if ok else "error", result.get("reason", "Đã xóa bài trên TikTok" if ok else "Chưa xóa được"))

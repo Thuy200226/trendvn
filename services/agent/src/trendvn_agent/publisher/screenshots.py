@@ -4,11 +4,27 @@ import time
 
 from ..config import DATA, RUNTIME
 
+KEEP_SHOTS = 20  # a failure's screenshot (and the page text saved beside it) is for looking at once, not for keeping: the disk is small
+
+
+def prune_shots(folder, keep=KEEP_SHOTS):
+    """Keep the newest `keep` screenshots of the folder; an older one goes with the text file saved beside it, and so does any text file
+    left without its screenshot."""
+    pictures = sorted(folder.glob("*.png"), key=lambda p: (p.stat().st_mtime, p.name))
+    for old in pictures[:-keep] if keep else pictures:
+        old.unlink(missing_ok=True)
+        old.with_suffix(".txt").unlink(missing_ok=True)
+    for text in folder.glob("*.txt"):
+        if not text.with_suffix(".png").exists():
+            text.unlink(missing_ok=True)
+
 
 def shot(page, name):
     try:
-        path = DATA / "shots" / ("%s_%d.png" % (name, int(time.time())))
+        folder = DATA / "shots"
+        path = folder / ("%s_%d.png" % (name, int(time.time())))
         page.screenshot(path=str(path), full_page=True)
+        prune_shots(folder)
         return str(path)
     except Exception:
         return None
