@@ -50,8 +50,13 @@ class ChatMixin:
 
     def chat_request(self, key):
         with self.connect() as db:
-            row = db.execute("SELECT id,account FROM chat WHERE request_key=?", (key,)).fetchone()
+            row = db.execute("SELECT id,account,state FROM chat WHERE request_key=?", (key,)).fetchone()
         return dict(row) if row else None
+
+    def chat_release_request(self, mid):
+        """An answer that failed no longer stands for its request: sending the same request again is a new attempt, not a repeat."""
+        with self.transaction() as db:
+            db.execute("UPDATE chat SET request_key=NULL WHERE id=? AND state='error'", (mid,))
 
     def chat_forget(self, mid):
         """Hide a completed search turn, retaining internal references needed by selected videos."""

@@ -37,9 +37,7 @@ def _banner_problem(view):
 
 def banner(view):
     if view.key_rejected:
-        return (
-            '<div class="banner warn"><b>Chưa tự động hoàn toàn.</b> Khóa Gemini bị Google từ chối: vào Thêm → Cài đặt đổi khóa (các video vẫn nằm chờ, không mất).</div>'
-        )
+        return '<div class="banner warn"><b>Chưa tự động hoàn toàn.</b> Khóa Gemini bị Google từ chối: vào Thêm → Cài đặt đổi khóa (các video vẫn nằm chờ, không mất).</div>'
     if not view.d["publisher_enabled"]:
         return '<div class="banner neutral"><b>Chế độ thủ công.</b> Xem và duyệt bản dựng ở Đăng bài; tự đăng đang tắt.</div>'
     problem = _banner_problem(view)
@@ -215,4 +213,20 @@ def _next_action(view):
         text, href = "%d video trong hàng đợi" % view.waiting, "queue"
     else:
         text, href = "Tìm video để bắt đầu", "search"
-    return '<div class="card stack"><h3>Bước tiếp theo</h3><a class="next-link" href="#%s">%s →</a></div>' % (href, E(text))
+    return '<div class="card stack"><h3>Bước tiếp theo</h3><a class="next-link" href="#%s">%s →</a>%s</div>' % (
+        href,
+        E(text),
+        _full_note(view),
+    )
+
+
+def _full_note(view):
+    """Why nothing new is being downloaded: the waiting line is at its limit (videos waiting for the owner count). Said where the owner looks."""
+    limit = (view.d.get("thresholds") or {}).get("max_backlog")
+    full = view.d.get("backlog", 0)
+    if not limit or full < limit:
+        return ""
+    return (
+        '<p class="note warn">Hàng chờ đang đầy (%d/%d): hệ thống không tải thêm video mới cho tới khi bạn đăng, bỏ hoặc xử lý bớt. '
+        "Video chưa tải sẽ hết hạn sau 3 ngày.</p>" % (full, limit)
+    )

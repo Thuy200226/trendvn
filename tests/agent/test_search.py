@@ -206,6 +206,38 @@ class SearchRoutingTests(StoreCase):
             )
         self.assertEqual(str(caught.exception), "page.goto timed out")
 
+    def run_four(self, payload, sources=("tiktok", "douyin", "kuaishou", "instagram")):
+        asked = []
+
+        def ask(platform, account, payload_, query, human):
+            asked.append((platform, query))
+            return {"items": [video(platform + "1", platform=platform)], "note": platform}
+
+        with mock.patch("trendvn_agent.search._account", return_value=self.ACCOUNT), mock.patch("trendvn_agent.search._ask", ask):
+            result = search(dict(payload, source="auto", sources=list(sources)))
+        return result, dict(asked)
+
+    def test_a_source_the_plan_has_no_words_for_borrows_the_words_of_its_own_language_instead_of_aborting_the_whole_search(self):
+        plan = {"tiktok": "mchose ace68", "douyin": "迈从 ACE68"}  # what a product taken from a link or a video has
+        result, asked = self.run_four({"queries": plan, "links": []})
+        self.assertEqual(asked, {"tiktok": "mchose ace68", "douyin": "迈从 ACE68", "kuaishou": "迈从 ACE68", "instagram": "mchose ace68"})
+        self.assertEqual(len(result["items"]), 4)
+
+    def test_a_chinese_source_with_no_chinese_words_is_skipped_with_a_note_and_the_others_still_run(self):
+        result, asked = self.run_four({"queries": {"tiktok": "mchose ace68"}, "query": "mchose ace68"})
+        self.assertEqual(sorted(asked), ["instagram", "tiktok"])  # never Vietnamese or English sent to a Chinese site
+        self.assertIn("douyin: chưa có từ khóa tiếng Trung", result["note"])
+        self.assertIn("kuaishou: chưa có từ khóa tiếng Trung", result["note"])
+
+    def test_with_only_the_plain_query_the_latin_sources_use_it(self):
+        _, asked = self.run_four({"query": "mchose ace68"}, sources=("tiktok", "instagram"))
+        self.assertEqual(asked, {"tiktok": "mchose ace68", "instagram": "mchose ace68"})
+
+    def test_when_every_source_is_skipped_the_notes_are_the_error(self):
+        with self.assertRaises(ValueError) as caught:
+            self.run_four({"queries": {"tiktok": "x"}}, sources=("douyin", "kuaishou"))
+        self.assertIn("tiếng Trung", str(caught.exception))
+
     def test_a_missing_or_oversized_keyword_stops_before_any_browser_opens(self):
         for queries in ({"tiktok": ""}, {"tiktok": "x" * 161}, {"tiktok": 5}):
             with self.subTest(queries=queries), self.assertRaises(ValueError):

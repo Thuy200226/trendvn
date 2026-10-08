@@ -51,9 +51,14 @@ def send(app, payload):
     account = _account(app, payload)
     with SEND_LOCK:
         old = app.store.chat_request(key) if key else None
+        if old and old["account"] != account:
+            raise ValueError("Yêu cầu này thuộc tài khoản khác")
+        if (
+            old and old["state"] == "error"
+        ):  # the first try failed (the browser was busy, the model was down): the same request is tried again
+            app.store.chat_release_request(old["id"])
+            old = None
         if old:
-            if old["account"] != account:
-                raise ValueError("Yêu cầu này thuộc tài khoản khác")
             return {"id": old["id"]}
         return _send(app, payload, account, key)
 

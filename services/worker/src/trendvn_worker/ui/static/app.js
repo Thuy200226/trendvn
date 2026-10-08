@@ -193,12 +193,19 @@
     function accountTopic(){form.elements.topic.value=accountTopics[form.elements.account.value]||'';}
     accountTopic();
     form.elements.account.addEventListener('change',function(){accountTopic();try{sessionStorage.setItem('trendvn.chat.account',form.elements.account.value);}catch(e){}});
+    // crypto.randomUUID exists only on a secure page (https or localhost); the dashboard is also opened as http://<vpn address>
+    var newKey=function(){
+      try{if(window.crypto&&crypto.randomUUID)return crypto.randomUUID();}catch(e){}
+      var bytes=new Uint8Array(16);
+      try{crypto.getRandomValues(bytes);}catch(e){for(var i=0;i<16;i++)bytes[i]=Math.floor(Math.random()*256);}
+      return Array.prototype.map.call(bytes,function(b){return ('0'+b.toString(16)).slice(-2);}).join('');
+    };
     form.addEventListener('submit',async function(e){
       e.preventDefault();e.stopPropagation();
       var text=textbox.value.trim();
       if(form.dataset.sent)return;
       if(!text&&!chatFiles.length&&!form.elements.topic.value&&!form.elements.sales.checked){say('Hãy nhập từ khóa, chọn thể loại/ngành hàng hoặc thêm tệp.');return;}
-      var revision=draftRevision,requestKey=form.dataset.requestKey||(form.dataset.requestKey=crypto.randomUUID());
+      var revision=draftRevision,requestKey=form.dataset.requestKey||(form.dataset.requestKey=newKey());
       var payload={csrf:csrf,request_key:requestKey,account:form.elements.account.value,source:form.elements.source.value,topic:form.elements.topic.value,sales:form.elements.sales.checked,category:form.elements.category.value,text:text};
       form.dataset.sent='1';var send=form.querySelector('button.send');send.disabled=true;say('Đang gửi…');
       try{

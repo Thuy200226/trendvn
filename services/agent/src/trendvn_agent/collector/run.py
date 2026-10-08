@@ -144,9 +144,20 @@ def fetch_pending(ctx, platform, seen_now, limit, wanted=()):
     room = max(0, status["thresholds"].get("max_backlog", 4) - backlog)
     limit = min(limit, room)
     if limit == 0:
-        return {"downloaded": 0, "failed": 0, "waiting": 0, "note": "Hàng chờ đã đủ; chưa tải thêm"}
+        wanted_room = status["thresholds"].get("max_backlog", 4)
+        return {
+            "downloaded": 0,
+            "failed": 0,
+            "waiting": 0,
+            "note": "Hàng chờ đã đủ (%d/%d): chưa tải thêm cho tới khi có video được đăng hoặc bỏ" % (backlog, wanted_room),
+        }
     # the worker lists this platform's candidates best score first, so the newest 100 of other platforms cannot push the best ones out
-    pending = [p for p in worker("/api/media/pending", {"limit": 100, "platform": platform})["items"] if p["source_id"] in seen_now]
+    wanted = list(seen_now)[:300]  # only what this scan saw can be downloaded now: the worker cuts to the best 100 AMONG these, not before
+    pending = [
+        p
+        for p in worker("/api/media/pending", {"limit": 100, "platform": platform, "source_ids": wanted})["items"]
+        if p["source_id"] in seen_now
+    ]
     scores = {sid: item.get("score", 0) for sid, item in seen_now.items()}
     chosen = choose_downloads(pending, scores, wanted, limit)
     done = failed = 0

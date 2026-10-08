@@ -142,6 +142,20 @@ def _ask(platform, account, payload, query, human):
     return _tiktok_search(dict(payload, query=query), human)
 
 
+CHINESE = ("douyin", "kuaishou")  # the sources that are searched in Chinese
+
+
+def _query_for(platform, queries, plain):
+    """The words for one source: its own entry; else the other source of its language (the Chinese ones share a plan, so do TikTok and
+    Instagram); else, for a Latin source only, the plain query. None for a Chinese source that has no Chinese words at all."""
+    own = queries.get(platform)
+    if own:
+        return own
+    if platform in CHINESE:
+        return queries.get("douyin") or queries.get("kuaishou")
+    return queries.get("tiktok") or queries.get("instagram") or plain or ""
+
+
 def search(payload, human=False):
     platforms = _platforms(payload.get("source", "tiktok"), payload.get("links", []), human, payload.get("sources"))
     if payload.get("source") == "auto" and "sources" in payload:
@@ -157,7 +171,10 @@ def search(payload, human=False):
         raise ValueError("Từ khóa không hợp lệ")
     items, notes = [], []
     for platform in platforms:
-        query = queries.get(platform, "")
+        query = _query_for(platform, queries, payload.get("query"))
+        if query is None:  # a Chinese source with no Chinese words: skipped with a note, never sent Vietnamese
+            notes.append("%s: chưa có từ khóa tiếng Trung; bỏ qua nguồn này" % platform)
+            continue
         if not isinstance(query, str) or not 1 <= len(query) <= 160:
             raise ValueError("Cần từ khóa/model để tìm")
         try:

@@ -37,10 +37,12 @@ class IngestMixin:
             hint = topic_hint(report.topic, item.title)
             # a stream with its own category (a Douyin tab) knows better than the keywords that guessed when the video first appeared
             keep = "COALESCE(?,topic_hint)" if report.topic else "COALESCE(topic_hint,?)"
+            # `updated` is when the job's STATE last changed (retention, recovery and the lists order by it): seeing the video again
+            # does not change its state, so it must not make a rejected job's files look recent or keep an undecided one from expiring
             db.execute(
-                "UPDATE jobs SET last_seen=?,updated=?,meta=CASE WHEN search_id IS NOT NULL THEN meta ELSE COALESCE(?,meta) END,topic_hint=%s WHERE id=?"
+                "UPDATE jobs SET last_seen=?,meta=CASE WHEN search_id IS NOT NULL THEN meta ELSE COALESCE(?,meta) END,topic_hint=%s WHERE id=?"
                 % keep,
-                (report.observed, now, item.meta, hint, job_id),
+                (report.observed, item.meta, hint, job_id),
             )
         else:
             job_id = uuid.uuid4().hex
@@ -95,13 +97,19 @@ class IngestMixin:
             self.event(db, jid, state)
         return {"id": jid, "state": state}
 
-    def candidates_without_media(self, limit=20, platform=None):
+    def candidates_without_media(self, limit=20, platform=None, source_ids=None):
         """Videos found but not downloaded, best score first. Newest-first would let a burst of weak new videos push the best ones past
-        `limit`; `platform` keeps another platform's rows out of the way."""
+        `limit`; `platform` keeps another platform's rows out of the way. `source_ids` (what the scan asking has just seen) restricts the
+        list BEFORE it is cut to `limit`: a scan can only download what it saw, and a pool of old high scores must not hide it."""
         where, args = "state='candidate' AND search_id IS NULL", []
         if platform is not None:
             where += " AND platform=?"
             args.append(platform)
+        if source_ids is not None:
+            if not source_ids:
+                return []
+            where += " AND source_id IN (%s)" % ",".join("?" * len(source_ids))
+            args.extend(source_ids)
         with self.connect() as db:
             return [
                 dict(r)

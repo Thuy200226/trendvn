@@ -7,6 +7,8 @@ from ..domain.platforms import PLATFORMS
 from ..pipeline import process_many
 
 JOB_ID = re.compile(r"[0-9a-f]{32}")
+SOURCE_ID = re.compile(r"[A-Za-z0-9_-]{1,80}")
+MAX_SOURCE_IDS = 300
 PROCESSED_STATUSES = ("ready", "awaiting_approval", "needs_review")
 MAX_PROCESS_BATCH = 8
 OK = {"ok": True}
@@ -70,7 +72,14 @@ def media_pending(app, payload):
     platform = payload.get("platform")
     if platform is not None and platform not in PLATFORMS:
         raise ValueError("Nền tảng không hợp lệ")
-    return {"items": app.store.candidates_without_media(int(payload.get("limit", 20)), platform)}
+    wanted = payload.get("source_ids")
+    if wanted is not None and (
+        not isinstance(wanted, list)
+        or len(wanted) > MAX_SOURCE_IDS
+        or not all(isinstance(i, str) and SOURCE_ID.fullmatch(i) for i in wanted)
+    ):
+        raise ValueError("source_ids phải là danh sách mã video ngắn (tối đa %d)" % MAX_SOURCE_IDS)
+    return {"items": app.store.candidates_without_media(int(payload.get("limit", 20)), platform, wanted)}
 
 
 @route("/api/media/failed")

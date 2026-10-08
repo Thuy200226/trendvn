@@ -36,6 +36,31 @@ class DiscoveryTests(StoreCase):
         self.assertEqual(len(self.s.chat_thread()), 2)
         app.tasks.start.assert_called_once()
 
+    def test_the_same_request_sent_again_after_a_failed_start_is_tried_again(self):
+        """The page keeps a request's key until it succeeds: a retry after a refusal must reach the browser, not be taken for a repeat."""
+        tasks = mock.Mock()
+        tasks.start.side_effect = [ValueError("Đang có việc dùng trình duyệt"), None]
+        app = SimpleNamespace(store=self.s, tasks=tasks)
+        payload = {"account": "main", "text": "mchose ace68", "files": [], "request_key": "c" * 32, "source": "tiktok"}
+        with self.assertRaises(ValueError):
+            chat_forms.send(app, payload)
+        again = chat_forms.send(app, payload)
+        self.assertEqual(tasks.start.call_count, 2)
+        self.assertEqual(self.s.chat_get(again["id"])["state"], "running")
+        self.assertEqual(chat_forms.send(app, payload), again)  # and now the key stands for the live answer: no third start
+        self.assertEqual(tasks.start.call_count, 2)
+
+    def test_a_request_still_running_or_finished_is_never_started_a_second_time(self):
+        for state in ("running", "done"):
+            tasks = mock.Mock()
+            app = SimpleNamespace(store=self.s, tasks=tasks)
+            payload = {"account": "main", "text": "mchose ace68 " + state, "files": [], "request_key": (state[0] * 32), "source": "tiktok"}
+            first = chat_forms.send(app, payload)
+            if state == "done":
+                self.s.chat_set(first["id"], "done")
+            self.assertEqual(chat_forms.send(app, payload), first)
+            tasks.start.assert_called_once()
+
     def test_same_words_with_new_request_are_a_new_search(self):
         app = SimpleNamespace(store=self.s, tasks=mock.Mock())
         for key in ("a" * 32, "b" * 32):
