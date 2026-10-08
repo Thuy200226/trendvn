@@ -227,7 +227,7 @@ class UiHtmlTests(StoreCase):
         self.queued("d" * 32, "candidate", n=1)
         html = self.render()
         self.assertIn('<section data-tab="queue" id="queue"', html)
-        body = html.split('<section data-tab="queue" id="queue"')[1].split("</section>")[0]
+        body = html.split('<section data-tab="queue" id="queue"')[1].split('<section data-tab="publish"')[0]
         self.assertLess(body.index("Video chờ cccc"), body.index("Video chờ aaaa"))  # being processed first
         self.assertLess(body.index("Video chờ aaaa"), body.index("Video chờ bbbb"))  # then oldest first, as claim() takes them
         self.assertIn("Ứng viên chưa tải về (1)", body)

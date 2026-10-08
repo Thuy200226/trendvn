@@ -40,7 +40,7 @@ class SendTests(FormCase):
         mid = self.say("Xem sản phẩm này nhé " + SHARE + " cảm ơn")["id"]
         self.assertEqual(self.tasks.start.call_args.args[:2], ("link", str(mid)))
         self.assertEqual(self.s.chat_get(mid)["kind"], "link")
-        self.assertEqual(self.s.chat_get(mid)["body"], {"url": SHARE})
+        self.assertEqual(self.s.chat_get(mid)["body"], {"url": SHARE, "user_message": mid - 1})
 
     def test_a_link_with_a_file_is_a_description_of_what_the_files_show(self):
         self.say(SHARE, [file("a.txt", b"Samsung S24")])
@@ -93,7 +93,7 @@ class FindTests(FormCase):
             with self.subTest(mid=mid), self.assertRaises(ValueError):
                 chat_forms.act(self.app, {"action": "find", "id": mid, "source": "tiktok"})
         with self.assertRaises(ValueError):
-            chat_forms.act(self.app, {"action": "find", "id": self.product(), "source": "instagram"})
+            chat_forms.act(self.app, {"action": "find", "id": self.product(), "source": "unknown"})
         with self.assertRaises(ValueError):
             chat_forms.act(self.app, {"action": "find", "id": self.product(), "source": "tiktok", "account": "nobody"})
 

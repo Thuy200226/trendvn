@@ -94,6 +94,8 @@ class AccountsMixin:
                 and db.execute("SELECT 1 FROM accounts WHERE username=? AND id<>?", (clean["username"], account_id)).fetchone()
             ):
                 raise ValueError("Tài khoản @%s đã có" % clean["username"])
+            if "username" in clean:
+                self._guard_post_delete(db, account_id)
             if clean.get("enabled") is False:
                 others = db.execute("SELECT count(*) FROM accounts WHERE enabled=1 AND id<>?", (account_id,)).fetchone()[0]
                 if not others:
@@ -130,6 +132,7 @@ class AccountsMixin:
                 raise ValueError("Tài khoản đang có bài đăng chưa xác nhận")
             if not db.execute("SELECT count(*) FROM accounts WHERE enabled=1 AND id<>?", (account_id,)).fetchone()[0]:
                 raise ValueError("Phải còn ít nhất một tài khoản đang bật")
+            self._guard_post_delete(db, account_id)
             db.execute("DELETE FROM accounts WHERE id=?", (account_id,))
             for table in ("channel_logins", "commission_links"):  # what belongs to the account only: its sign-in records and saved links
                 db.execute("DELETE FROM %s WHERE account=?" % table, (account_id,))
@@ -137,6 +140,13 @@ class AccountsMixin:
                 "UPDATE settings SET value='false' WHERE key='publisher_challenge' AND value=?", (json.dumps(account_id),)
             )  # its CAPTCHA is moot
             self.event(db, "", "account_deleted", account_id)
+
+    @staticmethod
+    def _guard_post_delete(db, account_id):
+        if db.execute(
+            "SELECT 1 FROM post_deletions WHERE account=? AND state IN ('pending','deleting','unknown')", (account_id,)
+        ).fetchone():
+            raise ValueError("Tài khoản đang có yêu cầu xóa bài chưa xác nhận; hãy kiểm tra bài trước")
 
     def set_default_username(self, username):
         """The 'Tài khoản TikTok đích' setting of 1.3: renames the default account (kept so single-account setups and the API work as before)."""

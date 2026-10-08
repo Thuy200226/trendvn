@@ -109,7 +109,14 @@ def channel_check(payload):
     return channels.check(account, channel)
 
 
+def delete_post(payload):
+    from .publisher.delete import delete_post as run
+
+    return run(payload)
+
+
 ROUTES = {
+    "/api/post-delete": delete_post,
     "/api/channel/login": channel_login,
     "/api/channel/check": channel_check,
     "/api/search/open": search_open,

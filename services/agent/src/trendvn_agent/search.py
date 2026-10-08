@@ -5,7 +5,7 @@ import re
 from urllib.parse import quote
 
 from .browser import chrome
-from .channels import SignedOut, Wall, report, window_ok
+from .channels import SignedOut, Wall, report, window_ok, profile, signed_in
 from .collector.download import download
 from .collector.sources.tiktok import parse_tiktok
 from .config import RUNTIME
@@ -105,18 +105,22 @@ def _tiktok_search(payload, human=False):
     return {"items": list(capture.seen.values())[:20], "note": "Ứng viên từ TikTok; cần xem video, model và biến thể trước khi chọn."}
 
 
-def _platforms(source, links, human):
+def _platforms(source, links, human, sources=None):
     """Which sources to ask. Exact video links decide it: a TikTok link is never looked up on Douyin."""
     from .search_douyin import VIDEO as DOUYIN_URL
 
-    if source not in ("auto", "tiktok", "douyin") or human and source == "auto":
+    if source not in ("auto", "tiktok", "douyin", "kuaishou", "instagram") or human and source == "auto":
         raise ValueError("Chọn một nguồn để tìm hoặc tự xác minh")
     if not isinstance(links, list):
         raise ValueError("Đường dẫn không hợp lệ")
-    platforms = ("douyin", "tiktok") if source == "auto" else (source,)
+    platforms = (
+        (("douyin", "tiktok", "kuaishou", "instagram") if sources is not None else ("douyin", "tiktok")) if source == "auto" else (source,)
+    )
+    from .search_extra import VIDEOS
+
     given = {
         p
-        for p, pattern in (("tiktok", VIDEO_URL), ("douyin", DOUYIN_URL))
+        for p, pattern in (("tiktok", VIDEO_URL), ("douyin", DOUYIN_URL), *VIDEOS.items())
         if any(isinstance(link, str) and pattern.fullmatch(link) for link in links[:3])
     }
     if given:
@@ -130,14 +134,25 @@ def _ask(platform, account, payload, query, human):
     if platform == "douyin":
         from .search_douyin import search as chinese_search
 
-        return chinese_search(account, query, payload.get("links", []), human)
+        return chinese_search(account, query, payload.get("links", []), human, require_session=payload.get("require_session", False))
+    if platform in ("kuaishou", "instagram"):
+        from .search_extra import search as extra_search
+
+        return extra_search(account, platform, query, payload.get("links", []), human)
     return _tiktok_search(dict(payload, query=query), human)
 
 
 def search(payload, human=False):
-    platforms = _platforms(payload.get("source", "tiktok"), payload.get("links", []), human)
+    platforms = _platforms(payload.get("source", "tiktok"), payload.get("links", []), human, payload.get("sources"))
+    if payload.get("source") == "auto" and "sources" in payload:
+        allowed = payload["sources"]
+        if not isinstance(allowed, list) or any(p not in ("tiktok", "douyin", "kuaishou", "instagram") for p in allowed):
+            raise ValueError("Nguồn đăng nhập không hợp lệ")
+        platforms = tuple(p for p in platforms if p in allowed)
+        if not platforms:
+            raise SignedOut("Chưa có nguồn đã đăng nhập. Bấm Kiểm tra hoặc Đăng nhập trong Kênh tìm kiếm trước.")
     account = _account(payload)
-    queries = payload.get("queries") or {"tiktok": payload.get("query", ""), "douyin": payload.get("query", "")}
+    queries = payload.get("queries") or {p: payload.get("query", "") for p in platforms}
     if not isinstance(queries, dict):
         raise ValueError("Từ khóa không hợp lệ")
     items, notes = [], []
@@ -169,31 +184,42 @@ def download_selected(payload):
     platform = item.get("platform") or "tiktok"
     from .search_douyin import VIDEO as DOUYIN_URL
 
-    pattern = VIDEO_URL if platform == "tiktok" else DOUYIN_URL if platform == "douyin" else None
-    if not pattern or not pattern.fullmatch(item.get("url", "")) or not re.fullmatch(r"\d{6,25}", str(item.get("source_id", ""))):
-        raise ValueError("Đường dẫn video không hợp lệ")
-    if pattern.fullmatch(item["url"]).group(1) != item["source_id"]:
+    from .search_extra import VIDEOS
+
+    pattern = {"tiktok": VIDEO_URL, "douyin": DOUYIN_URL, **VIDEOS}.get(platform)
+    matched = pattern.fullmatch(item.get("url", "")) if pattern else None
+    if not matched or matched.group(1) != item.get("source_id"):
         raise ValueError("Mã video không khớp đường dẫn")
     if not isinstance(item.get("media"), dict) or item["media"].get("kind") != "direct":
-        raise ValueError("Không có đường tải video đã xác minh")
+        refreshed = search(
+            {"account": account["id"], "source": platform, "query": "Video đã chọn", "links": [item["url"]], "require_session": True}
+        )
+        item = next((i for i in refreshed["items"] if i["source_id"] == item["source_id"]), None)
+        if not item:
+            raise ValueError("Không đọc được chính video đã chọn")
     RUNTIME.joinpath("inbox").mkdir(exist_ok=True)
-    profile = profile_name(account["id"]) if platform == "tiktok" else "search-cn-" + account["id"]
-    options = {"locale": "vi-VN"} if platform == "tiktok" else {"locale": "zh-CN", "region": "CN"}
-    with chrome(profile, **options) as ctx:
-        if platform == "tiktok":
-            _verify(ctx, account)
+    options = {"locale": "zh-CN", "region": "CN"} if platform in ("douyin", "kuaishou") else {"locale": "vi-VN", "region": "US"}
+    for attempt in range(2):
         try:
-            name = download(ctx, item, platform)
+            with chrome(profile(platform, account["id"]), **options) as ctx:
+                if platform == "tiktok":
+                    _verify(ctx, account)
+                elif not signed_in(platform, ctx.cookies()):
+                    raise SignedOut("Phiên nguồn đã hết hạn; hãy đăng nhập lại trước khi tải")
+                name = download(ctx, item, platform)
+            return worker("/api/attach", {"id": jid, "filename": name})
+        except SignedOut:
+            raise
         except ValueError:
-            name = None
-    if name is None:
-        # CDN links expire. Refresh the exact selected video once, never substitute a keyword result.
-        refreshed = search({"account": account["id"], "source": platform, "query": "Video đã chọn", "links": [item["url"]]})
-        fresh = next((i for i in refreshed["items"] if i["source_id"] == item["source_id"]), None)
-        if not fresh:
-            raise ValueError("Không đọc lại được chính video đã chọn; chưa tải") from None
-        with chrome(profile, **options) as ctx:
-            if platform == "tiktok":
-                _verify(ctx, account)
-            name = download(ctx, fresh, platform)
-    return worker("/api/attach", {"id": jid, "filename": name})
+            if attempt:
+                raise
+            refreshed = search(
+                {"account": account["id"], "source": platform, "query": "Video đã chọn", "links": [item["url"]], "require_session": True}
+            )
+            fresh = next(
+                (i for i in refreshed["items"] if i["source_id"] == item["source_id"] and i["url"].rstrip("/") == item["url"].rstrip("/")),
+                None,
+            )
+            if not fresh:
+                raise ValueError("Không đọc lại được chính video đã chọn; chưa tải") from None
+            item = fresh

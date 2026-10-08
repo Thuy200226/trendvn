@@ -38,11 +38,12 @@ class FeedbackMixin:
     def performance(self, limit=30):
         with self.connect() as db:
             rows = db.execute(
-                """SELECT j.id,j.platform,j.title,j.route,j.publish_url,j.published_at,j.meta,
+                """SELECT j.id,j.platform,j.title,j.route,j.publish_url,j.published_at,j.meta,j.account,j.target,
+                d.state delete_state,d.reason delete_reason,
                 CASE WHEN json_valid(j.analysis) THEN json_extract(j.analysis,'$.caption_vi') END caption_vi,
                 (SELECT views FROM post_stats s WHERE s.job_id=j.id ORDER BY at DESC LIMIT 1) views,
                 (SELECT likes FROM post_stats s WHERE s.job_id=j.id ORDER BY at DESC LIMIT 1) likes
-                FROM jobs j WHERE j.state='published' ORDER BY j.published_at DESC LIMIT ?""",
+                FROM jobs j LEFT JOIN post_deletions d ON d.job_id=j.id WHERE j.state='published' ORDER BY j.published_at DESC LIMIT ?""",
                 (limit,),
             ).fetchall()
         return [dict(r) for r in rows]

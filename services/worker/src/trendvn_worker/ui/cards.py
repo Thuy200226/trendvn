@@ -5,8 +5,10 @@ import re
 from ..domain import topics
 from ..domain.accounts import account_flag
 from .components import chip, platform_badge, state_chip
+from .controls import button, hidden, textarea
 from .format import escape as E, headline, left_text, meta_of, num
-from .labels import ROUTE_LABEL, vi_reason
+from .labels import ROUTE_LABEL
+from .messages import user_message
 
 CONFIRM_VISIBILITY = {"public": "CÔNG KHAI", "friends": "BẠN BÈ", "self": "CHỈ MÌNH TÔI"}
 
@@ -156,6 +158,32 @@ def _waiting_line(view, job):
     return '<div class="note small wait">%s</div>' % E(text)
 
 
+def _ready_controls(view, job, disabled):
+    """Shared controls of one publish card, bound to its exact video and destination."""
+    return {
+        "post_button": button(
+            "🚀 Đăng ngay",
+            "go big",
+            formaction="/task",
+            name="kind",
+            value="publish",
+            data_confirm=_confirm_text(view, job),
+            disabled=disabled,
+        ),
+        "preview_button": button("👁 Xem thử, không đăng", "ghost", formaction="/task", name="kind", value="dryrun", disabled=disabled),
+        "save_button": button("💾 Lưu mô tả", "ghost", formaction="/caption", name="action", value="save"),
+        "reject_button": button(
+            "Bỏ video",
+            "ghost danger",
+            "trash",
+            formaction="/decide",
+            name="action",
+            value="reject",
+            data_confirm="Bỏ video này khỏi danh sách đăng?",
+        ),
+    }
+
+
 def ready_card(job, view, blocked):
     """One rendered video: preview, editable caption and hashtags, quality facts, and the buttons to post it."""
     info = job.get("info") or {}
@@ -175,17 +203,17 @@ def ready_card(job, view, blocked):
         reason = ""
     tags = "".join('<span class="tag">%s</span>' % E(t) for t in re.findall(r"#\w+", job["caption"]))
     approve = (
-        '<button class="ghost" formaction="/decide" name="action" value="approve">✔ Duyệt cho lịch tự đăng</button>'
+        button("✔ Duyệt cho lịch tự đăng", "ghost", formaction="/decide", name="action", value="approve")
         if job["state"] == "awaiting_approval"
         else ""
     )
     reset = (
-        '<button class="ghost" formaction="/caption" name="action" value="reset">↺ Dùng mô tả của hệ thống</button>'
+        button("Dùng mô tả của hệ thống", "ghost", "reload", formaction="/caption", name="action", value="reset")
         if job["caption_edited"]
         else ""
     )
     return (
-        '<form method="post" action="/task" class="card ready" data-id="%(id)s"><input type="hidden" name="csrf" value="%(csrf)s"><input type="hidden" name="id" value="%(id)s">'
+        '<form method="post" action="/task" class="card ready" data-id="%(id)s">%(hidden)s'
         '<div class="media">%(media)s</div>'
         '<div class="body stack">'
         '<div class="row">%(plat)s%(state)s</div>'
@@ -193,18 +221,17 @@ def ready_card(job, view, blocked):
         '<div class="muted small">%(score)s</div>'
         '<div class="facts">%(facts)s</div>%(why)s%(dest)s%(wait)s'
         '<label class="cap">Mô tả và hashtag sẽ đăng'
-        '<textarea name="caption" rows="4" maxlength="2200" data-caption spellcheck="false">%(caption)s</textarea></label>'
+        "%(caption_control)s</label>"
         '<div class="row small"><span class="muted"><span data-len>%(length)d</span> ký tự · <span data-tags>%(ntags)d</span> hashtag%(edited)s</span></div>'
         '<div class="tags">%(chips)s</div>%(lint)s%(reason)s'
         '<div class="btns">'
-        '%(approve)s<button class="go big" formaction="/task" name="kind" value="publish" data-confirm="%(confirm)s"%(dis)s>🚀 Đăng ngay</button>'
-        '<button class="ghost" formaction="/task" name="kind" value="dryrun"%(dis)s>👁 Xem thử, không đăng</button>'
-        '<button class="ghost" formaction="/caption" name="action" value="save">💾 Lưu mô tả</button>%(reset)s'
-        '<button class="ghost danger" formaction="/decide" name="action" value="reject" data-confirm="Bỏ video này khỏi danh sách đăng?">🗑 Bỏ video</button>'
+        "%(approve)s%(post_button)s%(preview_button)s%(save_button)s%(reset)s%(reject_button)s"
         "</div></div></form>"
     ) % {
         "id": E(job["id"]),
-        "csrf": view.csrf,
+        "hidden": hidden("csrf", view.csrf) + hidden("id", job["id"]),
+        "caption_control": textarea("caption", job["caption"], rows=4, maxlength=2200, data_caption=True, spellcheck="false"),
+        **_ready_controls(view, job, bool(disabled)),
         "media": video,
         "plat": platform_badge(job["platform"]),
         "state": state_chip(job["state"]),
@@ -214,15 +241,12 @@ def ready_card(job, view, blocked):
         "why": '<div class="muted small">%s</div>' % E(info["why"]) if info.get("why") else "",
         "dest": _destination_line(view, job),
         "wait": _waiting_line(view, job),
-        "caption": E(job["caption"]),
         "length": lint["length"],
         "ntags": lint["tags"],
         "edited": " · đã sửa tay" if job["caption_edited"] else "",
         "chips": tags,
         "lint": lint_html,
         "reason": reason,
-        "confirm": E(_confirm_text(view, job)),
-        "dis": disabled,
         "approve": approve,
         "reset": reset,
     }
@@ -231,25 +255,25 @@ def ready_card(job, view, blocked):
 def review_card(job, csrf):
     """A video the system held back, with the reason in plain words and the owner's choices."""
     retry = (
-        '<button class="ghost" name="action" value="retry" title="Video đã dựng xong; đưa về danh sách sẵn sàng đăng">↩ Đưa về sẵn sàng đăng</button>'
+        button("↩ Đưa về sẵn sàng đăng", "ghost", name="action", value="retry", title="Video đã dựng xong; đưa về danh sách sẵn sàng đăng")
         if job.get("output_file")
         else ""
     )
     return (
-        '<form method="post" action="/decide" class="card ready"><input type="hidden" name="csrf" value="%s"><input type="hidden" name="id" value="%s">'
+        '<form method="post" action="/decide" class="card ready">%s'
         '<div class="media"><video controls preload="none" playsinline src="/media/%s/source"></video></div>'
         '<div class="body stack"><div class="row">%s%s</div><div class="ttl">%s</div><div class="muted small">%s</div>'
         '<div class="note warn">Lý do giữ lại: <b>%s</b></div>'
-        '<div class="btns">%s<button class="go" name="action" value="approve" title="Chạy lại và bỏ qua kiểm tra chủ đề/độ chắc chắn">Duyệt lại, bỏ qua kiểm tra</button>'
-        '<button class="ghost danger" name="action" value="reject">Bỏ</button></div></div></form>'
+        '<div class="btns">%s%s%s</div></div></form>'
     ) % (
-        csrf,
-        E(job["id"]),
+        hidden("csrf", csrf) + hidden("id", job["id"]),
         E(job["id"]),
         platform_badge(job["platform"]),
         state_chip(job["state"]),
         headline(job, 120) or "(không có tiêu đề)",
         E(_score_line(meta_of(job), with_views=False)),
-        E(vi_reason(job["reason"])),
+        E(user_message(job["reason"])),
         retry,
+        button("Duyệt lại, bỏ qua kiểm tra", "go", name="action", value="approve", title="Chạy lại và bỏ qua kiểm tra chủ đề/độ chắc chắn"),
+        button("Bỏ", "ghost danger", name="action", value="reject"),
     )

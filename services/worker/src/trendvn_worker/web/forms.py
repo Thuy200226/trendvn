@@ -154,12 +154,36 @@ def edit_caption(app, form):
 
 def decide(app, form):
     app.store.decide(form["id"][0], form["action"][0])
-    return Redirect("decided", anchor="#attention")
+    return Redirect("decided", anchor="#queue" if form.get("next", [""])[0] == "queue" else "#attention")
+
+
+def delete_post(app, form):
+    if form.get("confirmed", [""])[0] != "true":
+        raise ValueError("Cần xác nhận xóa đúng bài và tài khoản")
+    jid = form.get("id", [""])[0]
+    grant = app.store.delete_post_begin(jid, form.get("url", [""])[0], form.get("account", [""])[0])
+    try:
+        app.tasks.start("delete_post", jid, grant)
+    except Exception:
+        app.store.delete_post_cancel(jid, grant["grant"])
+        raise
+    return Redirect("started", anchor="#posted")
 
 
 def resolve_unknown(app, form):
     app.store.resolve_unknown(form["id"][0], form["outcome"][0])
     return Redirect("resolved", anchor="#attention")
+
+
+def delete_post_checked(app, form):
+    if form.get("confirmed", [""])[0] != "true":
+        raise ValueError("Cần tự kiểm tra đúng bài trên TikTok trước khi xác nhận")
+    outcome = form.get("outcome", ["present"])[0]
+    if outcome not in ("present", "deleted"):
+        raise ValueError("Kết quả kiểm tra không hợp lệ")
+    check = app.store.delete_post_checked_deleted if outcome == "deleted" else app.store.delete_post_checked_present
+    check(form.get("id", [""])[0], form.get("url", [""])[0], form.get("account", [""])[0])
+    return Redirect("resolved", anchor="#posted")
 
 
 def ingest_batch(app, form):
@@ -205,6 +229,8 @@ def test_voice(app, form):
 
 
 FORMS = {
+    "/post-delete": delete_post,
+    "/post-delete-checked": delete_post_checked,
     "/setup": save_gemini_key,
     "/settings": save_settings,
     "/decide": decide,

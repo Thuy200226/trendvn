@@ -15,17 +15,23 @@ from .worker_client import worker
 
 LOGIN_MINUTES = 10
 DOUYIN_HOME = "https://www.douyin.com/"
-NAMES = {"tiktok": "TikTok", "douyin": "Douyin"}
-SITES = {"tiktok": "tiktok.com", "douyin": "douyin.com"}
+NAMES = {"tiktok": "TikTok", "douyin": "Douyin", "kuaishou": "Kuaishou", "instagram": "Instagram"}
+SITES = {"tiktok": "tiktok.com", "douyin": "douyin.com", "kuaishou": "kuaishou.com", "instagram": "instagram.com"}
 # What a signed-in visitor has and a guest has not (Douyin's names are a best reading: a guest was measured to carry none of them, a signed-in
 # one could not be measured without the owner's account; the dashboard says so and a search that works puts the state right).
-SESSION_COOKIES = {"tiktok": ("sessionid",), "douyin": ("sessionid", "sessionid_ss", "sid_tt", "sid_guard")}
-LOCALES = {"tiktok": "vi-VN", "douyin": "zh-CN"}
+SESSION_COOKIES = {
+    "tiktok": ("sessionid",),
+    "douyin": ("sessionid", "sessionid_ss", "sid_tt", "sid_guard"),
+    "kuaishou": ("kuaishou.server.web_st",),
+    "instagram": ("sessionid",),
+}
+LOCALES = {"tiktok": "vi-VN", "douyin": "zh-CN", "kuaishou": "zh-CN", "instagram": "en-US"}
 ACCOUNT_ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,23}")
 NO_SCREEN = {
     "tiktok": "Máy chạy TrendVN không có màn hình nên không mở được cửa sổ đăng nhập. Đăng nhập bằng ./trendvn tiktok login trên máy có màn hình.",
     "douyin": "Máy chạy TrendVN không có màn hình nên không mở được cửa sổ đăng nhập Douyin. Hãy chạy TrendVN trên máy có màn hình.",
 }
+NO_SCREEN.update({c: "Máy chạy TrendVN cần màn hình để bạn đăng nhập " + NAMES[c] for c in ("kuaishou", "instagram")})
 
 
 class SignedOut(ValueError):
@@ -48,7 +54,7 @@ def profile(channel, account_id):
         return profile_name(account_id)
     if not ACCOUNT_ID.fullmatch(str(account_id)):
         raise ValueError("Mã tài khoản không hợp lệ")
-    return "search-cn-" + account_id
+    return ("search-cn-" if channel == "douyin" else "search-" + channel + "-") + account_id
 
 
 def _on_site(domain, site):
@@ -139,6 +145,24 @@ def _douyin_window(account, minutes):
                 return
 
 
+def _source_window(account, channel, minutes):
+    deadline = time.time() + 60 * minutes
+    region = "CN" if channel == "kuaishou" else "US"
+    with chrome(profile(channel, account["id"]), locale=LOCALES[channel], region=region, headless=False, viewport=(1280, 900)) as ctx:
+        page = ctx.new_page()
+        page.goto("https://www." + SITES[channel] + "/", wait_until="domcontentloaded", timeout=45000)
+        while time.time() < deadline:
+            try:
+                if signed_in(channel, ctx.cookies()):
+                    page.wait_for_timeout(4000)
+                    return
+                if not ctx.pages or all(p.is_closed() for p in ctx.pages):
+                    return
+                page.wait_for_timeout(2000)
+            except Exception:
+                return
+
+
 def login(account, channel, minutes=LOGIN_MINUTES):
     """Open a visible window for the owner to sign in to the channel and wait for it (up to `minutes`). The answer is read back from the
     profile once the window is gone, so a session that did not survive the window closing does not count. {'ok','who','reason','channel'}"""
@@ -149,8 +173,11 @@ def login(account, channel, minutes=LOGIN_MINUTES):
             from .publisher.session import login as tiktok_login
 
             ok = bool(tiktok_login(minutes=minutes, account=account["id"], expected=account["username"]))
-        else:
+        elif channel == "douyin":
             _douyin_window(account, minutes)
+            ok = True
+        else:
+            _source_window(account, channel, minutes)
             ok = True
         ok = ok and read(account, channel)
         reason = "" if ok else "Chưa thấy đăng nhập %s trong thời gian chờ. Bấm Đăng nhập để mở lại cửa sổ." % NAMES[channel]

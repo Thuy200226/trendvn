@@ -43,6 +43,33 @@ class TaskLogMixin:
             r["steps"] = loads(r["steps"], [])
         return rows
 
+    def tasks_for_ui(self):
+        """All active commands plus recent results; resolved failures never become current alarms."""
+        with self.connect() as db:
+            rows = [dict(row) for row in db.execute("""SELECT t.*,d.state delete_state,d.reason delete_reason,d.updated delete_updated,
+                j.state job_state,j.updated job_updated FROM tasks t
+                LEFT JOIN post_deletions d ON d.job_id=t.job_id LEFT JOIN jobs j ON j.id=t.job_id
+                WHERE t.state='running' OR t.id IN (SELECT id FROM tasks ORDER BY started DESC LIMIT 12)
+                ORDER BY (t.state='running') DESC,t.started DESC""")]
+        current = []
+        for row in rows:
+            row["steps"] = loads(row["steps"], [])
+            finished = row.get("finished") or row["started"]
+            resolved_delete = row["kind"] == "delete_post" and (
+                row["delete_state"] == "deleted"
+                or (
+                    row["delete_state"] == "failed"
+                    and (row["delete_updated"] or 0) > finished
+                    and (row["delete_reason"] or "").startswith("Chủ đã kiểm tra")
+                )
+            )
+            resolved_video = row["kind"] in ("process_one", "search_download", "queue_download") and (
+                row["job_state"] in ("ready", "awaiting_approval", "published", "rejected") and (row["job_updated"] or 0) > finished
+            )
+            if row["state"] == "running" or not (resolved_delete or resolved_video):
+                current.append(row)
+        return current
+
     def tasks_running(self):
         with self.connect() as db:
             return [dict(r) for r in db.execute("SELECT id,kind,job_id,started FROM tasks WHERE state='running'")]

@@ -1,10 +1,10 @@
 """Douyin product keyword search in a persistent source profile; human verification is never automated."""
 
 import re
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlsplit, parse_qs
 
 from .browser import chrome
-from .channels import Wall, signed_in, window_ok
+from .channels import Wall, SignedOut, signed_in, window_ok
 from .collector.sources.douyin import parse_douyin
 from .search_capture import Capture, wait_for_results
 
@@ -51,18 +51,48 @@ def payload_videos(data):
     return video_items(data)
 
 
-def search(account, query, links=(), human=False):
+def resume_query(url, capture):
+    """Restore the requested page once after the owner passes a wall; never navigate while blocked."""
+    restored = False
+
+    def resume(page, was_blocked):
+        nonlocal restored
+        wanted, current = urlsplit(url), urlsplit(page.url)
+        same = (
+            wanted.hostname == current.hostname
+            and unquote(wanted.path).rstrip("/") == unquote(current.path).rstrip("/")
+            and parse_qs(wanted.query).get("type") == parse_qs(current.query).get("type")
+        )
+        if not was_blocked or restored or same:
+            return False
+        restored = True
+        capture.seen.clear()
+        page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        return True
+
+    return resume
+
+
+def search(account, query, links=(), human=False, require_session=False):
     direct = [u for u in links[:3] if isinstance(u, str) and VIDEO.fullmatch(u)]
     urls = direct or ["https://www.douyin.com/search/" + quote(query) + "?type=video"]
     capture = Capture(("/search/", "/aweme/detail/"), payload_videos, direct)
     # Douyin turns a hidden (headless) Chrome away even from its home page (measured 2026-10-06): with a screen it is searched in a window
     with chrome("search-cn-" + account["id"], locale="zh-CN", region="CN", headless=not (human or window_ok())) as ctx:
+        if require_session and not signed_in("douyin", ctx.cookies()):
+            raise SignedOut("Chưa đăng nhập Douyin trong hồ sơ tài khoản này; hãy bấm Đăng nhập Douyin.")
         for url in urls:
             page = ctx.new_page()
-            page.on("response", capture.on_response)
+
+            def on_response(response):
+                if direct or parse_qs(urlsplit(response.url).query).get("keyword", []) == [query]:
+                    capture.on_response(response)
+
+            page.on("response", on_response)
             try:
                 page.goto(url, wait_until="domcontentloaded", timeout=45000)
-                wait_for_results(page, capture, human, check, rounds=6)
+                options = {"resume": resume_query(url, capture)} if human else {}
+                wait_for_results(page, capture, human, check, rounds=6, **options)
             finally:
                 if not page.is_closed():
                     page.close()

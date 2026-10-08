@@ -143,6 +143,54 @@ class VideoPickTests(StoreCase):
         with self.assertRaises(ValueError):
             self.s.videos_select(mid, "1234567890", True)
 
+    def test_a_stored_match_is_rechecked_before_pick_under_current_model_rules(self):
+        mid = self.answer([result() | {"title": "Samsung S25 compared with S24"}])
+        with self.assertRaisesRegex(ValueError, "sản phẩm khác"):
+            self.s.videos_select(mid, "1234567890", True)
+
+    def test_dismissed_search_video_is_never_offered_again_after_history_clear(self):
+        mid = self.answer()
+        self.s.videos_dismiss(mid, "tiktok", "1234567890")
+        self.s.chat_clear()
+        self.assertEqual(self.s.videos_new([result()]), ([], 1))
+        with self.s.connect() as db:
+            row = db.execute("SELECT state,search_id,search_account,source_file FROM jobs").fetchone()
+        self.assertEqual(tuple(row), ("rejected", None, None, None))
+
+    def test_dismiss_keeps_an_existing_job_from_another_search_unchanged(self):
+        picked = self.s.videos_select(self.answer(), "1234567890", True)
+        with self.s.connect() as db:
+            before = dict(db.execute("SELECT * FROM jobs WHERE id=?", (picked,)).fetchone())
+        self.s.videos_dismiss(self.answer(), "tiktok", "1234567890")
+        with self.s.connect() as db:
+            after = dict(db.execute("SELECT * FROM jobs WHERE id=?", (picked,)).fetchone())
+        self.assertEqual(before, after)
+
+    def test_select_and_dismiss_in_other_answers_cannot_duplicate_or_replace_a_job(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Barrier
+
+        for number in range(5):
+            sid = str(7000000000 + number)
+            pick_mid, dismiss_mid = self.answer([result(sid)]), self.answer([result(sid)])
+            ready = Barrier(2)
+
+            def run(pick):
+                ready.wait(timeout=3)
+                try:
+                    if pick:
+                        return self.s.videos_select(pick_mid, sid, True)
+                    return self.s.videos_dismiss(dismiss_mid, "tiktok", sid)
+                except ValueError:
+                    return None
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                list(pool.map(run, (True, False)))
+            with self.s.connect() as db:
+                rows = db.execute("SELECT state,search_id FROM jobs WHERE source_id=?", (sid,)).fetchall()
+            self.assertEqual(len(rows), 1)
+            self.assertIn(tuple(rows[0]), (("rejected", None), ("search_selected", str(pick_mid))))
+
     def test_an_unfinished_or_foreign_message_cannot_be_picked_from(self):
         name = self.s.account("main")["username"]
         running = self.s.chat_add("bot", "videos", {"results": [result()], "account_username": name}, state="running", account="main")
@@ -318,9 +366,9 @@ class ClearHistoryTests(StoreCase):
         picked = self.s.chat_add("bot", "videos", {"identity": {}, "account_username": name, "results": [result()]}, account="main")
         jid = self.s.videos_select(picked, "1234567890", True)
         removed = self.s.chat_clear()
-        self.assertEqual(removed, 2)
+        self.assertEqual(removed, 3)
         left = {m["id"] for m in self.s.chat_thread()}
-        self.assertEqual(left, {running, picked})
+        self.assertEqual(left, {running})
         self.assertNotIn(old, left)
         self.assertNotIn(product, left)
         self.assertEqual(self.s.videos_media_ready(jid)["account"], "main")  # the pick can still be downloaded
@@ -371,8 +419,9 @@ class ClearHistoryTests(StoreCase):
         product = self.s.chat_add("bot", "product", {"identity": {"name": "S24"}}, account="main")
         other = self.s.chat_add("bot", "product", {"identity": {"name": "other"}}, account="main")
         running = self.s.chat_add("bot", "videos", {"product": product}, state="running", account="main")
-        self.assertEqual(self.s.chat_clear(), 1)
-        self.assertEqual({m["id"] for m in self.s.chat_thread()}, {product, running})
+        self.assertEqual(self.s.chat_clear(), 2)
+        self.assertEqual({m["id"] for m in self.s.chat_thread()}, {running})
+        self.assertEqual(self.s.chat_get(product)["body"]["identity"]["name"], "S24")
         self.assertNotIn(other, {m["id"] for m in self.s.chat_thread()})
 
     def test_clearing_an_empty_history_is_fine(self):

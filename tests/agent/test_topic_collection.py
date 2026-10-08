@@ -115,7 +115,7 @@ class TikTokChipsTests(unittest.TestCase):
             return []
 
         every = list(tiktok.CHIPS)
-        with mock.patch.object(tiktok, "capture", fake):
+        with mock.patch("trendvn_agent.collector.rules.time.time", lambda: 0), mock.patch.object(tiktok, "capture", fake):
             first = sorted(tiktok.scan_tiktok(None, every))
         self.assertEqual(len(first), tiktok.MAX_CHIPS)
         with mock.patch("trendvn_agent.collector.rules.time.time", lambda: 10800):

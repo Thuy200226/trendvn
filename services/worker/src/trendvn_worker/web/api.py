@@ -122,6 +122,17 @@ def start_task(app, payload):
 
 
 # ------------------------------------------------------------------ publishing
+@route("/api/post-delete/claim")
+def delete_post_claim(app, payload):
+    return app.store.delete_post_claim(_text(payload, "job_id"), _text(payload, "grant"))
+
+
+@route("/api/post-delete/finish")
+def delete_post_finish(app, payload):
+    app.store.delete_post_finish(_text(payload, "job_id"), _text(payload, "grant"), _text(payload, "outcome"), _text(payload, "reason", ""))
+    return OK
+
+
 @route("/api/publish/peek")
 def publish_peek(app, payload):
     account = payload.get("account")

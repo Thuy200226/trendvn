@@ -38,7 +38,16 @@ def _by_id(expected, found):
 
 
 def _versions(text):
-    return set(re.findall(r"\bv\s*(\d+)\b", normalized(text)))
+    return set(re.findall(r"(?<![a-z0-9])v\s*(\d+)(?![a-z0-9])", normalized(text)))
+
+
+def _model_conflicts(model, title):
+    """Another numbered model in the same line is ambiguous, even if the requested model is also mentioned."""
+    pattern = r"(?<![a-z0-9])([a-z]{1,12})[\s-]+(\d{1,6})(?![a-z0-9])"
+    wanted = set(re.findall(pattern, normalized(model)))
+    found = set(re.findall(pattern, normalized(title)))
+    lines = {line for line, number in wanted}
+    return any(line in lines and (line, number) not in wanted for line, number in found)
 
 
 def _model_codes(wanted, asked):
@@ -56,6 +65,14 @@ def _evidence(identity, facets, seen, soft):
         for key, label in FACETS
         if facets[key] and key != "model"
     ]
+
+
+def candidate_match(identity, item):
+    """Recheck stored candidates under current rules without relaxing an earlier exclusion."""
+    previous = item.get("match", {})
+    if previous.get("level") == "different":
+        return previous
+    return match_identity(identity, item.get("title", ""), str(item.get("product_id") or ""))
 
 
 def match_identity(identity, title, product_id=""):
@@ -79,6 +96,8 @@ def match_identity(identity, title, product_id=""):
     if facets["variant"] and not facets["variant"] <= seen and "variant" not in soft:
         return _result("different", 0, "Chưa khớp biến thể đã xác định", evidence)
     model = facets["model"]
+    if model and not page and _model_conflicts(identity.get("model", "") or asked, title):
+        return _result("different", 0, "Tiêu đề nhắc model khác cùng dòng; không coi là đúng sản phẩm", evidence)
     if (model or page) and ((seen & VARIANT_WORDS) - wanted - facets["variant"] or _versions(title) - _versions(asked)):
         evidence.append({"facet": "Model", "state": "different", "value": identity.get("model") or " ".join(sorted(model))})
         return _result("different", 0, "Có biến thể khác với sản phẩm yêu cầu", evidence)

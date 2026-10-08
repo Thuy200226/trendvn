@@ -29,6 +29,25 @@ class ExclusionTests(unittest.TestCase):
         facets = {e["facet"]: e["state"] for e in found["evidence"]}
         self.assertEqual(facets, {"Thương hiệu": "ok", "Model": "ok"})
 
+    def test_real_douyin_titles_cannot_hide_another_model_or_chinese_adjacent_version(self):
+        identity = {"name": "MCHOSE ACE68", "brand": "MCHOSE", "model": "ACE68"}
+        for title in (
+            "299的迈从ACE75？该它接手ACE68的统治力了🔥 迈从ACE75上手测评。#迈从ACE75 #迈从",
+            "百万销量王再升级:Ace68V2质感美感爽感能成同价位T0？ #迈从 #迈从Ace68",
+            "迈从ACE68V3键盘 #迈从ACE68",
+            "ＭＣＨＯＳＥ ＡＣＥ７５ 对比 ＡＣＥ６８",
+            "迈从 ACE-75 取代 ACE68",
+        ):
+            self.assertEqual(match_identity(identity, title)["level"], "different", title)
+        for title in (
+            "自用一年，不吹不黑，聊聊我手上这把迈从Ace68 冰犀磁轴#迈从 #迈从Ace68",
+            "迈从ACE68磁轴键盘 8000Hz 256GB",
+        ):
+            self.assertEqual(match_identity(identity, title)["level"], "candidate", title)
+        self.assertEqual(
+            match_identity(dict(identity, name="MCHOSE ACE-68", model="ACE-68"), "迈从 ACE75 对比 ACE68")["level"], "different"
+        )
+
     def test_a_failed_facet_is_listed_as_different_so_the_card_can_say_which_one(self):
         found = match_identity({"name": "Apple Watch 9", "brand": "Apple"}, "Samsung Watch 9")
         self.assertEqual(

@@ -1,5 +1,26 @@
 # Lịch sử thay đổi
 
+## 1.9 — 2026-10-07 (tìm kiếm trong hàng đợi: docs/QUEUE-SEARCH-PLAN.md)
+
+- Xóa bài TikTok: fallback TikTok Studio khi trang công khai 403; hỗ trợ thao tác xác nhận kết quả xóa trên tab Đã đăng; bảo toàn kiểm tra khớp bài URL và tài khoản.
+- Tìm kiếm theo nguồn: Gemini phân tích hình ảnh/tài liệu tạo từ khóa tiếng Trung (`query_zh`) cho Douyin và Kuaishou; không gửi query tiếng Việt sang nguồn Trung Quốc.
+- Trải nghiệm giao diện: lưu và phục hồi vị trí cuộn trang chính xác (tránh giật về đầu trang khi submit), responsive tối ưu tablet (768px-787px) và mobile; lập bản đồ docs/SCROLL-AND-FEEDBACK-MAP.md.
+- Xử lý video: bắt lỗi Transient (Gemini 503/504) đưa về hàng đợi an toàn; bổ sung thông báo tiến trình chi tiết 6 bước theo thời gian thực.
+- Kiểm thử: 953/953 unit test và doclint đều đạt chuẩn.
+
+**Hàng đợi thống nhất.** Tìm kiếm nằm trong Hàng đợi; link `#search` cũ vẫn mở đúng phần. Sáu mục điều hướng chia đều, ô chạm tối thiểu 44 px, focus cùng màu/khoảng cách; select, icon tải lại, nút, input, textarea, checkbox và tab dùng component chung; tôn trọng chế độ giảm chuyển động.
+
+**Tìm bằng phiên đăng nhập.** Bốn kênh TikTok, Douyin, Kuaishou, Instagram có đăng nhập/kiểm tra trong hồ sơ riêng của từng tài khoản. Thể loại mặc định theo tài khoản; thể loại, từ khóa, model và ngành hàng được ghép vào truy vấn gửi tới nguồn. Có công tắc tìm video bán hàng và tám ngành hàng. Kết quả ưu tiên độ khớp và tương tác đọc được, không coi lượt xem là doanh số. Các nguồn vẫn có thể chặn tìm bằng yêu cầu đăng nhập, xác minh hoặc vùng IP.
+
+**Hành động từng video.** Bỏ ứng viên, chọn tải vào hàng chờ, xử lý đúng một video hoặc bỏ chờ. Không chọn sản phẩm khác model và không nhận lại video đã bị bỏ. Lượt gửi có mã chống lặp; polling giữ vị trí đọc. Xóa riêng lượt đã hoàn tất giữ tham chiếu nội bộ mà video đã chọn cần (migration 9).
+
+**Xóa bài TikTok.** Xác nhận đúng bài và tài khoản; yêu cầu dùng một lần, kiểm tên tài khoản thật trước thao tác. Chỉ ghi đã xóa khi có xác nhận thành công của TikTok; mất kết nối sau thao tác là chưa rõ, không tự thử lại. Lưu tình trạng riêng (migration 10), giữ lịch sử và giới hạn đăng để tránh đăng lại hoặc làm sai thống kê.
+
+TikTok Studio: chọn dòng theo đúng URL/mã bài, lọc còn duy nhất bài đó và kiểm lại trước xác nhận. Có bước chủ xác nhận đã kiểm tra bài vẫn còn để gỡ trạng thái chưa rõ; không tự gửi lại lệnh xóa. Bản nháp chữ/tệp được giữ nếu người dùng chỉnh trong lúc lượt gửi trước chưa trả về.
+
+**Sửa theo thử thật.** Xóa lịch sử ẩn cả lượt sản phẩm và các lần tìm lại cũ, giữ tham chiếu tải ở nội bộ; mã yêu cầu chống lặp sống tối thiểu 30 ngày. Lọc video đã có ở mọi trạng thái trước hiển thị; bỏ ứng viên lưu dấu loại để không nhận lại. Ô tích bán hàng vẽ 24 px trong vùng nhấn 44 px. Douyin khôi phục đúng truy vấn video sau chủ xác minh; tiêu đề nhắc nhiều model cùng dòng hoặc V2 sát chữ Trung không được coi là đúng ACE68. Kết quả cũ cũng được kiểm lại khi hiển thị và chọn. Tải hoàn tất cập nhật riêng hàng chờ, giữ bản nháp; phản hồi chat trước thao tác không chặn các lần cập nhật tiếp theo.
+
+
 ## 1.8 — 2026-10-06 (đăng nhập kênh tìm kiếm, xóa lịch sử, tab cân đối)
 
 **Đăng nhập Douyin và TikTok để tìm kiếm.** Đo trên máy thật: khách không tìm kiếm được ở cả hai nguồn (TikTok trả phản hồi rỗng; Douyin chuyển Chrome ẩn tới trang xác minh ngay ở trang chủ). Cột bên cạnh khung chat có mục **Kênh tìm kiếm**: tình trạng đăng nhập của từng tài khoản trên từng kênh, nút **Đăng nhập** (mở cửa sổ Chrome thật cho chủ tự đăng nhập, tối đa 10 phút) và **Kiểm tra** (đọc cookie, không mở trang); thẻ lỗi của lần tìm cũng có nút đăng nhập đúng kênh. Tình trạng được agent ghi lại sau mỗi lần đăng nhập, kiểm tra và tìm kiếm. Khi máy có màn hình, tìm kiếm chạy bằng cửa sổ thật như đăng bài (Douyin từ chối Chrome ẩn); trang xác minh trắng của Douyin giờ được nhận ra thay vì báo "chưa trả video".

@@ -211,3 +211,41 @@ Một tác tử chỉ-đọc thử phá toàn bộ cây thay đổi (55 đột b
 - **Ghi nhận, chưa đổi:** (a) cửa sổ đăng nhập giữ khóa trình duyệt của agent tối đa 10 phút: lịch tự động gặp "bận" và thử lại sau (chủ chọn lúc đăng nhập); (b) cột bên cạnh gửi lại toàn bộ mỗi 2,5 giây khi có việc đang chạy (đo: 925 KB với 10 tài khoản × 100 link, 14 ms; thực tế vài KB); (c) `server.py` dùng hàm riêng tư `search._account`; (d) Kuaishou/Instagram chưa có tìm kiếm.
 
 **Chưa kiểm chứng (nói thẳng):** đăng nhập Douyin thật (cần tài khoản Douyin của chủ; tên cookie phiên là cách đọc tốt nhất có thể, lần tìm kiếm thành công kế tiếp tự sửa tình trạng nếu sai); cửa sổ đăng nhập TikTok thật qua nút trong bảng điều khiển (hàm đăng nhập là hàm của `./trendvn tiktok login` đã dùng từ trước); tìm kiếm thật bằng cửa sổ sau khi đăng nhập; liệu Douyin có tiếp tục xác minh sau khi đăng nhập.
+
+## Phase M — Hàng đợi thống nhất và quản lý video (2026-10-07, bản 1.9; nghiệm thu nền tảng chưa hoàn tất)
+
+Kế hoạch đã đối chiếu yêu cầu:
+- [x] Gom Tìm vào Hàng đợi, giữ link #search cũ; sáu mục điều hướng cân nhau ở 320–1440 px; focus/selected/hover/reduced-motion nhất quán.
+- [x] Bộ component chung cho icon, nút, input, textarea, select, tab, trường và hành động; chuẩn hóa select/reload.
+- [ ] Kênh tìm kiếm TikTok/Douyin/Kuaishou/Instagram dùng hồ sơ riêng từng tài khoản, chỉ tìm bằng phiên đã đăng nhập; chọn thể loại.
+- [x] Công tắc tìm bán hàng và ngành hàng; truy vấn theo ngành, xếp theo dữ liệu tương tác hiện có, không khẳng định doanh số/bán chạy nhất khi không có số bán.
+- [x] Ứng viên: bỏ hoặc chọn tải vào chờ xử lý; chờ xử lý: xử lý đúng một video hoặc bỏ chờ; không tác động việc đã được nhận xử lý.
+- [x] Xóa riêng từng lượt tìm, bảo toàn tham chiếu của việc đang chạy/video chờ tải; chống gửi/lượt tìm trùng khi bấm lặp hoặc polling chồng nhau.
+- [x] Xóa đúng bài thử TikTok sau chủ cho phép; đã bấm xóa thật, chủ kiểm tra xác nhận và ứng dụng ghi deleted với bằng chứng do chủ kiểm (toast tự động còn cần nghiệm thu nền tảng). Giữ lịch sử và chống trùng.
+- [x] Regression state/race/auth/CSRF, kiểm thử Chrome thật bảy viewport, kịch bản đầy đủ trên fixture riêng; sao lưu/migration bản sao/deploy/doctor.
+- [x] Rà tĩnh, động và tác tử chỉ-đọc độc lập; ghi rõ phần nền tảng chặn/chưa kiểm thật.
+
+Nền: 901 test host, 1 lỗi sẵn có test tar/quyền đọc macOS, 18 bỏ qua do ffmpeg; chưa chỉnh mã trước phép đo. Dữ liệu thật và tự đăng được bảo toàn. Kế hoạch chi tiết và kịch bản thực tế: [QUEUE-SEARCH-PLAN.md](QUEUE-SEARCH-PLAN.md). Chủ bổ sung: thể loại/từ khóa/sản phẩm phải vào truy vấn tìm video thật của nguồn, không chỉ lọc; nghiệm thu các luồng trên hệ thống thật, cho phép đăng/xóa bài thử riêng.
+
+
+**Kiểm chứng:** 923/923 test Docker (0 bỏ qua), ffmpeg thật đạt; 120/120 kiểm tra Chrome bảy viewport trên dữ liệu riêng. Rà độc lập đã sửa lỗi giữ bản nháp khi nhận phản hồi muộn và nguy cơ đổi bài trong lúc chờ trước xóa. Migration bản sao CSDL thật 8 → 10 giữ nguyên số bản ghi, integrity_check=ok; update/doctor mọi mục bắt buộc ổn.
+
+**Thử thật:** truy vấn chứa model/thể loại/ngành hàng và từ khóa Trung được gửi; TikTok/Douyin bị xác minh hoặc không trả video; Kuaishou/Instagram chưa có phiên dùng được. Gemini nhận ảnh chủ là KZZI K68, khác ACE68 nên cảnh báo. Xóa riêng lượt lịch sử và đính kèm ảnh thật đạt. Đã xem thử rồi đăng một clip tự tạo trên @bubituean: bài 7693824713411317013; bước xóa đang đối chiếu menu TikTok. Không coi fixture là tìm thành công trên bốn nền tảng. Xem [QUEUE-SEARCH-TESTS.md](QUEUE-SEARCH-TESTS.md) để biết giới hạn và sự cố SQLite đã khôi phục.
+
+## Phase N — Sửa theo nghiệm thu thật và quy tắc thiết kế trước mã (2026-10-07)
+
+Theo yêu cầu chủ, đã viết [SYSTEM-FLOW.md](SYSTEM-FLOW.md), rà độc lập trước sửa và thêm quy tắc vào AGENTS. Giữ cấu trúc worker quyết định/agent trình duyệt/n8n hẹn giờ; chưa có số đo để khẳng định tối ưu nhất hoặc cần thêm hệ thống phân tán.
+
+- Xóa lịch sử: ẩn cả gốc và các lượt tìm lại legacy; giữ nội bộ dữ liệu đang tải nhưng bỏ khỏi màn hình. Dấu chống lặp yêu cầu giữ 30 ngày sau xóa. Thử thật xóa gốc 6 và con 7/10 trong lúc lượt khác chạy: đúng ba thẻ biến mất và không quay lại sau tải trang.
+- Video cũ: lọc batch nguồn/ID hoặc URL với mọi trạng thái; vẫn kiểm trong giao dịch lúc chọn. Rà độc lập phát hiện bỏ ứng viên chat chưa có tombstone: đã bổ sung rejected không tệp/tài khoản/lượt tìm và thử race chọn/bỏ.
+- Ô tích bán hàng dùng checkbox chung: phần vẽ 24 px, vùng nhấn tối thiểu 44 px.
+- Douyin: sau chủ xác minh, lượt 21 nhận **16 video thật** cho `迈从 ACE68 磁轴键盘`; không lấy luồng đề xuất thay truy vấn. Tiêu đề thật phát hiện ACE75 nhắc ACE68 và V2 sát chữ Trung lọt: sửa ranh giới phiên bản, model có dấu gạch nối và kiểm lại kết quả cũ cả UI/lúc chọn.
+- Chủ đã xem/xác nhận video **7627431070878744296**. Chọn/tải thật thành công, vào queued đúng tài khoản main; xử lý riêng gặp Gemini quá tải và trả về chờ, không đánh dấu video hỏng. Chưa có bản dựng thành công của video này.
+- Tải thật phát hiện thẻ không cập nhật: polling theo task tải còn chạy và cập nhật riêng vùng hàng chờ khi xong. Rà độc lập tái hiện snapshot trước POST làm polling dừng: sau mutation bắt buộc GET mới. Chrome regression giữ GET cũ rồi chọn video đã đạt.
+- Xóa bài thử: tìm toàn caption/Enter không cô lập được dòng. Từ `TrendVN` lọc đúng bài **7693824713411317013**, bấm Xóa/confirm; toast không bắt được nên giữ unknown. Trang công khai báo không khả dụng và chủ tự kiểm tra xác nhận đã xóa. Đã áp dụng bước chủ chốt kết quả không gọi lại trình duyệt; UI thật ghi “Đã xóa trên TikTok · Chủ đã kiểm tra: bài đã xóa trên TikTok”. Observer gắn trước confirm, chỉ giữ exact text node đang hiển thị và không lấy chữ ẩn từ container. Không coi 404/kết quả rỗng là proof tự động.
+
+Kiểm chứng hiện tại: **946/946 test Docker**, 0 bỏ qua và ffmpeg đạt; **131/131 kiểm tra Chrome** bảy viewport (gồm completion không reload, race GET cũ, thông báo xóa thoáng qua và chốt kết quả do chủ kiểm). Ca notice chỉ chứa chữ ẩn đã đạt; không coi container hiện rõ chứa chữ ẩn là bằng chứng. Full run 943 phát hiện test xoay chủ đề lệ thuộc giờ thật, đã cố định cả hai mốc trong test; full run 945 phát hiện nhãn nhật ký mới còn thiếu, đã bổ sung và kiểm lại toàn bộ. Nền host 927 test còn cùng lỗi tar/quyền macOS, 18 bỏ qua ffmpeg. Tác tử chỉ-đọc đã rà các bước; nghiệm thu tìm TikTok/Kuaishou/Instagram, xử lý Gemini và toast xóa tự động còn phụ thuộc kết quả nền tảng.
+
+Thử chống trùng trên CSDL thật bằng đọc trong container: đúng video đã chọn queued và ACE75 vừa bỏ rejected; đưa hai ID/URL này qua bộ lọc trả 0 mới, loại 2. Tệp nguồn ACE68 tồn tại **22.961.755 byte**, không chỉ trạng thái ghi trong bảng. Rà độc lập cuối đã hết blocker trong phạm vi sửa; Gemini dựng thật vẫn lỗi HTTP 504/240 giây và trả về hàng chờ.
+
+Áp dụng cuối: worker 1.9 khỏe, agent được cập nhật và khởi động lại; doctor mọi mục bắt buộc đạt, tự đăng giữ TẮT. Bài thử đã chốt deleted qua UI sau xác nhận trực tiếp của chủ, không gọi xóa thêm; các bài cũ giữ nguyên. Chưa gọi lần thử đăng mới.

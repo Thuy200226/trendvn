@@ -3,7 +3,10 @@
 import re
 
 from ..cards import review_card
+from ..controls import hidden, button
 from ..format import ago, escape as E, shown_of
+from ...domain.channels import NAMES
+from .posted import _delete_action
 
 
 def _challenge(view):
@@ -28,13 +31,20 @@ def _unresolved(view, job):
     caption = re.sub(r"\s+", " ", re.sub(r"#\w+", "", job.get("caption") or "")).strip() or (job.get("title") or "")
     who = "@" + job["target"] if job.get("target") else "tài khoản mặc định"
     return (
-        '<form method="post" action="/resolve" class="card alert stack"><input type="hidden" name="csrf" value="%s"><input type="hidden" name="id" value="%s">'
+        '<form method="post" action="/resolve" class="card alert stack">%s'
         "<h3>🚨 Chưa xác nhận đã đăng: %s</h3>"
         '<p class="small"><b>%s</b> · bấm Đăng %s</p>'
         '<p>Hệ thống đã dừng đăng để không đăng trùng. Mở TikTok của %s kiểm tra rồi chọn:</p><div class="btns">'
-        '<button name="outcome" value="published" class="go">Bài đã lên TikTok</button>'
-        '<button name="outcome" value="failed" class="ghost">Chưa có, cho phép đăng lại</button></div></form>'
-    ) % (view.csrf, E(job["id"]), E(caption[:100]), E(who), E(ago(job.get("updated"), view.now)), E(who))
+        "%s%s</div></form>"
+    ) % (
+        hidden("csrf", view.csrf) + hidden("id", job["id"]),
+        E(caption[:100]),
+        E(who),
+        E(ago(job.get("updated"), view.now)),
+        E(who),
+        button("Bài đã lên TikTok", name="outcome", value="published"),
+        button("Chưa có, cho phép đăng lại", "ghost", name="outcome", value="failed"),
+    )
 
 
 def render(view):
@@ -42,6 +52,18 @@ def render(view):
     parts = [_challenge(view)] if view.challenge_on else []
     parts += [_key_rejected()] if view.key_rejected else []
     parts += [_unresolved(view, job) for job in d["unresolved"]]
+    for post in d.get("uncertain_deletions", []):
+        parts.append(
+            '<div class="card alert stack"><h3>Cần kiểm tra kết quả xóa bài</h3><p>%s · @%s</p>'
+            '<a href="%s" target="_blank" rel="noopener">Mở đúng bài trên TikTok</a>%s</div>'
+            % (E(post["title"]), E(post.get("target") or "?"), E(post["publish_url"]), _delete_action(view, post))
+        )
+    for source in d.get("search_verifications", []):
+        parts.append(
+            '<div class="card alert-soft stack"><h3>%s cần bạn xác minh</h3><p>Hồ sơ tìm kiếm của @%s · báo cáo %s.</p>'
+            '<a class="next-link" href="#search">Mở Kênh tìm kiếm để xác minh và kiểm tra lại →</a></div>'
+            % (E(NAMES.get(source["channel"], source["channel"])), E(source["username"]), ago(source["at"], view.now))
+        )
     held = view.counts.get("needs_review", 0)
     if held > len(d["review"]):
         parts.append(

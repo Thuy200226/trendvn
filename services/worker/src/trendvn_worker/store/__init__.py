@@ -10,6 +10,7 @@ from .feedback import FeedbackMixin
 from .health import HealthMixin
 from .ingest import IngestMixin
 from .publishing import PublishingMixin
+from .post_deletions import PostDeletionsMixin
 from .queue import QueueMixin
 from .reporting import ReportingMixin
 from .retention import RetentionMixin
@@ -24,6 +25,7 @@ class Store(
     QueueMixin,
     HealthMixin,
     PublishingMixin,
+    PostDeletionsMixin,
     CaptionMixin,
     TaskLogMixin,
     FeedbackMixin,

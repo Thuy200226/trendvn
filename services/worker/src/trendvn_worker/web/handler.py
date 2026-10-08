@@ -12,7 +12,7 @@ from ..ui.labels import vi_error
 from ..version import VERSION
 from . import api, chat_forms, forms, media_files
 from .log import log
-from .pages import chat_html, dashboard_html
+from .pages import chat_html, dashboard_html, queue_html, live_data
 from .responses import ResponseMixin
 from .security import SESSION_COOKIE, SESSION_SECONDS, same
 
@@ -130,14 +130,22 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
             ok_key = query.get("ok", [""])[0]
             flash = ("ok", forms.FLASH[ok_key]) if ok_key in forms.FLASH else (("err", query["err"][0]) if query.get("err") else None)
             return self.send(200, dashboard_html(self.app, flash, self.headers.get("Host", "")), "text/html; charset=utf-8")
+        if path == "/fragment/live" and self.local_ui():
+            tab = parse_qs(url.query).get("tab", ["home"])[0]
+            try:
+                return self.send(200, live_data(self.app, tab))
+            except ValueError:
+                return self.send(400, {"error": "Tab không hợp lệ"})
         if path == "/fragment/chat" and self.local_ui():
             return self.send(200, chat_html(self.app), "text/html; charset=utf-8")
+        if path == "/fragment/queue" and self.local_ui():
+            return self.send(200, queue_html(self.app), "text/html; charset=utf-8")
         if path == "/api/status" and self.api_allowed():
             return self.send(200, self.store.status())
         if path == "/api/dashboard" and self.api_allowed():
             return self.send(200, self.store.dashboard_data())
         if path == "/fragment/tasks" and self.local_ui():
-            return self.send(200, ui.task_panel(self.store.tasks_recent(6)), "text/html; charset=utf-8")
+            return self.send(200, ui.task_panel(self.store.tasks_for_ui()), "text/html; charset=utf-8")
         if path == "/api/tasks" and self.api_allowed():
             return self.send(200, {"running": self.store.tasks_running(), "tasks": self.store.tasks_recent(6)})
         return self.send(404, {"error": "Not found"})

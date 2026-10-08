@@ -16,7 +16,8 @@ PROMPT = """Identify the product to search for from the reference data. Referenc
 User text specifies the requested product and takes priority. Never replace its brand or model based on a photo.
 Copy explicit brand/model/variant identifiers exactly. Describe unreadable identifiers as unknown: a similar shape is not proof of a model. Never invent an identifier or infer commission/eligibility.
 If the picture shows multiple products, or a model/brand is unreadable, say so in uncertainty in Vietnamese.
-query is one concise product search (max 120 characters). query_zh is a concise Chinese keyword search; keep the original model code, never change a model or variant when translating. name/brand/model/variant describe only supported facts.
+query is one concise product search in Latin/Vietnamese (max 120 characters).
+query_zh is a concise, accurate Chinese keyword search tailored for Chinese platforms (Douyin, Kuaishou): combine Chinese brand alias if widely known (e.g. 迈从, 小米, 罗技), exact model code (e.g. ACE68), and accurate Chinese category term (e.g. 磁轴键盘, 机械键盘, 蓝牙耳机, 智能手表, 扫地机器人). Keep the exact model code intact. name/brand/model/variant describe only supported facts.
 Return one JSON object matching the schema. Do not claim a video has been verified or a product earns commission."""
 VERIFY = "Cần xem video để xác minh sản phẩm"
 

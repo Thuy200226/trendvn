@@ -16,6 +16,7 @@ def emitted_event_names():
     """Every event name the worker writes to the log: literals, and the prefixed families with the values their callers pass."""
     names = set()
     families = {
+        '"post_" + outcome': ("deleted", "failed", "unknown"),
         '"publish_" + outcome': ("published", "failed", "deferred", "unknown", "duplicate"),
         '"operator_" + action': ("approve", "reject", "retry"),
         '"resolved_" + outcome': ("published", "failed"),

@@ -31,9 +31,10 @@ class Capture:
             return  # an unreadable browser response is never a guessed video
 
 
-def wait_for_results(page, capture, human, check, rounds):
+def wait_for_results(page, capture, human, check, rounds, resume=None):
     """Poll the page until videos arrive or the rounds run out. `check(page)` raises ValueError for a login or verification wall: with
     the owner's own window open that is something to wait out, otherwise it is the answer."""
+    was_blocked = False
     for _ in range(120 if human else rounds):
         if page.is_closed():
             return
@@ -42,7 +43,10 @@ def wait_for_results(page, capture, human, check, rounds):
             check(page)
         except ValueError:
             if human:
+                was_blocked = True
                 continue
             raise
+        if resume and resume(page, was_blocked):
+            continue
         if capture.seen:
             return

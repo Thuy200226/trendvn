@@ -153,7 +153,40 @@ def _channel_logins(db):
     )
 
 
-MIGRATIONS = [_baseline, _accounts, _legacy_posts, _news_topic, _retention, _product_chat, _product_chat_again, _channel_logins]
+def _discovery_history(db):
+    """Version 9: hide individual history without breaking selected videos, and deduplicate browser send retries."""
+    present = {row[1] for row in db.execute("PRAGMA table_info(chat)")}
+    for column in ("hidden INTEGER NOT NULL DEFAULT 0", "request_key TEXT"):
+        if column.split()[0] not in present:
+            db.execute("ALTER TABLE chat ADD COLUMN " + column)
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_request ON chat(request_key) WHERE request_key IS NOT NULL")
+    # Legacy chat_ask inserted its user immediately before its answer in the same transaction.
+    db.execute(
+        "UPDATE chat SET body=json_set(body,'$.user_message',id-1) WHERE role='bot' AND kind IN ('product','link') "
+        "AND json_valid(body) AND json_type(body,'$.user_message') IS NULL AND EXISTS "
+        "(SELECT 1 FROM chat q WHERE q.id=chat.id-1 AND q.role='user' AND q.account IS chat.account)"
+    )
+
+
+def _post_deletions(db):
+    """Version 10: preserve published history and limits even after confirmed remote deletion."""
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS post_deletions(job_id TEXT PRIMARY KEY,grant_token TEXT NOT NULL,state TEXT NOT NULL,account TEXT NOT NULL,username TEXT NOT NULL,url TEXT NOT NULL,reason TEXT,updated REAL NOT NULL)"
+    )
+
+
+MIGRATIONS = [
+    _baseline,
+    _accounts,
+    _legacy_posts,
+    _news_topic,
+    _retention,
+    _product_chat,
+    _product_chat_again,
+    _channel_logins,
+    _discovery_history,
+    _post_deletions,
+]
 
 
 def migrate(db):

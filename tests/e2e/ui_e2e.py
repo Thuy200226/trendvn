@@ -21,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "services" / "worker" / "src"))
 from trendvn_worker.store import Store  # noqa: E402
+from delete_evidence_check import check_deletion_notices, check_owner_resolution  # noqa: E402
 
 SHOTS = None
 if "--shots" in sys.argv:
@@ -82,6 +83,7 @@ class FakeAgent(BaseHTTPRequestHandler):
             FakeAgent.store.channel_report(payload["account"], payload["channel"], "out", "")
             return self.reply(200, {"logged_in": False, "channel": payload["channel"]})
         if self.path == "/api/search/download":
+            time.sleep(2.2)  # expose downloading while the browser holds an older chat response
             with FakeAgent.store.transaction() as db:
                 db.execute("UPDATE jobs SET state='queued',reason='' WHERE id=?", (payload["job_id"],))
             return self.reply(200, {"state": "queued"})
@@ -413,6 +415,7 @@ def main():
                 time.sleep(0.2)
         with sync_playwright() as p:
             browser = p.chromium.launch(channel="chrome", headless=True)
+            check_deletion_notices(browser, check)
             errors = []
 
             def go(pg, url):
@@ -550,6 +553,15 @@ def main():
             FakeAgent.calls.clear()
             ta.fill("Mô tả sửa tay để kiểm tra #kiemtra #haihuoc #vui")
             cards[0].query_selector('button[value="publish"]').click()
+            pg.locator("#confirm-action[open]").wait_for()
+            check(
+                "Confirmation: cancel has focus before a consequential action",
+                pg.locator("#confirm-action [data-confirm-cancel]").evaluate("el => el === document.activeElement"),
+            )
+            pg.locator("#confirm-action [data-confirm-cancel]").click()
+            check("Confirmation: cancelling never calls the publisher", not FakeAgent.calls)
+            cards[0].query_selector('button[value="publish"]').click()
+            pg.locator("#confirm-action [data-confirm-accept]").click()
             pg.wait_for_selector("#publish .taskpanel", timeout=8000)
             check(
                 "Post now: progress is shown on the Publish tab itself",
@@ -590,6 +602,7 @@ def main():
             )
             go(pg, base + "/#publish")
             pg.query_selector('form.ready[data-id="%s"] button[formaction="/decide"]' % ids[1]).click()
+            pg.locator("#confirm-action [data-confirm-accept]").click()
             pg.wait_for_timeout(800)
             check("Discard removes the video from the list", ids[1] not in [j["id"] for j in Store(tmp).ready_list()])
             # ---------------- Hàng đợi tab (the Start flow above has processed the seeded queue, so put three videos back in it)
@@ -619,8 +632,8 @@ def main():
             )
             check("Hàng đợi tab lists the waiting videos", all("Video chờ xử lý %d" % i in rows for i in range(3)), rows[:120])
             check(
-                "Bottom nav has seven entries and Hàng đợi carries the waiting count",
-                pg.evaluate("() => document.querySelectorAll('.bottomnav a').length") == 7
+                "Bottom nav has six entries and Hàng đợi carries the waiting count",
+                pg.evaluate("() => document.querySelectorAll('.bottomnav a').length") == 6
                 and pg.inner_text('.bottomnav a[data-go="queue"] i') == "3",
             )
             check(
@@ -653,6 +666,7 @@ def main():
                 pg.inner_text("#queue")[:900].replace(chr(10), " / "),
             )
             pg.click('#queue button:has-text("Bật xử lý video")')
+            pg.locator("#confirm-action [data-confirm-accept]").click()
             pg.wait_for_timeout(900)
             check(
                 "The switch turns processing on and returns to Hàng đợi",
@@ -720,6 +734,7 @@ def main():
                 {"food", "gaming"} <= set(Store(tmp).wanted_topics()),
             )
             pg.click(card + ' button:has-text("Xóa")')
+            pg.locator("#confirm-action [data-confirm-accept]").click()
             pg.wait_for_timeout(900)
             check("Deleting removes the account", Store(tmp).account("kenh_meo") is None)
             pg.fill('#accounts form[action="/account-add"] input[name="username"]', "no_topics")
@@ -746,6 +761,12 @@ def main():
                 "Samsung Galaxy S24" in pg.inner_text("#chat-thread"),
             )
             check("Chat: the composer is cleared after sending", pg.input_value('[data-chat-form] textarea[name="text"]') == "")
+            check(
+                "Sales checkbox: compact visible box keeps a 44px touch target",
+                pg.locator('[data-chat-form] input[name="sales"]').evaluate(
+                    "el => { const r=el.getBoundingClientRect(),s=getComputedStyle(el,'::before'); return r.width>=44 && r.height>=44 && parseFloat(s.width)<=24 && parseFloat(s.height)<=24; }"
+                ),
+            )
             FakeAgent.calls.clear()
             find.last.click()
             pg.wait_for_selector('#chat-thread > .msg.bot:last-child[data-state="done"] article', timeout=10000)
@@ -765,7 +786,23 @@ def main():
                     db.execute("SELECT count(*) FROM jobs WHERE source_id='1234567890'").fetchone()[0] == 0,
                 )
             cards.first.locator("[data-chat-confirm]").check()
+            pg.evaluate("""() => {
+                window.__fetchBeforeRace=window.fetch; window.__holdNextChat=true;
+                window.fetch=async function(url,options){
+                    const response=await window.__fetchBeforeRace(url,options);
+                    if(url==='/chat/act'&&options&&JSON.parse(options.body).action==='pick')window.__pickReturned=true;
+                    if(url==='/fragment/chat'&&window.__holdNextChat){
+                        window.__holdNextChat=false; window.__heldChat=true;
+                        await new Promise(resolve=>{window.__releaseChat=resolve;});
+                    }
+                    return response;
+                };
+                document.querySelector('#chat-thread').dataset.busy='1';
+            }""")
+            pg.wait_for_function("() => window.__heldChat === true", timeout=6000)
             cards.first.locator('button[data-chat-act="pick"]').click()
+            pg.wait_for_function("() => window.__pickReturned === true", timeout=6000)
+            pg.evaluate("() => window.__releaseChat()")
             pg.wait_for_function(
                 "() => !document.querySelector('#chat-thread > .msg.bot:last-child article button[data-chat-act=pick]')", timeout=10000
             )
@@ -776,6 +813,13 @@ def main():
                     break
                 pg.wait_for_timeout(200)
             check("Chat: the picked video enters the processing queue for that account", selected and tuple(selected) == ("queued", "main"))
+            pg.locator("#queue-live").get_by_text("Samsung Galaxy S24", exact=True).wait_for(state="visible", timeout=10000)
+            check("Chat: completed download updates the queue without reloading the page", "Chờ xử lý" in pg.inner_text("#queue-live"))
+            check(
+                "Chat: a response started before pick cannot stop download polling",
+                "Chờ xử lý" in pg.inner_text("#chat-thread > .msg.bot:last-child"),
+            )
+            pg.evaluate("() => { window.fetch=window.__fetchBeforeRace; delete window.__fetchBeforeRace; delete window.__releaseChat; }")
             # the seeded failed search offers the owner's own verification window; it asks again with the Chinese words kept
             FakeAgent.calls.clear()
             pg.locator('button[data-human="true"]').first.click()
@@ -819,12 +863,14 @@ def main():
             # saved links: forget; history: clear keeps what is not history
             saved_before, in_db = pg.locator("#chat-side .saved").count(), len(Store(tmp).commission_list("main"))
             pg.locator('#chat-side button[data-chat-act="forget"]').first.click()
+            pg.locator("#confirm-action [data-confirm-accept]").click()
             pg.wait_for_function("n => document.querySelectorAll('#chat-side .saved').length < n", arg=saved_before, timeout=8000)
             check(
                 "Saved links: forgetting one removes it from the column and the database",
                 len(Store(tmp).commission_list("main")) == in_db - 1 >= 0,
             )
             pg.locator('#chat-side button[data-chat-act="clear"]').click()
+            pg.locator("#confirm-action [data-confirm-accept]").click()
             pg.wait_for_function("() => document.getElementById('chat-thread').innerText.includes('Gửi cho mình')", timeout=8000)
             with FakeAgent.store.connect() as db:
                 kept = db.execute("SELECT state FROM jobs WHERE source_id='1234567890'").fetchone()
@@ -861,6 +907,37 @@ def main():
             pg.set_input_files('[data-chat-form] input[type="file"]', {"name": "gone.txt", "mimeType": "text/plain", "buffer": b"x"})
             pg.click("[data-chat-files] button")
             check("Chat: an attachment can be removed before sending", not pg.locator("[data-chat-files]").inner_text())
+            # A file added while the previous request is pending belongs to the next draft.
+            pg.unroute("**/chat/send", intercept)
+            pending_sends = []
+
+            def hold_send(route):
+                pending_sends.append(route)
+
+            pg.route("**/chat/send", hold_send)
+            pg.fill('[data-chat-form] textarea[name="text"]', "first draft")
+            pg.press('[data-chat-form] textarea[name="text"]', "Control+Enter")
+            pg.wait_for_timeout(150)
+            pg.set_input_files('[data-chat-form] input[type="file"]', {"name": "next.txt", "mimeType": "text/plain", "buffer": b"next"})
+            pending_sends[0].fulfill(status=200, content_type="application/json", body='{"id":1}')
+            pg.wait_for_timeout(300)
+            check("Chat: a file added during send survives its response", "next.txt" in pg.locator("[data-chat-files]").inner_text())
+            pg.click("[data-chat-files] button")
+            pg.press('[data-chat-form] textarea[name="text"]', "Control+Enter")
+            pg.wait_for_timeout(150)
+            pg.locator("[data-chat]").evaluate(
+                "el => { const b=document.createElement('button'); b.type='button'; b.dataset.chatAct='fill'; b.dataset.text='next model'; b.id='draft-fill-test'; b.textContent='Sửa tên/model'; el.appendChild(b); }"
+            )
+            pg.click("#draft-fill-test")
+            pending_sends[1].fulfill(status=200, content_type="application/json", body='{"id":1}')
+            pg.wait_for_timeout(300)
+            check(
+                "Chat: editing model during send preserves the new draft",
+                pg.input_value('[data-chat-form] textarea[name="text"]') == "next model",
+            )
+            pg.locator("#draft-fill-test").evaluate("el => el.remove()")
+            pg.unroute("**/chat/send", hold_send)
+            pg.route("**/chat/send", intercept)
             pg.locator("[data-chat]").evaluate(
                 "e => { const d=new DataTransfer(); d.setData('text/plain','https://vt.tiktok.com/ZSdropped/'); e.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:d})); }"
             )
@@ -877,6 +954,7 @@ def main():
             check("Chat: more than three files are refused in words", "Tối đa 3 tệp" in pg.inner_text("[data-chat-message]"))
             pg.unroute("**/chat/send", intercept)
 
+            check_owner_resolution(pg, base, Store(tmp), FakeAgent.calls, go, check)
             check("No console or page errors during flows", not errors, "; ".join(errors[:3]))
             ctx.close()
             browser.close()

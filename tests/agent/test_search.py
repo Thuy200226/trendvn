@@ -138,7 +138,7 @@ class SearchRoutingTests(StoreCase):
         self.assertEqual(_platforms("auto", [], False), ("douyin", "tiktok"))
         with self.assertRaises(ValueError):
             _platforms("douyin", [TIKTOK], False)
-        for source, links, human in (("instagram", [], False), ("auto", [], True), ("tiktok", "x", False)):
+        for source, links, human in (("unknown", [], False), ("auto", [], True), ("tiktok", "x", False)):
             with self.subTest(source=source), self.assertRaises(ValueError):
                 _platforms(source, links, human)
 

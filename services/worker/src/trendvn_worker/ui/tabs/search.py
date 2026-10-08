@@ -1,14 +1,20 @@
 """Tìm kiếm: one chat for everything about a product. The owner writes, pastes or attaches what they have; the answers (what the product
 is, which videos exist for it in their account, whether a pasted share link is that product) come back in the same thread."""
 
+import json
 import time
 
 from ...domain.channels import NAMES as CHANNEL_NAMES
+from ...domain.discovery import PRODUCT_CATEGORIES
+from ...domain.product_match import candidate_match
+from ...domain.topics import TOPIC_LABEL
+from ..controls import button, hidden, checkbox, textarea, input_control, copy_field
 from ..components import chip, select
 from ..format import ago, escape as E
+from ..messages import user_message
 
 ACCEPT = ".png,.jpg,.jpeg,.webp,.pdf,.docx,.txt"
-SOURCES = {"tiktok": "TikTok", "douyin": "Douyin", "auto": "TikTok + Douyin"}
+SOURCES = {"auto": "Các kênh đã đăng nhập", **CHANNEL_NAMES}
 VERDICTS = {
     "exact": ("Đúng sản phẩm", "good"),
     "found": ("Đã đọc sản phẩm", "info"),
@@ -44,21 +50,21 @@ def _working(text):
 
 
 def _failed(message, extra=""):
-    return '<p class="note warn" role="alert">%s</p>%s' % (E(message["body"].get("error") or "Chưa làm được"), extra)
+    return '<p class="note warn" role="alert">%s</p>%s' % (E(user_message(message["body"].get("error"), True)), extra)
 
 
 def _button(label, action, cls="ghost", aria=None, **data):
     """A button that asks the chat to do something. `aria` names it for a screen reader when the visible label alone is not enough
     (four identical 'Đăng nhập' buttons in a column)."""
-    attrs = "".join(' data-%s="%s"' % (k.replace("_", "-"), E(str(v))) for k, v in data.items())
-    named = ' aria-label="%s"' % E(aria) if aria else ""
-    return '<button type="button" class="%s" data-chat-act="%s"%s%s>%s</button>' % (cls, action, attrs, named, E(label))
+    attrs = {"data_" + k: v for k, v in data.items()}
+    return button(label, cls, type="button", data_chat_act=action, **attrs, aria_label=aria)
 
 
 def user_bubble(message, names, now):
     body = message["body"]
     files = "".join("<li>📎 %s</li>" % E(f["name"]) for f in body.get("files", []))
-    return '<div class="msg me"><div class="bubble"><p>%s</p>%s<small>@%s · %s</small></div></div>' % (
+    return '<div class="msg me" data-message-id="%s"><div class="bubble"><p>%s</p>%s<small>@%s · %s</small></div></div>' % (
+        message["id"],
         E(body.get("text", "")),
         '<ul class="files">%s</ul>' % files if files else "",
         E(names.get(message["account"], "?")),
@@ -81,15 +87,13 @@ def product_card(message):
     )
     queries = identity.get("queries", {})
     shown = "".join(
-        '<p class="small">%s: <code>%s</code></p>' % (label, E(queries[key]))
-        for key, label in (("tiktok", "TikTok"), ("douyin", "Douyin"))
-        if queries.get(key)
+        '<p class="small">%s: <code>%s</code></p>' % (label, E(queries[key])) for key, label in CHANNEL_NAMES.items() if queries.get(key)
     )
     notes = "".join('<p class="note warn">%s</p>' % E(w) for w in identity.get("warnings", []))
     origin = '<p class="small muted">Lấy từ link bạn dán (mã sản phẩm %s).</p>' % E(identity["product_id"]) if body.get("from_link") else ""
     actions = "".join(
         _button("Tìm video trên " + SOURCES[s], "find", "go" if s == "tiktok" else "ghost", id=message["id"], source=s)
-        for s in ("tiktok", "douyin")
+        for s in CHANNEL_NAMES
     )
     return (
         '<h4>%s</h4><div class="facts">%s</div>%s%s%s<p class="hint">%s</p><div class="btns two">%s</div>%s'
@@ -106,14 +110,23 @@ def candidate(item, job, message_id):
     link = '<a href="%s" target="_blank" rel="noopener noreferrer">Xem video để đối chiếu ↗</a>' % E(item["url"])
     head = '<p class="ttl">%s</p><p class="small">%s</p>%s' % (E(item.get("title") or "Video"), E(item["match"]["reason"]), link)
     if job:
-        return '<article class="card stack">%s<p class="hint">%s · %s</p></article>' % (head, E(job["state_label"]), E(job["reason"] or ""))
-    pick = (
-        '<label class="search-check"><input type="checkbox" data-chat-confirm> Tôi đã xem và xác nhận đúng sản phẩm, model và biến thể</label>'
-        + _button("Chọn và tải để xử lý", "pick", "go", id=message_id, source_id=item["source_id"], platform=item.get("platform", "tiktok"))
-    )
+        state = job.get("state")
+        return '<article class="card stack">%s<p class="hint">%s · %s</p><a class="next-link" href="#%s">%s →</a></article>' % (
+            head,
+            E(job.get("state_label") or ""),
+            E(user_message(job.get("reason") or "")),
+            "publish" if state in ("ready", "awaiting_approval") else "queue",
+            "Xem bản dựng" if state in ("ready", "awaiting_approval") else "Xem hàng chờ",
+        )
+    pick = checkbox(
+        "confirm_video", "Tôi đã xem và xác nhận đúng sản phẩm, model và biến thể", css="search-check", data_chat_confirm=True
+    ) + _button("Chọn và tải để xử lý", "pick", "go", id=message_id, source_id=item["source_id"], platform=item.get("platform", "tiktok"))
     return '<article class="card stack">%s%s</article>' % (
         head,
-        '<p class="note warn">Khác sản phẩm đã nhận diện.</p>' if different else pick,
+        ('<p class="note warn">Khác sản phẩm đã nhận diện.</p>' if different else pick)
+        + _button(
+            "Bỏ ứng viên", "dismiss", "ghost danger", id=message_id, source_id=item["source_id"], platform=item.get("platform", "tiktok")
+        ),
     )
 
 
@@ -123,7 +136,7 @@ def videos_card(message, picked, product_id):
     if _busy(message):
         return "<h4>Video cho %s</h4>%s" % (
             E(where),
-            _working("Đang tìm trong phiên TikTok/Douyin của tài khoản này; có thể mất vài phút. Có thể tiếp tục gửi tin khác."),
+            _working("Đang tìm trên nguồn đã chọn bằng phiên của tài khoản này; có thể mất vài phút. Có thể tiếp tục gửi tin khác."),
         )
     if message["state"] == "error":
         retry = "".join(_button(label, "find", "ghost", id=body.get("product", product_id), source=s, **extra) for label, s, extra in (
@@ -139,7 +152,7 @@ def videos_card(message, picked, product_id):
         return '<h4>Video cho %s</h4>%s<div class="btns">%s%s</div>' % (E(where), _failed(message), retry, sign_in)
     cards = "".join(
         candidate(
-            i,
+            dict(i, match=candidate_match(body.get("identity", {}), i)),
             next(
                 (
                     j
@@ -187,9 +200,8 @@ def link_card(message):
         return head
     if body.get("saved"):
         return head + (
-            '<p class="note">Đã lưu link cho sản phẩm này%s.</p><div class="copy"><input readonly value="%s" aria-label="Link đã lưu">'
-            '<button type="button" class="ghost" data-copy>Chép link</button></div>'
-            % (" (link thường, không có dấu hiệu hoa hồng)" if result["kind"] == "plain" else "", E(found["input"]))
+            '<p class="note">Đã lưu link cho sản phẩm này%s.</p>%s'
+            % (" (link thường, không có dấu hiệu hoa hồng)" if result["kind"] == "plain" else "", copy_field(found["input"]))
         )
     return head + (
         '<p class="small muted">Mình không đăng nhập Shop/Affiliate của bạn nên không tự biết link này có phải của bạn. '
@@ -236,13 +248,29 @@ def bot_bubble(message, data):
         inner = login_card(message)
     else:
         inner = "<p>%s</p>" % E(message["body"].get("text", ""))
-    return '<div class="msg bot" data-state="%s"><div class="bubble stack">%s</div></div>' % (message["state"], inner)
+    delete = (
+        ""
+        if _busy(message)
+        else _button(
+            "Xóa lượt này",
+            "delete_history",
+            "ghost danger",
+            id=message["id"],
+            ask="Xóa riêng lượt này khỏi lịch sử? Video đã chọn vẫn giữ.",
+        )
+    )
+    return '<div class="msg bot" data-message-id="%s" data-state="%s"><div class="bubble stack">%s%s</div></div>' % (
+        message["id"],
+        message["state"],
+        inner,
+        delete,
+    )
 
 
 def chat_thread(data, now=None):
     """The messages, oldest first. `data-busy` tells the page whether to keep polling."""
     now = now or time.time()
-    busy = any(_busy(m) for m in data["messages"])
+    busy = any(_busy(m) for m in data["messages"]) or any(job.get("downloading", False) for jobs in data["picked"].values() for job in jobs)
     rows = (
         "".join(user_bubble(m, data["accounts"], now) if m["role"] == "user" else bot_bubble(m, data) for m in data["messages"])
         or '<div class="msg bot"><div class="bubble stack">%s</div></div>' % WELCOME
@@ -272,12 +300,10 @@ def _saved_rows(account, links):
     rows = []
     for link in links:
         rows.append(
-            '<div class="saved"><p class="ttl">%s</p><div class="copy"><input readonly value="%s" aria-label="Link đã lưu">'
-            '<button type="button" class="ghost" data-copy aria-label="Chép link: %s">Chép link</button></div>%s</div>'
+            '<div class="saved"><p class="ttl">%s</p>%s%s</div>'
             % (
                 E((link.get("title") or "Sản phẩm " + link["product_id"])[:90]),
-                E(link["url"]),
-                E((link.get("title") or link["product_id"])[:60]),
+                copy_field(link["url"], (link.get("title") or link["product_id"])[:60]),
                 _button(
                     "Xóa link này",
                     "forget",
@@ -316,7 +342,7 @@ def chat_side(data, now=None):
     return (
         '<aside id="chat-side" class="stack">'
         '<section class="card stack"><h3>Kênh tìm kiếm</h3>'
-        '<p class="hint">TikTok và Douyin chỉ cho tìm video khi đã đăng nhập. Cửa sổ đăng nhập mở trên máy chạy TrendVN; bạn tự đăng nhập '
+        '<p class="hint">Tìm video trên bốn nguồn dùng phiên đã đăng nhập của hồ sơ tương ứng. Cửa sổ đăng nhập mở trên máy chạy TrendVN; bạn tự đăng nhập '
         "(quét mã QR hoặc số điện thoại), hệ thống không nhập mật khẩu hộ và chỉ nhớ phiên trong hồ sơ trình duyệt riêng của tài khoản.</p>%s</section>"
         '<section class="card stack"><h3>Link hoa hồng đã lưu</h3>%s</section>'
         '<section class="card stack"><h3>Lịch sử tìm kiếm</h3><p class="hint">Xóa các tin đã xong trong khung chat. Link đã lưu, video đã chọn '
@@ -342,23 +368,36 @@ def composer(view):
     accounts = [(a["id"], "@" + a["username"]) for a in view.d["accounts"] if a["enabled"]]
     if not accounts:
         return '<p class="note warn">Chưa có tài khoản nào đang bật. Thêm tài khoản ở mục Thêm trước khi tìm.</p>'
+    topics = {a["id"]: next((t for t in a.get("topics", []) if t in TOPIC_LABEL), "") for a in view.d["accounts"] if a["enabled"]}
+    chosen = '<div class="discovery-options" data-account-topics="%s">' % E(json.dumps(topics))
+    chosen += '<label class="acc-pick">Tài khoản nhận video%s</label>' % select("account", accounts[0][0], accounts)
+    chosen += "<label>Nguồn tìm video%s</label>" % select("source", "auto", SOURCES.items())
+    chosen += "<label>Thể loại%s</label>" % select("topic", topics[accounts[0][0]], [("", "Không giới hạn"), *TOPIC_LABEL.items()])
+    chosen += checkbox("sales", "Tìm video bán hàng", css="search-check", data_sales_toggle=True)
+    chosen += "<label data-sales-category hidden>Ngành hàng%s</label></div>" % select(
+        "category", "", [("", "Chọn ngành hàng"), *((k, v[0]) for k, v in PRODUCT_CATEGORIES.items())]
+    )
+    compose = button("", "ghost attach icon-only", "clip", type="button", data_chat_attach=True, aria_label="Đính kèm ảnh hoặc tài liệu")
+    compose += textarea(
+        "text", rows=2, maxlength=12000, aria_label="Tin nhắn", placeholder="Tên/model, từ khóa, link, hoặc dán/thả ảnh, PDF, DOCX…"
+    )
+    compose += button("Tìm video", "go send")
     return (
-        '<form class="composer" data-chat-form><input type="hidden" name="csrf" value="%s">'
-        '<label class="acc-pick">Gửi cho tài khoản%s</label><ul class="files" data-chat-files></ul>'
-        '<div class="compose-row"><button type="button" class="ghost attach" data-chat-attach aria-label="Đính kèm ảnh hoặc tài liệu">📎</button>'
-        '<textarea name="text" rows="2" maxlength="12000" aria-label="Tin nhắn" '
-        'placeholder="Tên/model, link, hoặc dán/thả ảnh, PDF, DOCX…"></textarea><button class="go send" type="submit">Gửi</button></div>'
-        '<input type="file" name="files" multiple accept="%s" hidden>'
-        '<p class="small muted">Tối đa 3 tệp, 4 MiB/tệp, tổng 8 MiB. Ctrl/⌘+Enter để gửi. Ảnh, tài liệu và nội dung trang của link bạn gửi được chuyển cho Gemini (Google) để nhận diện; hệ thống không lưu chúng.</p>'
+        '<form class="composer" data-chat-form>%s%s<ul class="files" data-chat-files></ul>'
+        '<div class="compose-row">%s</div>%s'
+        '<p class="small muted">Thể loại, từ khóa và sản phẩm được đưa vào tìm video trên nền tảng. Tối đa 3 tệp, 4 MiB/tệp, tổng 8 MiB. Ctrl/⌘+Enter để gửi. Ảnh/tài liệu được chuyển cho Gemini (Google) để nhận diện; không lưu tệp.</p>'
         '<p role="status" aria-live="polite" data-chat-message></p></form>'
-    ) % (view.csrf, select("account", accounts[0][0], accounts), ACCEPT)
+    ) % (hidden("csrf", view.csrf), chosen, compose, input_control("files", type="file", multiple=True, accept=ACCEPT, hidden=True))
 
 
 def render(view):
     chat = view.d.get("chat") or EMPTY
-    return '<div class="chat-layout" data-chat data-csrf="%s"><div class="card chat stack"><h2>Tìm sản phẩm</h2>%s%s</div>%s</div>' % (
-        E(view.csrf),
-        chat_thread(chat, view.now),
-        composer(view),
-        chat_side(chat, view.now),
+    return (
+        '<div id="search" class="chat-layout" data-chat data-csrf="%s"><div class="card chat stack"><h3>Tìm video và sản phẩm</h3>%s%s</div>%s</div>'
+        % (
+            E(view.csrf),
+            chat_thread(chat, view.now),
+            composer(view),
+            chat_side(chat, view.now),
+        )
     )

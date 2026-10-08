@@ -18,7 +18,8 @@ from ..components import (
     text_input,
 )
 from ..format import ago, escape as E, windows_text
-from . import accounts
+from ..controls import button, hidden, input_control, textarea
+from . import accounts, home
 from ..labels import EVENT_LABELS, PLATFORM, STATE_LABELS, vi_reason
 
 
@@ -208,56 +209,58 @@ def _gemini_group(view):
 
 def settings_form(view):
     groups = (_automation_group(view), _schedule_group(view), _selection_group(view), _threshold_group(view), _gemini_group(view))
-    return (
-        '<form method="post" action="/settings" class="settings stack"><input type="hidden" name="csrf" value="%s"><input type="hidden" name="next" value="settings">%s'
-        '<div class="btns"><button class="go">Lưu cài đặt</button></div></form>'
-    ) % (view.csrf, "".join(groups))
+    controls = hidden("csrf", view.csrf) + hidden("next", "settings")
+    return '<form method="post" action="/settings" class="settings stack">%s%s<div class="btns">%s</div></form>' % (
+        controls,
+        "".join(groups),
+        button("Lưu cài đặt"),
+    )
 
 
 def gemini_key_form(view):
     d = view.d
     audio = '<audio controls preload="none" src="/media/voice-sample"></audio>' if d.get("voice_sample") else ""
+    key = field("Gemini API key (để trống để giữ khóa hiện tại)", input_control("key", type="password", autocomplete="off"))
     return (
-        '<form method="post" action="/setup" class="stack"><input type="hidden" name="csrf" value="%s">'
-        '<p class="muted">Khóa được lưu trong <code>data/worker/gemini.key</code>, không gửi vào n8n hay nhật ký. %s</p>'
-        '%s<div class="btns"><button class="go">Lưu khóa</button></div></form>'
-        '<form method="post" action="/voice-test"><input type="hidden" name="csrf" value="%s"><div class="btns">'
-        '<button class="ghost" title="Dùng 1 lượt gọi Gemini">🔊 Nghe thử giọng đọc</button></div></form>%s'
+        '<form method="post" action="/setup" class="stack">%s'
+        '<p class="muted">Khóa được lưu trong <code>data/worker/gemini.key</code>, không gửi vào n8n hay nhật ký. %s</p>%s<div class="btns">%s</div></form>'
+        '<form method="post" action="/voice-test">%s<div class="btns">%s</div></form>%s'
     ) % (
-        view.csrf,
+        hidden("csrf", view.csrf),
         "Đã có khóa." if d["gemini_configured"] else "Chưa có khóa.",
-        field("Gemini API key (để trống để giữ khóa hiện tại)", '<input type="password" name="key" autocomplete="off">'),
-        view.csrf,
+        key,
+        button("Lưu khóa"),
+        hidden("csrf", view.csrf),
+        button("🔊 Nghe thử giọng đọc", "ghost", title="Dùng 1 lượt gọi Gemini"),
         audio,
     )
 
 
+def _private_field(name, label, placeholder):
+    return field(label, input_control(name, type="password", autocomplete="off", placeholder=placeholder))
+
+
 def notify_form(view):
-    telegram = field(
-        "Bot token", '<input type="password" name="telegram_token" autocomplete="off" placeholder="để trống để giữ nguyên">'
-    ) + field("Chat id", '<input name="telegram_chat" autocomplete="off" inputmode="text" placeholder="-100123456 hoặc @kenh">')
+    telegram = _private_field("telegram_token", "Bot token", "để trống để giữ nguyên")
+    telegram += field("Chat id", input_control("telegram_chat", autocomplete="off", inputmode="text", placeholder="-100123456 hoặc @kenh"))
+    groups = fieldset("Telegram", telegram)
+    groups += fieldset("Discord / Slack (webhook https)", _private_field("webhook", "Địa chỉ webhook", "https://..."), False)
+    groups += fieldset("ntfy (https)", _private_field("ntfy", "Địa chỉ chủ đề", "https://ntfy.sh/ten-rieng"), False)
+    token = hidden("csrf", view.csrf)
     return (
         '<p class="muted">Kênh đang dùng: <b>%s</b>. Thông báo gửi khi có video cần duyệt, đăng xong, lỗi hoặc bài chưa xác nhận.</p>'
-        '<form method="post" action="/notify-save" class="stack"><input type="hidden" name="csrf" value="%s">%s%s%s'
-        '<div class="btns"><button class="go">Lưu kênh thông báo</button></div></form>'
-        '<div class="btns two"><form method="post" action="/notify-test"><input type="hidden" name="csrf" value="%s"><button class="ghost">Gửi tin thử</button></form>'
-        '<form method="post" action="/notify-clear"><input type="hidden" name="csrf" value="%s"><button class="ghost">Xóa các kênh</button></form></div>'
+        '<form method="post" action="/notify-save" class="stack">%s%s<div class="btns">%s</div></form>'
+        '<div class="btns two"><form method="post" action="/notify-test">%s%s</form>'
+        '<form method="post" action="/notify-clear">%s%s</form></div>'
     ) % (
         E(", ".join(view.d["notify_channels"]) or "chưa cấu hình"),
-        view.csrf,
-        fieldset("Telegram", telegram),
-        fieldset(
-            "Discord / Slack (webhook https)",
-            field("Địa chỉ webhook", '<input type="password" name="webhook" autocomplete="off" placeholder="https://...">'),
-            False,
-        ),
-        fieldset(
-            "ntfy (https)",
-            field("Địa chỉ chủ đề", '<input type="password" name="ntfy" autocomplete="off" placeholder="https://ntfy.sh/ten-rieng">'),
-            False,
-        ),
-        view.csrf,
-        view.csrf,
+        token,
+        groups,
+        button("Lưu kênh thông báo"),
+        token,
+        button("Gửi tin thử", "ghost"),
+        token,
+        button("Xóa các kênh", "ghost"),
     )
 
 
@@ -276,11 +279,27 @@ def event_log(view):
 
 
 def manual_import(view):
-    return (
-        '<form method="post" action="/ingest-form" class="stack"><input type="hidden" name="csrf" value="%s">'
-        '<textarea name="batch" rows="5" placeholder=\'{"platform":"douyin","stream":"hot_music","observed_at":0,"items":[]}\'></textarea>'
-        '<div class="btns"><button class="ghost">Kiểm tra và nhập</button></div></form>'
-    ) % view.csrf
+    controls = hidden("csrf", view.csrf) + textarea(
+        "batch", rows=5, placeholder='{"platform":"douyin","stream":"hot_music","observed_at":0,"items":[]}'
+    )
+    return '<form method="post" action="/ingest-form" class="stack">%s<div class="btns">%s</div></form>' % (
+        controls,
+        button("Kiểm tra và nhập", "ghost"),
+    )
+
+
+def task_journal(view):
+    """Raw diagnostics are opt-in and escaped; they never dictate the current state."""
+    parts = []
+    for task in view.d.get("task_journal", []):
+        evidence = "\n".join(
+            [task.get("error") or "", *["%s: %s" % (step.get("name", ""), step.get("detail", "")) for step in task.get("steps", [])]]
+        ).strip()
+        parts.append(
+            '<details class="fs"><summary>%s · %s · %s</summary><pre class="diagnostic">%s</pre></details>'
+            % (E(task["kind"]), E(task["state"]), ago(task["started"], view.now), E(evidence))
+        )
+    return '<div class="stack"><p class="hint">Lịch sử chẩn đoán; lỗi cũ không phản ánh trạng thái hiện tại.</p>%s</div>' % "".join(parts)
 
 
 def render(view):
@@ -291,7 +310,14 @@ def render(view):
             accordion("sources", "Nguồn thu thập", sources(view)),
             accordion("settings", "Cài đặt", settings_form(view) + '<h3 class="sub">Khóa Gemini và giọng đọc</h3>' + gemini_key_form(view)),
             accordion("notify", "Thông báo điện thoại", notify_form(view)),
-            accordion("log", "Nhật ký", event_log(view)),
+            accordion("log", "Nhật ký", event_log(view) + task_journal(view)),
+            accordion(
+                "automation",
+                "Thiết lập và lịch tự động",
+                home.setup_card(view)
+                + home.schedule(view)
+                + '<p><a href="%s" target="_blank" rel="noopener">Mở n8n ↗</a></p>' % E(view.n8n_url),
+            ),
             accordion("advanced", "Nâng cao: nhập quan sát bằng tay", manual_import(view)),
         )
     )

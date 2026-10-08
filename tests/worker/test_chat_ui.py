@@ -50,14 +50,14 @@ class ThreadTests(unittest.TestCase):
         html = render(message(1, "product", {}, state="running"))
         self.assertIn('data-busy="1"', html)
         self.assertIn("Đang nhận diện", html)
-        self.assertNotIn("data-chat-act", html)
+        self.assertNotIn('data-chat-act="confirm"', html)
 
     def test_a_recognised_product_offers_searches_and_a_correction(self):
         html = render(message(2, "product", {"identity": identity(warnings=["Ảnh khác tên bạn nhập"])}))
         self.assertIn("MCHOSE ACE68", html)
         self.assertIn("Ảnh khác tên bạn nhập", html)
         actions = re.findall(r'data-chat-act="(\w+)"', html)
-        self.assertEqual(sorted(actions), ["fill", "find", "find"])
+        self.assertEqual(sorted(actions), ["delete_history", "fill", "find", "find", "find", "find"])
         self.assertIn('data-source="douyin"', html)
         self.assertIn('data-id="2"', html)
 
@@ -90,11 +90,21 @@ class VideoTests(unittest.TestCase):
         self.assertNotIn('data-chat-act="pick"', html)
         self.assertIn("Khác sản phẩm đã nhận diện", html)
 
+    def test_old_result_cards_recheck_a_stored_match_without_another_platform_search(self):
+        html = render(message(3, "videos", self.videos(results=[result(title="迈从ACE75 对比 ACE68")])))
+        self.assertNotIn('data-chat-act="pick"', html)
+        self.assertIn("model khác cùng dòng", html)
+
     def test_a_picked_candidate_shows_where_the_download_has_got_to_instead_of_the_button(self):
         picked = {"3": [{"source_id": "1234567890", "platform": "tiktok", "state_label": "Chờ tải video đã chọn", "reason": "Bạn đã chọn"}]}
         html = render(message(3, "videos", self.videos()), picked=picked)
         self.assertIn("Chờ tải video đã chọn", html)
         self.assertNotIn('data-chat-act="pick"', html)
+
+    def test_polling_tracks_a_download_task_and_stops_after_failure_or_completion(self):
+        job = {"source_id": "1234567890", "platform": "tiktok", "state_label": "Chờ tải", "reason": "", "downloading": True}
+        self.assertIn('data-busy="1"', render(message(3, "videos", self.videos()), picked={"3": [job]}))
+        self.assertIn('data-busy="0"', render(message(3, "videos", self.videos()), picked={"3": [dict(job, downloading=False)]}))
 
     def test_a_failed_search_offers_a_retry_and_the_owners_own_verification_window(self):
         html = render(message(3, "videos", self.videos(error="TikTok yêu cầu xác minh"), state="error"))
@@ -146,7 +156,7 @@ class LinkTests(unittest.TestCase):
         for verdict, label in (("different", "Sản phẩm khác"), ("invalid", "Không hợp lệ")):
             html = render(self.link(verdict))
             self.assertIn(label, html)
-            self.assertNotIn("data-chat-act", html)
+            self.assertNotIn('data-chat-act="confirm"', html)
             self.assertNotIn("data-copy", html)
 
     def test_a_plain_link_that_was_kept_says_it_carries_no_commission_mark(self):
@@ -169,7 +179,7 @@ class LinkTests(unittest.TestCase):
             message(4, "link", {"url": "https://vt.tiktok.com/ZSv/", "video": "https://www.tiktok.com/@a/video/1234567890", "product": 5})
         )
         self.assertIn("một <b>video</b>", html)
-        self.assertNotIn("data-chat-act", html)
+        self.assertNotIn('data-chat-act="confirm"', html)
 
     def test_the_composer_tells_the_owner_what_goes_to_google(self):
         from trendvn_worker.ui.tabs import search
@@ -184,7 +194,7 @@ class LinkTests(unittest.TestCase):
         self.assertIn("Đang kiểm tra link", render(message(4, "link", {"url": "x"}, state="running")))
         html = render(message(4, "link", {"url": "x", "error": "Chỉ nhận đường dẫn https của TikTok"}, state="error"))
         self.assertIn("Chỉ nhận đường dẫn", html)
-        self.assertNotIn("data-chat-act", html)
+        self.assertNotIn('data-chat-act="confirm"', html)
 
 
 class SignInTests(unittest.TestCase):
@@ -206,8 +216,11 @@ class SignInTests(unittest.TestCase):
         for words in ("@chu_shop", "@pets_shop", "Đòi xác minh", "Sẵn sàng", "2 phút trước", "2 giờ trước", "Chưa kiểm"):
             self.assertIn(words, html)
         logins = re.findall(r'data-chat-act="login" data-channel="(\w+)" data-account="(\w+)"', html)
-        self.assertEqual(sorted(logins), [("douyin", "main"), ("douyin", "pets"), ("tiktok", "main"), ("tiktok", "pets")])
-        self.assertEqual(len(re.findall(r'data-chat-act="check"', html)), 4)
+        self.assertEqual(
+            sorted(logins),
+            [(channel, account) for channel in ("douyin", "instagram", "kuaishou", "tiktok") for account in ("main", "pets")],
+        )
+        self.assertEqual(len(re.findall(r'data-chat-act="check"', html)), 8)
 
     def test_identical_buttons_are_told_apart_for_a_screen_reader(self):
         html = self.side({}, {"main": [{"title": "Bàn phím", "url": "https://vt.tiktok.com/ZS/", "product_id": "1729384756102938475"}]})
@@ -311,8 +324,10 @@ class PageTests(StoreCase):
 
     def test_the_search_tab_is_in_the_navigation_and_holds_the_composer(self):
         html = self.page()
-        self.assertIn('data-go="search"', html)
-        self.assertIn('<section data-tab="search" id="search"', html)
+        self.assertNotIn('data-go="search"', html)
+        self.assertIn('data-go="queue"', html)
+        self.assertIn('<section data-tab="queue" id="queue"', html)
+        self.assertIn('<div id="search"', html)
         self.assertIn("data-chat-form", html)
         self.assertIn('data-csrf="CSRFX"', html)
         self.assertNotIn("data-search-form", html)

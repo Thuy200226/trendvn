@@ -1,11 +1,16 @@
 """What the product chat accepts from the page: a message (words, links, photos, documents) and an action on one of the answers.
 Both arrive as JSON from the page's script and are checked here; the handler has already checked origin and CSRF."""
 
+import re
+import threading
+
+from ..domain import discovery
 from ..domain.channels import CHANNELS
 from ..domain.product_links import product_link
 from ..domain.product_search import validate_input
 
-SOURCES = ("auto", "tiktok", "douyin")
+SOURCES = ("auto", "tiktok", "douyin", "kuaishou", "instagram")
+SEND_LOCK = threading.Lock()
 SAID_LIMIT = 1000  # of the owner's words kept in the log; the full text only goes to the job that reads it
 
 
@@ -40,17 +45,34 @@ def _start(app, mid, kind, key=None, reference=None, discard=False):
 
 
 def send(app, payload):
+    key = payload.get("request_key")
+    if key is not None and (not isinstance(key, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{16,80}", key)):
+        raise ValueError("Mã yêu cầu không hợp lệ")
+    account = _account(app, payload)
+    with SEND_LOCK:
+        old = app.store.chat_request(key) if key else None
+        if old:
+            if old["account"] != account:
+                raise ValueError("Yêu cầu này thuộc tài khoản khác")
+            return {"id": old["id"]}
+        return _send(app, payload, account, key)
+
+
+def _send(app, payload, account, key):
     """A message from the owner. A TikTok product link (without files) is checked as a share link against the product in the chat;
     anything else describes a product to recognise."""
+    chosen = discovery.options(payload)
     reference = validate_input(payload)
     if not reference["text"] and not reference["files"]:
+        reference["text"] = discovery.fallback_text(chosen)
+    if not reference["text"] and not reference["files"]:
         raise ValueError("Hãy nhập mô tả, dán link hoặc thêm ảnh/tài liệu")
-    account = _account(app, payload)
     link = None if reference["files"] else product_link(reference["text"])
     if link:
-        mid = app.store.chat_ask(account, _said(reference, link), "link", {"url": link["url"]})
+        mid = app.store.chat_ask(account, _said(reference, link), "link", {"url": link["url"]}, request_key=key)
         return _start(app, mid, "link")
-    mid = app.store.chat_ask(account, _said(reference, None), "product", {})
+    body = {"discovery": chosen, "account_username": app.store.account(account)["username"]} if "source" in payload else {}
+    mid = app.store.chat_ask(account, _said(reference, None), "product", body, request_key=key)
     return _start(app, mid, "identify", reference=reference)
 
 
@@ -61,14 +83,24 @@ def find(app, payload):
         raise ValueError("Chưa có sản phẩm đã nhận diện để tìm")
     source, human = payload.get("source", "auto"), payload.get("human") is True
     if source not in SOURCES or (human and source == "auto"):
-        raise ValueError("Chọn TikTok hoặc Douyin")
+        raise ValueError("Chọn một nguồn tìm kiếm")
     account = _account(app, payload, product["account"])
     body = {
         "identity": product["body"]["identity"], "source": source, "human": human, "product": product["id"],
         "account_username": app.store.account(account)["username"], "results": [], "note": "",
+        "discovery": product["body"].get("discovery", {}),
+        "turn_id": product["body"].get("turn_id", product["id"]),
     }  # fmt: skip
     mid = app.store.chat_add("bot", "videos", body, state="running", account=account)
     return _start(app, mid, "search_human" if human else "search", discard=True)
+
+
+def delete_history(app, payload):
+    return app.store.chat_forget(_message_id(payload))
+
+
+def dismiss(app, payload):
+    return app.store.videos_dismiss(_message_id(payload), payload.get("platform"), payload.get("source_id"))
 
 
 def pick(app, payload):
@@ -135,7 +167,17 @@ def forget(app, payload):
     return {"ok": True}
 
 
-ACTIONS = {"find": find, "pick": pick, "confirm": confirm, "login": login, "check": check, "clear": clear, "forget": forget}
+ACTIONS = {
+    "find": find,
+    "pick": pick,
+    "confirm": confirm,
+    "login": login,
+    "check": check,
+    "clear": clear,
+    "forget": forget,
+    "delete_history": delete_history,
+    "dismiss": dismiss,
+}
 
 
 def act(app, payload):

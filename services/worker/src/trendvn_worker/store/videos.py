@@ -7,19 +7,42 @@ import time
 import uuid
 
 from ..domain.platforms import canonical_url, COUNTRIES
-from ..domain.product_match import match_identity
+from ..domain.product_match import match_identity, candidate_match
 
 MAX_RESULTS = 20
 
 
 class VideosMixin:
-    def videos_rank(self, mid, items):
+    def videos_new(self, items):
+        """Filter a new answer against every existing job without touching selected answers or job state."""
+        items = items[:40]
+        if not items:
+            return [], 0
+        keys = [(i.get("platform", "tiktok"), i["source_id"]) for i in items]
+        urls = [i["url"] for i in items]
+        key_slots = ",".join("(?,?)" for _ in keys)
+        url_slots = ",".join("?" for _ in urls)
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT platform,source_id,url FROM jobs WHERE (platform,source_id) IN (%s) OR url IN (%s)" % (key_slots, url_slots),
+                [value for pair in keys for value in pair] + urls,
+            ).fetchall()
+        known = {(row[0], row[1]) for row in rows}
+        known_urls = {row[2] for row in rows}
+        new = [i for i in items if (i.get("platform", "tiktok"), i["source_id"]) not in known and i["url"] not in known_urls]
+        return new, len(items) - len(new)
+
+    def videos_rank(self, mid, items, limit=MAX_RESULTS):
         """The candidates an agent reported, as the chat shows them: each judged against the product, best first, different products last."""
-        identity = self.chat_get(mid)["body"].get("identity", {})
-        out = []
+        body = self.chat_get(mid)["body"]
+        identity = body.get("identity", {})
+        out, seen = [], set()
         for item in items[:40]:
             source_id = item.get("source_id")
             if not isinstance(source_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", source_id):
+                continue
+            key = (item.get("platform", "tiktok"), source_id)
+            if key in seen:
                 continue
             candidate = {k: item.get(k) for k in ("source_id", "title", "platform", "media", "duration", "product_id")}
             try:
@@ -27,8 +50,55 @@ class VideosMixin:
             except (ValueError, KeyError, AttributeError, TypeError):
                 continue  # one video the agent described badly is left out, not a reason to lose the others
             candidate["match"] = match_identity(identity, item.get("title", ""), str(item.get("product_id") or ""))
+            for metric in ("views", "likes"):
+                value = item.get(metric)
+                candidate[metric] = value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value < 10**12 else None
+            seen.add(key)
             out.append(candidate)
-        return sorted(out, key=lambda i: i["match"]["score"], reverse=True)[:MAX_RESULTS]
+        sales = (body.get("discovery") or {}).get("sales", False)
+        return sorted(
+            out, key=lambda i: (i["match"]["score"], (i["views"] or 0) if sales else 0, (i["likes"] or 0) if sales else 0), reverse=True
+        )[:limit]
+
+    def videos_dismiss(self, mid, platform, source_id):
+        """Do not remove the source information while a selected video's download still needs it."""
+        with self.transaction() as db:
+            row = db.execute("SELECT kind,state,body FROM chat WHERE id=?", (mid,)).fetchone()
+            if not row or row["kind"] != "videos" or row["state"] != "done":
+                raise ValueError("Lượt tìm chưa hoàn tất")
+            if db.execute(
+                "SELECT 1 FROM jobs WHERE search_id=? AND platform=? AND source_id=?", (str(mid), platform, source_id)
+            ).fetchone():
+                raise ValueError("Video đã được chọn; dùng Bỏ chờ trong hàng đợi")
+            body = json.loads(row["body"])
+            items = body.get("results", [])
+            remaining = [i for i in items if (i.get("platform"), i.get("source_id")) != (platform, source_id)]
+            if len(remaining) == len(items):
+                raise ValueError("Không có ứng viên này")
+            item = next(i for i in items if (i.get("platform"), i.get("source_id")) == (platform, source_id))
+            url = canonical_url(platform, item["url"])
+            if not db.execute("SELECT 1 FROM jobs WHERE (platform=? AND source_id=?) OR url=?", (platform, source_id, url)).fetchone():
+                now = time.time()
+                db.execute(
+                    "INSERT INTO jobs(id,platform,source_id,url,country,title,first_seen,last_seen,state,reason,updated) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        uuid.uuid4().hex,
+                        platform,
+                        source_id,
+                        url,
+                        COUNTRIES[platform],
+                        item.get("title") or "Video đã bỏ",
+                        now,
+                        now,
+                        "rejected",
+                        "Bạn đã bỏ ứng viên tìm kiếm; không lấy lại",
+                        now,
+                    ),
+                )
+            body["results"] = remaining
+            db.execute("UPDATE chat SET body=? WHERE id=?", (json.dumps(body, ensure_ascii=False), mid))
+        return {"id": mid}
 
     def _videos_message(self, mid):
         message = self.chat_get(mid)
@@ -52,12 +122,16 @@ class VideosMixin:
         if len(matches) != 1:
             raise ValueError("Cần chọn đúng nguồn và video trong kết quả")
         item = matches[0]
-        if item["match"]["level"] == "different":
+        if candidate_match(body.get("identity", {}), item)["level"] == "different":
             raise ValueError("Video thuộc sản phẩm khác; không thể chọn")
         sid = str(mid)
         with self.transaction() as db:
-            if not db.execute("SELECT 1 FROM accounts WHERE id=?", (message["account"],)).fetchone():
-                raise ValueError("Tài khoản đã bị xóa")
+            fresh = db.execute("SELECT body,state FROM chat WHERE id=?", (mid,)).fetchone()
+            account = db.execute("SELECT username FROM accounts WHERE id=?", (message["account"],)).fetchone()
+            if not fresh or fresh["state"] != "done" or json.loads(fresh["body"]) != body:
+                raise ValueError("Kết quả vừa thay đổi; hãy tải lại trước khi chọn")
+            if not account or account[0] != body.get("account_username"):
+                raise ValueError("Tài khoản đã thay đổi; hãy tìm lại")
             row = db.execute("SELECT id,search_id FROM jobs WHERE url=?", (item["url"],)).fetchone()
             if row:
                 if row["search_id"] != sid:

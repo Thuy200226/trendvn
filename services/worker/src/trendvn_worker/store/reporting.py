@@ -8,7 +8,9 @@ from ..domain.accounts import effective
 # columns of a job shown in lists on the dashboard
 # the Vietnamese caption the analysis wrote (lists show it before the source title, which is Chinese for most videos); a damaged analysis gives NULL
 CAPTION_VI = "CASE WHEN json_valid(analysis) THEN json_extract(analysis,'$.caption_vi') END AS caption_vi"
-JOB_COLUMNS = "id,platform,title,state,reason,route,meta,url,updated,first_seen,duration,topic,topic_hint," + CAPTION_VI
+JOB_COLUMNS = (
+    "id,platform,title,state,reason,route,meta,url,updated,first_seen,duration,topic,topic_hint,search_id,search_account," + CAPTION_VI
+)
 # settings the dashboard page needs (a subset of all settings)
 DASHBOARD_SETTINGS = (
     "daily_limit", "min_publish_gap", "post_windows", "max_age_days", "max_duration", "max_candidates_per_scan", "max_backlog",
@@ -59,8 +61,14 @@ class ReportingMixin:
         cfg = self.settings()
         in_window, next_window = self.window_state(cfg)
         with self.connect() as db:
+            deletions = [
+                dict(row)
+                for row in db.execute("""SELECT j.id,j.title,j.account,j.target,j.publish_url,d.state delete_state,d.reason delete_reason
+                FROM post_deletions d JOIN jobs j ON j.id=d.job_id WHERE d.state='unknown' ORDER BY d.updated""")
+            ]
             data = dict(
                 status,
+                uncertain_deletions=deletions,
                 review=self._jobs_in(db, ("needs_review",)),
                 approval=self._jobs_in(db, ("awaiting_approval",)),
                 queue=self._queue(db),
@@ -98,7 +106,7 @@ class ReportingMixin:
     def _candidates(db):
         """Videos found but not downloaded yet, best score first."""
         sql = (
-            "SELECT %s FROM jobs WHERE state='candidate' ORDER BY COALESCE(json_extract(meta,'$.score'),0) DESC, first_seen LIMIT 20"
+            "SELECT %s FROM jobs WHERE state IN ('candidate','search_selected','awaiting_media') ORDER BY COALESCE(json_extract(meta,'$.score'),0) DESC, first_seen LIMIT 20"
             % JOB_COLUMNS
         )
         return [dict(row) for row in db.execute(sql)]

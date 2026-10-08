@@ -7,7 +7,7 @@ from ..capture import Blocked, looks_blocked
 from ..download import ytdlp_meta
 from ..normalize import to_int
 
-CDN = ()  # reels are fetched through yt-dlp from the reel page, never from a direct media URL
+CDN = ("cdninstagram.com", "fbcdn.net")  # authenticated search responses can also supply direct video media
 
 
 def parse_instagram_codes(text):

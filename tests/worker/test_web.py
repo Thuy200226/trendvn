@@ -201,6 +201,10 @@ class LocalServerTests(unittest.TestCase):
         status, headers, body = self.srv.req("GET", "/fragment/tasks")
         self.assertEqual(status, 200)
         self.assertIn(b"taskpanel", body)
+        status, headers, body = self.srv.req("GET", "/fragment/queue")
+        self.assertEqual(status, 200)
+        self.assertIn(b'id="queue-live"', body)
+        self.assertNotIn(b"data-chat-form", body)
 
     def test_malformed_requests_do_not_kill_the_server(self):
         for raw in (
@@ -349,6 +353,7 @@ class RemoteAccessTests(unittest.TestCase):
                 "/?x=1",
                 "/index",
                 "/fragment/tasks",
+                "/fragment/queue",
                 "/api/tasks",
                 "/api/dashboard",
                 "/api/status",

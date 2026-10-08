@@ -2,6 +2,7 @@
 
 from ...domain import topics
 from ..components import chip, field, number_input, select, text_input
+from ..controls import button, hidden, checkbox
 from ..format import escape as E, windows_text
 
 NO_OVERRIDE = (("", "Dùng cài đặt chung"), ("public", "Mọi người (công khai)"), ("friends", "Bạn bè"), ("self", "Chỉ mình tôi"))
@@ -9,11 +10,7 @@ NO_OVERRIDE = (("", "Dùng cài đặt chung"), ("public", "Mọi người (côn
 
 def _toggles(chosen):
     """One big tap target per topic: a checkbox stretched over its label."""
-    return '<div class="toggles">%s</div>' % "".join(
-        '<label class="tg"><input type="checkbox" name="topic" value="%s"%s><span>%s</span></label>'
-        % (t.id, " checked" if t.id in chosen else "", E(t.vi))
-        for t in topics.TOPICS
-    )
+    return '<div class="toggles">%s</div>' % "".join(checkbox("topic", t.vi, t.id in chosen, value=t.id, css="tg") for t in topics.TOPICS)
 
 
 def _login_chip(account):
@@ -28,7 +25,7 @@ def _login_chip(account):
 def _login_hint(account):
     command = "./trendvn tiktok login" + ("" if account["id"] == "main" else " --account " + account["id"])
     return (
-        '<p class="small muted">Đăng nhập một lần: bấm Đăng nhập trong <a href="#search" data-search-account="%s">tab Tìm</a> (TikTok và Douyin), '
+        '<p class="small muted">Đăng nhập một lần: bấm Đăng nhập trong <a href="#search" data-search-account="%s">Hàng đợi → Tìm video</a>, '
         "hoặc chạy <code>%s</code>, rồi tự đăng nhập trong cửa sổ Chrome hiện ra.</p>" % (E(account["id"]), E(command))
     )
 
@@ -63,16 +60,21 @@ def _card(view, account):
     today = chip("hôm nay %d/%d" % (account["published_today"], account["daily_limit"]), "info")
     enabled = select("enabled", "true" if account["enabled"] else "false", (("true", "Bật"), ("false", "Tắt")))
     return (
-        '<form method="post" action="/account-save" class="card stack acct"><input type="hidden" name="csrf" value="%(csrf)s">'
-        '<input type="hidden" name="id" value="%(id)s">'
+        '<form method="post" action="/account-save" class="card stack acct">%(hidden)s'
         '<div class="row"><h3>@%(user)s</h3><div class="facts">%(state)s%(login)s%(today)s</div></div>'
         '<p><a href="#search" data-search-account="%(id)s">Tìm video và sản phẩm cho tài khoản này →</a></p>'
         '<p class="small muted">Nhận các chủ đề:</p>%(toggles)s%(hint)s'
         '<details class="fs"><summary>Tên gọi, bật/tắt và giới hạn riêng</summary><div class="fsbody">%(label)s%(enabled)s%(overrides)s</div></details>'
-        '<div class="btns two"><button class="go">Lưu tài khoản</button>'
-        '<button class="ghost danger" formaction="/account-delete" data-confirm="Xóa @%(user)s khỏi danh sách? Các bài đã đăng vẫn giữ nguyên.">Xóa</button></div></form>'
+        '<div class="btns two">%(buttons)s</div></form>'
     ) % {
-        "csrf": view.csrf,
+        "hidden": hidden("csrf", view.csrf) + hidden("id", account["id"]),
+        "buttons": button("Lưu tài khoản")
+        + button(
+            "Xóa",
+            "ghost danger",
+            formaction="/account-delete",
+            data_confirm="Xóa @%s khỏi danh sách? Các bài đã đăng vẫn giữ nguyên." % account["username"],
+        ),
         "id": E(account["id"]),
         "user": E(account["username"]),
         "state": state,
@@ -88,12 +90,13 @@ def _card(view, account):
 
 def _add_form(view):
     return (
-        '<form method="post" action="/account-add" class="card stack"><input type="hidden" name="csrf" value="%s"><h3>Thêm tài khoản</h3>%s'
-        '<p class="small muted">Chọn các chủ đề tài khoản này nhận:</p>%s<div class="btns"><button class="go">Thêm tài khoản</button></div></form>'
+        '<form method="post" action="/account-add" class="card stack">%s<h3>Thêm tài khoản</h3>%s'
+        '<p class="small muted">Chọn các chủ đề tài khoản này nhận:</p>%s<div class="btns">%s</div></form>'
     ) % (
-        view.csrf,
+        hidden("csrf", view.csrf),
         field("Tên người dùng TikTok", text_input("username", "", 'placeholder="ten_kenh" autocomplete="off" autocapitalize="off"')),
         _toggles(()),
+        button("Thêm tài khoản"),
     )
 
 

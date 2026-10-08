@@ -50,6 +50,13 @@ pack_profiles() {
   tar czf "$out" --exclude='Cache' --exclude='Code Cache' --exclude='GPUCache' --exclude='GrShaderCache' --exclude='ShaderCache' \
     --exclude='DawnCache' --exclude='component_crx_cache' --exclude='Service Worker/CacheStorage' --exclude='Crashpad' \
     --exclude='Singleton*' -C "$dir" "${names[@]}" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    for d in "${names[@]}"; do
+      for ck in "$dir/$d/Default/Cookies" "$dir/$d/Cookies"; do
+        if [ -e "$ck" ] && [ ! -r "$ck" ]; then return "${rc:-1}"; fi
+      done
+    done
+  fi
   [ "$rc" -le 1 ] || return "$rc"
   return 0
 }

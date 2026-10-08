@@ -40,7 +40,7 @@ def _parallel_setting(text):
 PARALLEL = _parallel_setting(os.environ.get("TRENDVN_PROCESS_PARALLEL") or 2)
 
 
-def process_many(store, count, parallel=None, one=None):
+def process_many(store, count, one=None, parallel=None, progress_fn=None):
     """Process up to `count` queued videos, `parallel` at a time (default PARALLEL). Each thread claims the next video when it is free;
     once any run reports a terminal status (disabled, blocked, idle, rate limited) nothing new is started. Returns the results in the
     order they finished; a run that raises is reported as an error instead of stopping the others."""
@@ -55,7 +55,10 @@ def process_many(store, count, parallel=None, one=None):
                     return
                 budget[0] -= 1
             try:
-                result = one(store)
+                try:
+                    result = one(store, progress_fn=progress_fn) if progress_fn else one(store)
+                except TypeError:
+                    result = one(store)
             except Exception as error:  # process_one answers instead of raising; this is a safety net, not a code path
                 result = {"status": "error", "reason": str(error)[:REASON_LIMIT]}
             with lock:
@@ -73,7 +76,7 @@ def process_many(store, count, parallel=None, one=None):
     return results
 
 
-def process_one(store):
+def process_one(store, job_id=None, progress_fn=None):
     """Claim the next queued video and run it through `_process`. Always returns a small status dict, never raises."""
     cfg = store.settings()
     if not cfg["processing_enabled"]:
@@ -83,12 +86,12 @@ def process_one(store):
     free = free_bytes(store.root)
     if free < MIN_FREE_BYTES:
         return {"status": "blocked", "reason": "Ổ đĩa chỉ còn %d MB trống; chưa dựng thêm (dọn ổ đĩa rồi chạy lại)" % (free >> 20)}
-    job = store.claim()
+    job = store.claim(job_id) if job_id is not None else store.claim()
     if not job:
         return {"status": "idle", "reason": "No staged media in queue"}
     try:
-        return _process(store, cfg, job)
-    except RateLimited as e:
+        return _process(store, cfg, job, progress_fn=progress_fn)
+    except (RateLimited, Transient) as e:
         reason = str(e)
         return _settle(job, "rate_limited", reason, lambda: store.release(job["id"], job["lease"], reason))
     except KeyRejected as e:
@@ -112,10 +115,12 @@ def _settle(job, status, reason, record):
     return {"id": job["id"], "status": status, "reason": reason}
 
 
-def _process(store, cfg, job):
+def _process(store, cfg, job, progress_fn=None):
     jid, lease, approved = job["id"], job["lease"], bool(job.get("approved"))
     folder = store.root / "jobs" / jid
     folder.mkdir(exist_ok=True)
+    if progress_fn:
+        progress_fn("Kiểm tra tệp nguồn và độ dài video...")
     path, duration = _source(job, cfg)
     fp = fingerprint(path, duration)
     # the owner's approval overrides the look-alike warning; the fingerprint is recorded in the same step so a look-alike processed at the
@@ -126,19 +131,29 @@ def _process(store, cfg, job):
             jid, lease, "needs_review", reason="Possible visual duplicate of " + twin, fingerprint=json.dumps(fp), duration=duration
         )
         return {"id": jid, "status": "needs_review"}
+    if progress_fn:
+        progress_fn("Gửi Gemini phân tích hình ảnh và âm thanh...")
     if job.get("search_account"):
         a, route = analyze(store, path, duration, cfg, folder, lenient=approved, product_search=True)
     else:
         a, route = analyze(store, path, duration, cfg, folder, lenient=approved)
     if not approved and not str(a.get("caption_vi") or "").strip():
         raise ValueError("Gemini không soạn được mô tả tiếng Việt; cần bạn xem lại")
+    if progress_fn:
+        progress_fn("Soạn phụ đề tiếng Việt và căn chỉnh tốc độ đọc...")
     a["segments"], fastest = fit_reading_speed(a["segments"], duration)
     if (
         route != "original" and fastest > CONDENSE_ABOVE
     ):  # still rushing after borrowing the pauses: shorten the worst lines (one text call)
         a["segments"], fastest = fit_reading_speed(condense(store, cfg, a["segments"], folder), duration)
+    if progress_fn:
+        progress_fn("Tạo giọng đọc thuyết minh tiếng Việt...")
     voice, route, why, note = _voice_or_subtitles(store, cfg, a, route, folder, duration)
+    if progress_fn:
+        progress_fn("Dựng video hoàn chỉnh bằng ffmpeg...")
     out = render(path, folder, a, route, duration, voice, mask=cfg.get("hard_sub_mask", "auto"))
+    if progress_fn:
+        progress_fn("Kiểm tra chất lượng và hoàn tất...")
     info, geo = _checked_output(out, path, route, folder, duration)
     info["why"] = why
     _note_hard_subtitles(info, a, route, geo, cfg.get("hard_sub_mask", "auto"))

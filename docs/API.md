@@ -43,7 +43,7 @@ Mọi lời gọi `POST` (trừ các form của bảng điều khiển) dùng `A
 
 | Đường dẫn | Nội dung | Ghi chú |
 |---|---|---|
-| `POST /api/tasks/start` (token) | `{kind: update\|collect\|process\|publish\|dryrun\|stats, job_id?}` | Trả `{id}`; `409`-tương-đương là lỗi 400 "Đang có một việc dùng trình duyệt..." khi trùng khóa |
+| `POST /api/tasks/start` (token) | `{kind: update\|collect\|process\|process_one\|queue_download\|publish\|dryrun\|stats, job_id?}` | Trả `{id}`; `409`-tương-đương là lỗi 400 "Đang có một việc dùng trình duyệt..." khi trùng khóa |
 | `GET /api/tasks` (token hoặc giao diện nội bộ) | | `{running, tasks:[{id, kind, state, steps, result, error}]}` |
 | `GET /fragment/tasks` | | HTML bảng tiến độ (giao diện dùng để cập nhật trực tiếp) |
 | `POST /api/publish/claim`, `/api/publish/peek` | `{job_id?}` | Có `job_id`: nhận/xem đúng video đó (đăng thủ công: bỏ qua công tắc, giờ vàng, giới hạn, giãn cách; các chốt bảo vệ vẫn giữ) |
@@ -94,3 +94,16 @@ Các điểm cuối này chỉ dành cho trang bảng điều khiển của chí
 
 Agent nhận các POST xác thực `/api/channel/login` và `/api/channel/check` (`account`, `channel`), `/api/search` (`account,query,queries,source,links`), `/api/search/open` (như trên, mở cửa sổ cho chủ tự xác minh, tối đa 4 phút mỗi trang; worker chờ tối đa 6 phút) và `/api/search/download` (`account,job_id,item`). Mỗi nguồn trả tối đa 20 ứng viên (tối đa 40 khi tìm cả hai; worker xếp hạng và giữ 20); chỉ tải sau khi chủ chọn. Một nguồn lỗi (ở chế độ `auto`) được ghi vào `note` thay vì làm hỏng cả kết quả. Video tìm kiếm có `search_account` và không bao giờ được lịch chuyển sang tài khoản khác.
 
+
+
+## Tìm kiếm và xóa bài (1.9)
+
+`POST /chat/send` (phiên giao diện + CSRF): `{account, source:auto|tiktok|douyin|kuaishou|instagram, topic?, sales:bool, category?, text?, files?, request_key?}`. Cùng `request_key` trả lại cùng lượt, không tạo thêm tác vụ. Phần chọn thể loại/ngành hàng được đưa vào từ khóa của từng nguồn. `POST /chat/act` thêm `delete_history` với `id` và `dismiss` với `id,platform,source_id`; các thao tác đã có giữ nguyên.
+
+`POST /post-delete` (form giao diện + CSRF): `{id,url,account,confirmed:true}`. Tạo quyền một lần gắn với bản ghi bài đã đăng, rồi gọi tác vụ xóa. Agent nhận `POST /api/post-delete` với `{job_id,grant}`, xin worker `POST /api/post-delete/claim` và gửi `POST /api/post-delete/finish` với `{job_id,grant,outcome:deleted|failed|unknown,reason}`. Các route API dùng token, không ghi token vào lịch sử; API tác vụ chung không tự tạo được quyền xóa. `performance.delete_state` cho biết tình trạng; trạng thái video và lịch sử đếm bài đã đăng được giữ nguyên.
+
+`POST /post-delete-checked` (form + CSRF): `{id,url,account,confirmed:true,outcome:present|deleted}` (`present` mặc định để giữ tương thích). Chủ đã kiểm tra đúng bài trong tài khoản sở hữu. Chỉ nhận bản ghi `unknown` còn khớp URL/tài khoản/danh tính/trạng thái published hiện tại; `present` chuyển sang `failed`, `deleted` chốt bài đã xóa với lý do “Chủ đã kiểm tra” để phân biệt bằng chứng tự động từ TikTok. Không gọi trình duyệt, không xóa lại, không khôi phục quyền xóa cũ; giữ lịch sử đăng và chống trùng.
+
+Agent `POST /api/search` nhận `source` bốn kênh, `queries` theo kênh, `sources` các kênh đã đăng nhập và `require_session:true`; `POST /api/channel/login|check` nhận `{account,channel}`. Chỉ một tác vụ trình duyệt tại một thời điểm.
+
+`GET /fragment/queue` dùng cùng quyền bảng điều khiển, trả riêng vùng hàng chờ và thao tác có CSRF. Chat lấy phần này khi tìm/tải kết thúc để cập nhật bảng mà giữ bản nháp. Dấu chống lặp `request_key` giữ tối thiểu 30 ngày, độc lập với việc ẩn lịch sử; bỏ ứng viên lưu dấu nguồn/ID bị loại để không tìm/tải lại.

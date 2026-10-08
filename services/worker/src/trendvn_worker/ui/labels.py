@@ -47,6 +47,12 @@ ROUTE_LABEL = {"vietsub": "Vietsub", "voiceover": "Lồng tiếng + Vietsub", "o
 VISIBILITY_LABEL = {"public": "Công khai", "friends": "Bạn bè", "self": "Chỉ mình tôi"}
 
 EVENT_LABELS = {
+    "delete_requested": "Bạn yêu cầu xóa bài TikTok",
+    "delete_checked_present": "Bạn đã kiểm tra bài TikTok vẫn còn",
+    "delete_checked_deleted": "Bạn đã kiểm tra bài TikTok đã xóa",
+    "post_deleted": "Đã xóa bài TikTok",
+    "post_failed": "Chưa xóa được bài TikTok",
+    "post_unknown": "Chưa xác nhận kết quả xóa bài",
     "processing": "Bắt đầu xử lý",
     "queued": "Đã tải, chờ xử lý",
     "ready": "Đã dựng, sẵn sàng đăng",

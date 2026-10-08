@@ -8,6 +8,7 @@ from ..jsonsafe import loads
 KINDS = ("say", "product", "videos", "link", "login", "note")
 STATES = ("pending", "running", "done", "error")
 KEEP = 300  # messages kept; older ones go (a long chat is not a record anyone needs, and attachments never are kept at all)
+REQUEST_KEEP = 30 * 86400  # deleting history must not make a retried request a new Gemini call
 BUSY_LIMIT = 3  # answers that may be unfinished at once: a sign-in window or a slow video call must not pile up work behind it
 
 
@@ -24,19 +25,61 @@ class ChatMixin:
             "INSERT INTO chat(created,role,kind,state,account,body) VALUES(?,?,?,?,?,?)",
             (time.time(), role, kind, state, account, json.dumps(body, ensure_ascii=False)),
         ).lastrowid
-        db.execute("DELETE FROM chat WHERE id<=?", (mid - KEEP,))
+        db.execute(
+            "DELETE FROM chat WHERE id<=? AND state IN ('done','error') "
+            "AND (request_key IS NULL OR created<?) "
+            "AND CAST(id AS TEXT) NOT IN (SELECT search_id FROM jobs WHERE search_id IS NOT NULL) "
+            "AND id NOT IN (SELECT json_extract(body,'$.product') FROM chat WHERE state IN ('pending','running') AND json_valid(body) AND json_type(body,'$.product')='integer')",
+            (mid - KEEP, time.time() - REQUEST_KEEP),
+        )
         return mid
 
     def chat_add(self, role, kind, body, state="done", account=None):
         with self.transaction() as db:
             return self._insert(db, role, kind, state, account, body)
 
-    def chat_ask(self, account, said, kind, body):
+    def chat_ask(self, account, said, kind, body, request_key=None):
         """The owner's message and the answer now being worked on, added together: when the answer cannot start, the message is not kept
         either. Returns the answer's id."""
         with self.transaction() as db:
-            self._insert(db, "user", "say", "done", account, said)
-            return self._insert(db, "bot", kind, "running", account, body)
+            user = self._insert(db, "user", "say", "done", account, said)
+            mid = self._insert(db, "bot", kind, "running", account, body | {"user_message": user})
+            if request_key:
+                db.execute("UPDATE chat SET request_key=? WHERE id=?", (request_key, mid))
+            return mid
+
+    def chat_request(self, key):
+        with self.connect() as db:
+            row = db.execute("SELECT id,account FROM chat WHERE request_key=?", (key,)).fetchone()
+        return dict(row) if row else None
+
+    def chat_forget(self, mid):
+        """Hide a completed search turn, retaining internal references needed by selected videos."""
+        with self.transaction() as db:
+            rows = {r["id"]: dict(r) | {"body": loads(r["body"], {})} for r in db.execute("SELECT * FROM chat")}
+            row = rows.get(mid)
+            if not row or row["role"] != "bot":
+                raise ValueError("Chỉ xóa được lượt đã hoàn tất")
+            product = row["body"].get("product") if row["kind"] == "videos" else None
+            parent = rows.get(product) if isinstance(product, int) else None
+            legacy_root = parent["body"].get("turn_id", product) if parent and parent["kind"] == "product" else mid
+            root = row["body"].get("turn_id", legacy_root)
+            if not isinstance(root, int) or root not in rows:
+                root = mid
+            turn = {root}
+            turn.update(i for i, r in rows.items() if r["role"] == "bot" and r["body"].get("turn_id") == root)
+            turn.update(
+                i
+                for i, r in rows.items()
+                if r["kind"] == "videos" and isinstance(r["body"].get("product"), int) and r["body"]["product"] in turn
+            )
+            if any(rows[i]["state"] not in ("done", "error") for i in turn):
+                raise ValueError("Chỉ xóa được lượt đã hoàn tất")
+            user = rows[root]["body"].get("user_message")
+            if isinstance(user, int) and not isinstance(user, bool) and user in rows and rows[user]["role"] == "user":
+                turn.add(user)
+            db.executemany("UPDATE chat SET hidden=1 WHERE id=?", [(i,) for i in turn])
+        return {"removed": mid}
 
     def chat_get(self, mid):
         with self.connect() as db:
@@ -59,14 +102,19 @@ class ChatMixin:
     def chat_thread(self, limit=60):
         """The latest messages, oldest first."""
         with self.connect() as db:
-            rows = db.execute("SELECT * FROM chat ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+            rows = db.execute("SELECT * FROM chat WHERE hidden=0 ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         return [dict(r) | {"body": loads(r["body"], {})} for r in reversed(rows)]
 
-    def chat_product(self):
+    def chat_product(self, account=None):
         """The product the chat is about now: the latest finished 'product' answer that names one (an answer that is only video links
         names none), or None."""
         with self.connect() as db:
-            rows = db.execute("SELECT * FROM chat WHERE kind='product' AND state='done' ORDER BY id DESC LIMIT 10").fetchall()
+            rows = db.execute(
+                "SELECT * FROM chat WHERE hidden=0 AND kind='product' AND state='done' "
+                + ("AND (account=? OR account IS NULL) " if account else "")
+                + "ORDER BY id DESC LIMIT 10",
+                (account,) if account else (),
+            ).fetchall()
         for row in rows:
             body = loads(row["body"], {})
             identity = body.get("identity") or {}
@@ -95,10 +143,13 @@ class ChatMixin:
                 if isinstance(product, int) and not isinstance(product, bool):
                     keep.add(product)
             rows = db.execute(
-                "SELECT id FROM chat WHERE state IN ('done','error') AND created<?", (float("inf") if before is None else before,)
+                "SELECT id,request_key FROM chat WHERE hidden=0 AND state IN ('done','error') AND created<?",
+                (float("inf") if before is None else before,),
             )
-            ids = [r[0] for r in rows if r[0] not in keep]
-            db.executemany("DELETE FROM chat WHERE id=?", [(i,) for i in ids])
+            selected = list(rows)
+            ids = [r[0] for r in selected]
+            db.executemany("UPDATE chat SET hidden=1 WHERE id=?", [(r[0],) for r in selected if r[1] or r[0] in keep])
+            db.executemany("DELETE FROM chat WHERE id=?", [(r[0],) for r in selected if not r[1] and r[0] not in keep])
         return len(ids)
 
     def chat_recover(self):

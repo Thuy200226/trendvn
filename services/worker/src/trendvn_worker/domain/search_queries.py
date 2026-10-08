@@ -19,7 +19,11 @@ KNOWN_BRANDS = frozenset(BRAND_ALIASES.values()) | {
 CATEGORIES = (
     (r"\bbàn\s+phím\b|\bkeyboard\b|键盘", "keyboard", "键盘"),
     (r"\bchuột\b|\bmouse\b|鼠标", "mouse", "鼠标"),
-    (r"\btai\s+nghe\b|\bheadphones?\b|耳机", "headphones", "耳机"),
+    (r"\btai\s+nghe\b|\bheadphones?\b|\bearphones?\b|耳机", "headphones", "耳机"),
+    (r"\bđồng\s+hồ\b|\bwatch\b|手表", "smartwatch", "智能手表"),
+    (r"\bloa\b|\bspeaker\b|音箱|音响", "speaker", "蓝牙音箱"),
+    (r"\bốp\s+lưng\b|\bcase\b|手机壳", "phone_case", "手机壳"),
+    (r"\bcáp\s+sạc\b|\bcủ\s+sạc\b|\bsạc\b|\bcharger\b|充电器", "charger", "充电器"),
 )
 
 
@@ -85,9 +89,6 @@ def query_plan(identity):
         category = next(
             (zh for b, pattern, zh in LINE_HINTS if b == brand and re.search(pattern, model, re.I)), identity.get("category_zh", "")
         )
-        zh = (
-            " ".join(filter(None, (translated_brand or identity.get("brand", ""), model, identity.get("variant", ""), category)))
-            if model and translated_brand
-            else query
-        )
+        parts = [translated_brand or identity.get("brand", ""), model, identity.get("variant", ""), category]
+        zh = " ".join(filter(None, parts)) if (model or translated_brand or category) else query
     return {"tiktok": query[:160], "douyin": zh[:160]}

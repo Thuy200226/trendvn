@@ -15,9 +15,32 @@ from ..jsonsafe import loads
 class QueueMixin:
     """The processing queue and the human decisions on its results."""
 
-    def claim(self):
+    def candidate_download(self, jid):
         with self.transaction() as db:
-            row = db.execute("SELECT * FROM jobs WHERE state='queued' ORDER BY first_seen LIMIT 1").fetchone()
+            row = db.execute("SELECT * FROM jobs WHERE id=? AND state='candidate' AND search_id IS NULL", (jid,)).fetchone()
+            if not row:
+                raise ValueError("Ứng viên đã tải, bị bỏ hoặc đang được tải")
+            account = db.execute("SELECT id FROM accounts WHERE enabled=1 ORDER BY created,id LIMIT 1").fetchone()
+            if not account:
+                raise ValueError("Chưa có tài khoản nhận video")
+            db.execute(
+                "UPDATE jobs SET state='awaiting_media',updated=?,reason='Bạn chọn tải vào chờ xử lý' WHERE id=?", (time.time(), jid)
+            )
+        return {"job_id": jid, "account": account[0], "item": {k: row[k] for k in ("platform", "source_id", "url", "title")}}
+
+    def candidate_download_failed(self, jid, reason):
+        with self.transaction() as db:
+            db.execute(
+                "UPDATE jobs SET state='candidate',reason=?,updated=? WHERE id=? AND state='awaiting_media' AND source_file IS NULL",
+                (reason[:700], time.time(), jid),
+            )
+
+    def claim(self, job_id=None):
+        with self.transaction() as db:
+            row = db.execute(
+                "SELECT * FROM jobs WHERE state='queued'" + (" AND id=?" if job_id is not None else "") + " ORDER BY first_seen LIMIT 1",
+                (job_id,) if job_id is not None else (),
+            ).fetchone()
             if not row:
                 return None
             token = uuid.uuid4().hex
@@ -86,7 +109,7 @@ class QueueMixin:
         if action not in ("approve", "reject", "retry"):
             raise ValueError("Invalid action")
         with self.transaction() as db:
-            row = db.execute("SELECT state,source_file,output_file FROM jobs WHERE id=?", (jid,)).fetchone()
+            row = db.execute("SELECT state,source_file,output_file,search_id FROM jobs WHERE id=?", (jid,)).fetchone()
             if not row:
                 raise ValueError("Job not found")
             now = time.time()
@@ -99,7 +122,9 @@ class QueueMixin:
                     (now, jid),
                 )
             elif action == "reject":
-                if row["state"] not in ("awaiting_approval", "needs_review", "ready", "candidate", "queued"):
+                if row["state"] == "candidate" and row["search_id"]:
+                    raise ValueError("Video đang tải; hãy đợi tải xong trước khi bỏ chờ")
+                if row["state"] not in ("awaiting_approval", "needs_review", "ready", "candidate", "queued", "search_selected"):
                     raise ValueError("Job cannot be rejected in this state")
                 db.execute("UPDATE jobs SET state='rejected',reason='Rejected by operator',updated=? WHERE id=?", (now, jid))
             elif row["state"] == "awaiting_approval":
@@ -155,6 +180,10 @@ class QueueMixin:
     def recover_after_restart(self):
         """The worker process has just started, so nothing it had claimed is still running: put those videos back right away instead of
         waiting half an hour for housekeeping."""
+        with self.transaction() as db:
+            db.execute(
+                "UPDATE jobs SET state='candidate',reason='Tải bị gián đoạn; hãy chọn lại' WHERE state='awaiting_media' AND source_file IS NULL"
+            )
         return self._recover_processing(time.time() + 1)
 
     def _recover_processing(self, older_than):

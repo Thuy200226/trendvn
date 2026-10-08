@@ -27,6 +27,7 @@ Toàn bộ lệnh: `docs/COMMANDS.md`. Tiến độ và nhật ký rà soát t�
 - Hàm dài quá khoảng 60 dòng thì tách bước có tên. Thêm nguồn, tab, chủ đề mới = thêm một file và một dòng đăng ký, không sửa xuyên năm file.
 
 ## Cách làm việc
+0. **Thiết kế trước triển khai (quy tắc chủ yêu cầu ngày 2026-10-07):** trước khi sửa logic, viết luồng toàn hệ thống và đánh giá điểm nghẽn, tính đúng, chống trùng và khả năng khôi phục trong `docs/SYSTEM-FLOW.md`; đối chiếu yêu cầu rồi mới sửa. Không tuyên bố tối ưu nhất nếu chưa có số đo. Luôn giữ logic không lấy lại video đã có, kể cả khi xóa lịch sử hoặc xóa bài TikTok.
 1. Đọc `docs/ROADMAP.md` và chạy `./trendvn test` để biết nền trước khi đổi.
 2. Mỗi phase có mục tiêu đo được, và kết thúc bằng **3 vòng rà soát**: tĩnh (tự đọc lại + công cụ), động (chạy trên dữ liệu và hệ thống thật, có số đo trước/sau), độc lập (tác tử chỉ-đọc được giao phá mã; mẫu prompt ở skill). Sửa hết phát hiện, thêm test chặn lại, ghi vào ROADMAP rồi mới sang phase khác.
 3. **Đo trước khi tối ưu**; chỉ đổi cái số liệu ủng hộ; ghi cả thử nghiệm không hiệu quả. Đừng so sánh lặp lại với trang đang giới hạn mình (Kuaishou): kết quả bị nhiễu, giữ hành vi đã chứng minh.
@@ -57,4 +58,4 @@ Toàn bộ lệnh: `docs/COMMANDS.md`. Tiến độ và nhật ký rà soát t�
 - Nhiều tài khoản: mỗi tài khoản một hồ sơ Chrome (`publisher` cho `main`, `publisher-<mã>` cho còn lại); phải kiểm tên đăng nhập thật trước khi đăng; tài khoản chưa đăng nhập bị bỏ qua và không tính là lỗi của video.
 
 ## Chưa kiểm chứng được (cập nhật khi thay đổi)
-Gemini thật báo vị trí phụ đề cứng (API video hay quá tải), nguồn Mỹ (cần IP Mỹ), đăng thật lên nhiều tài khoản, macOS thật, chạy dài ngày theo lịch thật. Link chia sẻ thật từ ứng dụng TikTok (dạng tham số chỉ người chia sẻ), tìm video thật trên TikTok/Douyin cho khung chat tìm sản phẩm (hay gặp xác minh).
+Gemini thật báo vị trí phụ đề cứng (API video hay quá tải), nguồn Mỹ (cần IP Mỹ), đăng thật lên nhiều tài khoản, macOS thật, chạy dài ngày theo lịch thật. Link chia sẻ thật từ ứng dụng TikTok (dạng tham số chỉ người chia sẻ), tìm video thật trên TikTok cho khung chat tìm sản phẩm (hay gặp xác minh). Douyin đã lấy thật 16 kết quả ACE68 và tải đúng video chủ xác nhận ngày 2026-10-07; Gemini dựng video này còn quá tải.

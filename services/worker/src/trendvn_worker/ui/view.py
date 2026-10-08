@@ -5,11 +5,13 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from ..domain.accounts import account_flag
+from ..tasks import BROWSER_KINDS
+from .controls import action_form
 from .components import task_panel  # noqa: F401  (re-exported for the tabs)
 from .format import escape as E
 
-BROWSER_TASKS = ("collect", "publish", "dryrun", "stats", "update", "search", "search_download", "search_human")
-PROCESS_TASKS = ("process", "update")
+BROWSER_TASKS = BROWSER_KINDS | {"update"}
+PROCESS_TASKS = ("process", "process_one", "update")
 
 
 class View:
@@ -26,7 +28,7 @@ class View:
         self.tasks = data.get("tasks", [])
         running = [t for t in self.tasks if t["state"] == "running"]
         self.busy_browser = any(t["kind"] in BROWSER_TASKS for t in running)
-        self.busy_process = any(t["kind"] in PROCESS_TASKS for t in running)
+        self.busy_process = bool(self.counts.get("processing", 0)) or any(t["kind"] in PROCESS_TASKS for t in running)
         self.key_rejected = bool(data.get("gemini_key_rejected"))
         self.challenge_on = bool(data.get("publisher_challenge"))
         who = next((a for a in data.get("accounts", []) if a["id"] == data.get("publisher_challenge_account")), None)
@@ -35,6 +37,8 @@ class View:
         self.attention = (
             max(len(data["review"]), self.counts.get("needs_review", 0))
             + len(data["unresolved"])
+            + len(data.get("uncertain_deletions", []))
+            + len(data.get("search_verifications", []))
             + (1 if self.challenge_on else 0)
             + (1 if self.key_rejected else 0)
         )
@@ -68,10 +72,7 @@ class View:
 
     def action(self, kind, label, css, disabled, next_tab="home"):
         """A button that starts a background task and brings you back to the tab it was pressed on."""
-        return (
-            '<form method="post" action="/task"><input type="hidden" name="csrf" value="%s"><input type="hidden" name="next" value="%s">'
-            '<button class="%s" name="kind" value="%s"%s>%s</button></form>'
-        ) % (self.csrf, next_tab, css, kind, " disabled" if disabled else "", label)
+        return action_form(self.csrf, "/task", label, {"next": next_tab}, css=css, disabled=disabled, name="kind", value=kind)
 
     def enable_processing(self, next_tab):
         """One tap to switch video processing on (or, without a Gemini key, the way to get one)."""
@@ -80,16 +81,19 @@ class View:
                 '<p class="note warn">Chưa có khóa Gemini nên chưa bật được. <a href="#settings">Dán khóa ở Thêm → Cài đặt</a>, '
                 "rồi quay lại bật xử lý video.</p>"
             )
-        return (
-            '<form method="post" action="/settings"><input type="hidden" name="csrf" value="%s"><input type="hidden" name="next" value="%s">'
-            '<input type="hidden" name="processing_enabled" value="true"><button class="go big" '
-            'data-confirm="Bật xử lý video? Video sẽ được gửi tới Google Gemini để phân tích.">✔ Bật xử lý video</button></form>'
-        ) % (self.csrf, next_tab)
+        return action_form(
+            self.csrf,
+            "/settings",
+            "✔ Bật xử lý video",
+            {"next": next_tab, "processing_enabled": "true"},
+            css="go big",
+            data_confirm="Bật xử lý video? Video sẽ được gửi tới Google Gemini để phân tích.",
+        )
 
     def funnel(self):
         """The four steps a video goes through, each linking to the tab that shows it."""
         steps = (
-            ("Ứng viên", self.counts.get("candidate", 0), "queue"),
+            ("Ứng viên", self.counts.get("candidate", 0), "candidates"),
             ("Chờ xử lý", self.waiting, "queue"),
             ("Sẵn sàng", self.ready_total, "publish"),
             ("Đã đăng", self.counts.get("published", 0), "posted"),

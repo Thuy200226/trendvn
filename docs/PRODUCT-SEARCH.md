@@ -82,3 +82,18 @@ TikTok chạy trong hồ sơ Chrome đã đăng nhập của đúng tài khoản
 ## Dữ liệu và riêng tư
 
 Nhật ký chat (SQLite `chat`, giữ 300 tin gần nhất) chỉ chứa lời nhắn đã cắt còn 1.000 ký tự, tên tệp và kết quả; **nội dung ảnh/tài liệu chỉ nằm trong bộ nhớ** tới khi nhận diện xong. Link bạn xác nhận nằm ở bảng `commission_links` (một dòng cho mỗi cặp tài khoản + sản phẩm). Chi tiết bảo mật: `docs/SECURITY.md`.
+
+
+## Hàng đợi thống nhất (1.9)
+
+Kế hoạch và kịch bản nghiệm thu: [QUEUE-SEARCH-PLAN.md](QUEUE-SEARCH-PLAN.md). Bộ chọn nguồn có bốn kênh và lựa chọn các kênh đã đăng nhập. Mỗi kênh dùng hồ sơ riêng theo tài khoản nhận video; đăng nhập nguồn Trung Quốc/Instagram không đồng nghĩa với đăng nhập tài khoản TikTok đích. TikTok đích được đối chiếu tên thật trước tìm/đăng/xóa.
+
+Thể loại mặc định lấy từ chủ đề tài khoản. Có thể đổi hoặc chọn không giới hạn. Thể loại, từ khóa và sản phẩm đi vào truy vấn nền tảng, không chỉ lọc kết quả. Chế độ bán hàng cần chọn ngành hàng; ưu tiên khớp model trước, sau đó lượt xem/tim thực đọc được. Chưa có số bán nên chưa xác nhận bảng sản phẩm bán chạy nhất. Ảnh/tài liệu dùng Gemini nhận diện từ khóa; các nguồn web được tìm bằng văn bản/URL, không giả lập tìm ảnh gốc của nền tảng.
+
+Ứng viên trong chat có thể bỏ hoặc chọn vào chờ xử lý sau khi chủ xác nhận đã xem đúng sản phẩm. Hàng đợi cho tải từng ứng viên, xử lý riêng video chờ hoặc bỏ chờ. Đã nhận xử lý/tải thì không cho xóa xen giữa. Xóa riêng lịch sử không làm mất video đã chọn hay link hoa hồng đã lưu. Gửi lại cùng yêu cầu mạng không sinh lượt trùng; cùng từ khóa được chủ gửi thành lượt mới vẫn hợp lệ.
+
+Link hoa hồng vẫn do chủ lấy trong Showcase và dán để kiểm tra/lưu. Tài khoản nhà sáng tạo đơn thuần chưa cung cấp quyền TikTok Shop API; phiên bản này không tự lấy tỷ lệ hoa hồng, bảng doanh số hoặc đăng kèm sản phẩm.
+
+Ở Đã đăng, xóa bài yêu cầu xác nhận đúng URL/tài khoản. Hệ thống giữ bản ghi ứng dụng và đánh dấu đã xóa trên TikTok, không xóa lịch sử thống kê hoặc hoàn lại hạn mức. Nếu thao tác bị ngắt sau khi bắt đầu xóa thì hiển thị chưa rõ để chủ kiểm tra, không tự gửi lại.
+
+Nghiệm thu 2026-10-07: sau chủ tự xác minh Douyin, truy vấn `迈从 ACE68 磁轴键盘` nhận 16 video thật. Video 7627431070878744296 được chủ đối chiếu, tải thật vào hàng chờ (22.961.755 byte); xử lý gặp Gemini 504 nên chưa có bản dựng. Kết quả ACE75/V2 được nhận là khác sản phẩm dù có nhắc ACE68. Bỏ ứng viên giữ dấu nguồn/ID để không lấy lại; xóa lịch sử không xóa dấu này. TikTok/Kuaishou/Instagram vẫn chưa nghiệm thu tìm thành công; chưa có dữ liệu để xác nhận bán chạy nhất/hoa hồng tự động từ tài khoản nhà sáng tạo.

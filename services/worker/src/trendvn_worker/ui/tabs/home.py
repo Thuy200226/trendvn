@@ -36,10 +36,16 @@ def _banner_problem(view):
 
 
 def banner(view):
+    if view.key_rejected:
+        return (
+            '<div class="banner warn"><b>Chưa tự động hoàn toàn.</b> Khóa Gemini bị Google từ chối: vào Thêm → Cài đặt đổi khóa (các video vẫn nằm chờ, không mất).</div>'
+        )
+    if not view.d["publisher_enabled"]:
+        return '<div class="banner neutral"><b>Chế độ thủ công.</b> Xem và duyệt bản dựng ở Đăng bài; tự đăng đang tắt.</div>'
     problem = _banner_problem(view)
-    if not problem:
-        return '<div class="banner good"><b>Đang tự động hoàn toàn.</b> Thu thập, xử lý và đăng chạy theo lịch.</div>'
-    return '<div class="banner warn"><b>Chưa tự động hoàn toàn.</b> %s</div>' % E(problem)
+    if problem:
+        return '<div class="banner warn"><b>Chưa tự động hoàn toàn.</b> %s</div>' % E(problem)
+    return '<div class="banner good"><b>Đang tự động hoàn toàn.</b> Thu thập, xử lý và đăng chạy theo lịch.</div>'
 
 
 def control(view):
@@ -53,7 +59,7 @@ def control(view):
         '<div class="card stack" id="control"><h2>Điều khiển</h2>%s<p class="hint">%sLịch tự động vẫn chạy song song như cũ.</p>'
         '<div class="btngrid">%s%s</div>%s</div>'
     ) % (
-        view.action("update", "▶ Bắt đầu: cập nhật &amp; chuẩn bị đăng", "go xl", view.busy_browser or view.busy_process, "home"),
+        view.action("update", "Thu thập và xử lý ngay", "go xl", view.busy_browser or view.busy_process, "home"),
         E(hint),
         view.action("collect", "🔎 Thu thập video mới", "ghost", view.busy_browser, "queue"),
         view.action("process", "⚙️ Xử lý video chờ (%d)" % view.waiting, "ghost", view.busy_process, "queue"),
@@ -152,12 +158,16 @@ def checklist(view):
     """(done, total, rows html): what is still needed for the system to run by itself."""
     d = view.d
     items = [
-        (d["gemini_configured"], "Khóa Gemini API", "Nhập khóa ở mục Cài đặt bên dưới."),
-        (d["processing_enabled"], "Bật xử lý video", "Video sẽ được gửi tới Google Gemini để phân tích khi bạn bật."),
-        (d["discovery"] == "connected", "Bộ thu thập chạy được", "Cần agent trên máy và workflow n8n 01 đã bật."),
-        (d["publisher"] == "connected", "Đã đăng nhập TikTok", "Chạy: ./trendvn tiktok login"),
-        (d["publisher_enabled"], "Bật tự đăng", "Nên chạy thử dry-run và xem ảnh chụp trước khi bật."),
-        (bool(d["notify_channels"]), "Nhận thông báo điện thoại", "Tùy chọn: Telegram, ntfy hoặc webhook (mục Thông báo)."),
+        (d.get("gemini_configured", False), "Khóa Gemini API", "Nhập khóa ở mục Cài đặt bên dưới."),
+        (d.get("processing_enabled", False), "Bật xử lý video", "Video sẽ được gửi tới Google Gemini để phân tích khi bạn bật."),
+        (d.get("discovery") == "connected", "Bộ thu thập chạy được", "Cần agent trên máy và workflow n8n 01 đã bật."),
+        (
+            any(a.get("logged_in") is True for a in d.get("accounts", []) if a.get("enabled")),
+            "Tài khoản TikTok đã kiểm tra đăng nhập",
+            "Mở Hàng đợi → Tìm video → Kênh tìm kiếm để kiểm tra từng tài khoản.",
+        ),
+        (d.get("publisher_enabled", False), "Bật tự đăng", "Nên chạy thử dry-run và xem ảnh chụp trước khi bật."),
+        (bool(d.get("notify_channels")), "Nhận thông báo điện thoại", "Tùy chọn: Telegram, ntfy hoặc webhook (mục Thông báo)."),
     ]
     rows = "".join(
         '<li class="%s"><span class="tick">%s</span><div><b>%s</b><small>%s</small></div></li>'
@@ -181,5 +191,28 @@ def flow_card(view):
 
 def render(view):
     return "".join(
-        (banner(view), control(view), switches(view), health(view), numbers(view), schedule(view), setup_card(view), flow_card(view))
+        (
+            "<h2>Tổng quan</h2>",
+            banner(view),
+            flow_card(view),
+            _next_action(view),
+            control(view),
+            health(view),
+            numbers(view),
+            schedule(view),
+            setup_card(view),
+            '<details class="card acc"><summary>Chế độ xử lý và tự đăng</summary><div class="accbody">%s</div></details>' % switches(view),
+        )
     )
+
+
+def _next_action(view):
+    if view.attention:
+        text, href = "%d việc cần bạn quyết định" % view.attention, "attention"
+    elif view.ready_total:
+        text, href = "%d video đã dựng — xem và duyệt trước khi đăng" % view.ready_total, "publish"
+    elif view.waiting:
+        text, href = "%d video trong hàng đợi" % view.waiting, "queue"
+    else:
+        text, href = "Tìm video để bắt đầu", "search"
+    return '<div class="card stack"><h3>Bước tiếp theo</h3><a class="next-link" href="#%s">%s →</a></div>' % (href, E(text))

@@ -19,6 +19,9 @@ from .search import runner
 
 PROCESS_BATCH = 4  # videos processed per press of the button
 BROWSER_KINDS = {
+    "queue_download",
+    "delete_post",
+    "identify",
     "collect",
     "publish",
     "dryrun",
@@ -39,6 +42,8 @@ CHAT_KINDS = (
     "channel_check",
 )  # the jobs behind the product chat (search/runner.py)
 LABELS = {
+    "queue_download": "Tải ứng viên vào chờ xử lý",
+    "delete_post": "Xóa bài trên TikTok",
     "channel_login": "Đăng nhập kênh tìm kiếm",
     "channel_check": "Kiểm tra đăng nhập kênh tìm kiếm",
     "identify": "Nhận diện sản phẩm",
@@ -49,6 +54,7 @@ LABELS = {
     "update": "Cập nhật tổng hợp",
     "collect": "Thu thập video mới",
     "process": "Xử lý video đang chờ",
+    "process_one": "Xử lý video đã chọn",
     "publish": "Đăng video",
     "dryrun": "Xem thử (không đăng)",
     "stats": "Đọc lượt xem",
@@ -163,11 +169,14 @@ class Tasks:
         self.references = {}  # what the owner sent with a message, until its job has read it (never written to disk)
         store.tasks_reap()
         store.chat_recover()
+        store.delete_post_recover()
 
     def start(self, kind, job_id=None, reference=None):
         if kind not in LABELS:
             raise ValueError("Việc không hợp lệ")
-        if kind in ("publish", "dryrun") and not job_id:
+        if kind == "delete_post" and (not isinstance(reference, dict) or not reference.get("grant") or reference.get("job_id") != job_id):
+            raise ValueError("Cần xác nhận xóa bài từ tab Đã đăng")
+        if kind in ("publish", "dryrun", "process_one", "queue_download") and not job_id:
             raise ValueError("Cần chọn một video")
         if kind in CHAT_KINDS and not (
             isinstance(job_id, str) and re.fullmatch(r"[0-9a-f]{32}" if kind == "search_download" else r"\d{1,12}", job_id)
@@ -176,13 +185,15 @@ class Tasks:
         with self.guard:  # check-and-create is atomic, so a double click starts one task, not two
             running = {t["kind"] for t in self.store.tasks_running()}
             wants_browser = kind in BROWSER_KINDS or kind == "update"
-            wants_gemini = kind in ("process", "update")
+            if kind == "identify":
+                wants_browser = bool(self.store.chat_get(int(job_id))["body"].get("discovery"))
+            wants_gemini = kind in ("process", "process_one", "update")
             if wants_browser and running & (BROWSER_KINDS | {"update"}):
                 raise TaskBusy(
                     "Đang có một việc dùng trình duyệt chạy (%s). Đợi nó xong rồi bấm lại."
                     % ", ".join(LABELS[k] for k in running & (BROWSER_KINDS | {"update"}))
                 )
-            if wants_gemini and running & {"process", "update"}:
+            if wants_gemini and running & {"process", "process_one", "update"}:
                 raise TaskBusy("Đang xử lý video rồi. Đợi nó xong rồi bấm lại.")
             tid = self.store.task_create(kind, job_id)
             if reference is not None:
@@ -204,10 +215,16 @@ class Tasks:
                 outcomes.append(self._collect_step(steps))
             if kind in ("update", "process"):
                 outcomes.append(self._process_step(steps))
+            if kind == "process_one":
+                outcomes.append(self._process_step(steps, job_id))
             if kind in ("publish", "dryrun"):
                 outcomes.append(self._publish_step(steps, kind, job_id))
             if kind == "stats":
                 outcomes.append(self._stats_step(steps))
+            if kind == "delete_post":
+                outcomes.append(self._delete_post_step(steps, job_id))
+            if kind == "queue_download":
+                outcomes.append(self._queue_download_step(steps, job_id))
             if kind in CHAT_KINDS:
                 outcomes.append(self._chat_step(steps, kind, job_id))
             ok = any(outcomes)
@@ -248,10 +265,14 @@ class Tasks:
         steps.end(index, "done" if ok else "error", text)
         return ok
 
-    def _process_step(self, steps):
+    def _process_step(self, steps, job_id=None):
         index = steps.begin("Xử lý video đang chờ")
+
+        def on_progress(msg):
+            steps.step(index, msg)
+
         try:
-            text = self._process()
+            text = self._process(job_id, progress_fn=on_progress)
         except TaskBusy as busy:
             steps.end(index, "error", str(busy))
             return False
@@ -279,13 +300,66 @@ class Tasks:
         steps.end(index, "done", "Đọc %d bài, khớp %d bài đã đăng." % (result.get("read", 0), result.get("matched", 0)))
         return True
 
-    def _process(self):
+    def _delete_post_step(self, steps, job_id):
+        index = steps.begin("Xác minh tài khoản và xóa đúng bài trên TikTok")
+        grant = self.references.pop(job_id)
+        try:
+            result = call_agent("/api/post-delete", grant, self.token, timeout=180)
+        except Exception as error:
+            try:
+                self.store.delete_post_finish(job_id, grant["grant"], "unknown", str(error))
+            except ValueError:
+                pass  # the agent may already have finished; never overwrite a confirmed result
+            steps.end(index, "error", "Chưa xác nhận kết quả xóa; kiểm tra TikTok trước khi tiếp tục. " + str(error)[:200])
+            return False
+        ok = result.get("status") == "deleted"
+        steps.end(index, "done" if ok else "error", result.get("reason", "Đã xóa bài trên TikTok" if ok else "Chưa xóa được"))
+        return ok
+
+    def _queue_download_step(self, steps, job_id):
+        index = steps.begin("Tải chính ứng viên đã chọn")
+        try:
+            payload = self.store.candidate_download(job_id)
+            result = call_agent("/api/search/download", payload, self.token, timeout=240)
+            if result.get("state") not in ("queued", "duplicate"):
+                raise ValueError("Tải chưa hoàn tất")
+        except Exception as error:
+            self.store.candidate_download_failed(job_id, str(error))
+            steps.end(index, "error", str(error)[:500])
+            return False
+        steps.end(index, "done", "Video đã vào chờ xử lý" if result["state"] == "queued" else "Video trùng dữ liệu đã có")
+        return True
+
+    def _process(self, job_id=None, progress_fn=None):
         """Process up to 4 queued videos, sharing the worker lock with the scheduled /api/process so they never overlap."""
         if not self.process_lock.acquire(blocking=False):
             raise TaskBusy("Worker đang xử lý video cho lịch tự động. Đợi nó xong rồi bấm lại.")
         try:
             self.store.housekeeping()  # frees jobs a crash left 'processing' (the schedule does this too)
-            results = process_many(self.store, PROCESS_BATCH, one=self.process_fn)
+
+            def run_one(store, job=None):
+                try:
+                    if job is not None and progress_fn is not None:
+                        return self.process_fn(store, job_id=job, progress_fn=progress_fn)
+                    elif job is not None:
+                        return self.process_fn(store, job_id=job)
+                    elif progress_fn is not None:
+                        return self.process_fn(store, progress_fn=progress_fn)
+                    else:
+                        return self.process_fn(store)
+                except TypeError:
+                    try:
+                        if job is not None:
+                            return self.process_fn(store, job_id=job)
+                        return self.process_fn(store)
+                    except TypeError:
+                        return self.process_fn(store)
+
+            results = (
+                [run_one(self.store, job=job_id)]
+                if job_id is not None
+                else process_many(self.store, PROCESS_BATCH, one=lambda s, **kw: run_one(s), progress_fn=progress_fn)
+            )
             return summarize_process(results)
         finally:
             self.process_lock.release()
@@ -301,6 +375,11 @@ class StepLog:
         self.items.append({"name": name, "state": "running", "detail": ""})
         self.store.task_update(self.task_id, steps=self.items)
         return len(self.items) - 1
+
+    def step(self, index, detail):
+        if 0 <= index < len(self.items):
+            self.items[index]["detail"] = detail
+            self.store.task_update(self.task_id, steps=self.items)
 
     def end(self, index, state, detail=""):
         self.items[index].update(state=state, detail=detail)

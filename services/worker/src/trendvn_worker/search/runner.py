@@ -2,18 +2,44 @@
 Each function finishes its chat message ('done' or 'error') and returns one line for the task's step log; the caller only runs it."""
 
 from . import affiliate
+from ..domain import discovery
 from ..domain.product_links import classify
 from .identify import from_page, identify, video_identity
 
-SEARCH_TIMEOUT = 180
+SEARCH_TIMEOUT = 360  # four signed-in sources are searched serially under one browser lock
 HUMAN_TIMEOUT = 360  # a window where the owner solves the site's own check by hand
 SIGN_IN_TIMEOUT = 13 * 60  # the agent waits up to ten minutes for the owner to sign in, then reads the profile back (a minute or two)
 CHECK_TIMEOUT = 90  # reading a profile's cookies
 
 
-def recognise_product(store, mid, reference):
+def recognise_product(store, mid, reference, agent=None):
+    message = store.chat_get(mid)
+    expected = message["body"].get("account_username")
     identity = identify(store, reference)
+    chosen = message["body"].get("discovery")
+    if chosen:
+        identity["queries"] = discovery.queries(identity, chosen)
     store.chat_set(mid, "done", identity=identity)
+    if chosen and agent:
+        account = store.account(message["account"])
+        if not account or not expected or account["username"] != expected:
+            raise ValueError("Tài khoản đã thay đổi từ lúc gửi; hãy tìm lại")
+        body = {
+            "identity": identity,
+            "source": chosen["source"],
+            "product": mid,
+            "turn_id": mid,
+            "discovery": chosen,
+            "account_username": expected,
+            "results": [],
+            "note": "",
+        }
+        answer = store.chat_add("bot", "videos", body, state="running", account=message["account"])
+        try:
+            find_videos(store, answer, agent)
+        except Exception as error:
+            store.chat_set(answer, "error", error=str(error)[:700])
+            return "Đã nhận diện; tìm video chưa thành công: " + str(error)[:300]
     return "Đã nhận diện: " + (identity.get("name") or identity["query"])
 
 
@@ -23,16 +49,21 @@ def check_link(store, mid):
     found = affiliate.inspect(message["body"]["url"])
     if found["kind"] == "video":  # a short link shared from a video: not a product, but exactly what the owner may want to look up
         video = classify(found["final"])["canonical"]
-        product = store.chat_add("bot", "product", {"identity": video_identity([video]), "from_video": True}, account=message["account"])
+        product = store.chat_add(
+            "bot", "product", {"identity": video_identity([video]), "from_video": True, "turn_id": mid}, account=message["account"]
+        )
         store.chat_set(mid, "done", video=video, product=product)
         return "Link này là một video, không phải trang sản phẩm"
-    product = store.chat_product()
+    product = store.chat_product(message["account"])
     identity = product["body"]["identity"] if product else {}
     result = affiliate.verdict(identity, found, store.commission_known(message["account"]))
     fields = {"found": found, "verdict": result, "product": product["id"] if product else None}
     if not identity and found["product_id"] and found["title"]:
         fields["product"] = store.chat_add(
-            "bot", "product", {"identity": from_page(found["title"], found["product_id"]), "from_link": True}, account=message["account"]
+            "bot",
+            "product",
+            {"identity": from_page(found["title"], found["product_id"]), "from_link": True, "turn_id": mid},
+            account=message["account"],
         )
     if result["verdict"] in ("exact", "found") and not result["needs_confirmation"]:
         store.commission_save(message["account"], found)
@@ -50,12 +81,22 @@ def find_videos(store, mid, agent, human=False):
         "/api/search/open" if human else "/api/search",
         {
             "account": message["account"], "query": identity["query"], "queries": identity.get("queries", {}),
-            "source": body["source"], "links": identity.get("links", []),
+            "source": body["source"], "links": identity.get("links", []), "require_session": True,
+            "sources": [p for p, state in store.channel_states().get(message["account"], {}).items() if state["state"] == "ok"],
         },
         HUMAN_TIMEOUT if human else SEARCH_TIMEOUT,
     )  # fmt: skip
-    results = store.videos_rank(mid, response.get("items", []))
-    store.chat_set(mid, "done", results=results, note=response.get("note", ""))
+    ranked = store.videos_rank(mid, response.get("items", []), limit=40)
+    results, existing = store.videos_new(ranked)
+    results = results[:20]
+    note = response.get("note", "")
+    if existing:
+        note += " · Bỏ qua %d video đã có trong hệ thống; không tải lại." % existing
+    if (body.get("discovery") or {}).get("sales"):
+        note += (
+            " · Xếp theo độ khớp, lượt xem và lượt thích đã đọc được. Nguồn chưa cung cấp số bán nên chưa xác nhận sản phẩm bán chạy nhất."
+        )
+    store.chat_set(mid, "done", results=results, existing=existing, note=note)
     return "Tìm thấy %d ứng viên. Hãy xem và chọn trong khung chat." % len(results)
 
 
@@ -63,6 +104,8 @@ def sign_in(store, mid, agent, check=False):
     """Open the owner's window to sign in to a channel (or only look whether the profile is signed in), and say how it went in the chat."""
     message = store.chat_get(mid)
     channel = message["body"]["channel"]
+    if (store.account(message["account"]) or {}).get("username") != message["body"].get("account_username"):
+        raise ValueError("Tài khoản đã thay đổi; hãy mở lại đăng nhập")
     payload = {"account": message["account"], "channel": channel}
     if check:
         result = agent("/api/channel/check", payload, CHECK_TIMEOUT)
@@ -89,7 +132,7 @@ def run(store, kind, key, agent, reference=None):
             return True, download_video(store, key, agent)
         mid = int(key)
         if kind == "identify":
-            return True, recognise_product(store, mid, reference)
+            return True, recognise_product(store, mid, reference, agent)
         if kind == "link":
             return True, check_link(store, mid)
         if kind in ("channel_login", "channel_check"):
