@@ -105,7 +105,7 @@ Bắt đầu bằng: `./trendvn doctor` (mỗi dòng lỗi kèm cách sửa), r�
 | Một nguồn báo "xác minh hoặc đăng nhập" | Trang hiện CAPTCHA hoặc bắt đăng nhập | Hệ thống **không vượt CAPTCHA**. Thường tự hết sau vài giờ; giảm tần suất quét hoặc dùng IP khác |
 | Kuaishou đôi khi báo lỗi | Trang ngắt kết nối | Đã tự thử lại 3 lần; lỗi thoáng qua bình thường |
 | Bảng điều khiển báo "TikTok đang yêu cầu xác minh" | TikTok hiện hình CAPTCHA cho phiên tự động (xuất hiện ngẫu nhiên, nhất là khi mở trang tải lên nhiều lần liên tiếp) | Hệ thống **không giải hay vượt** và đã tạm dừng đăng. Chạy `./trendvn tiktok trust` (Mac: nhấp đúp `macos/Xac-minh-TikTok.command`), tự giải hình trong cửa sổ hiện ra; xong hệ thống tự đăng tiếp. Tránh chạy `dry-run` liên tục |
-| Đăng báo "Không tìm thấy ô chọn file" | TikTok đổi giao diện TikTok Studio, hoặc trang tải quá chậm | Xem ảnh trong `data/agent/shots/`; sửa bộ chọn phần tử ở `services/agent/src/trendvn_agent/publisher/post.py::_publish_one` |
+| Đăng báo "Không tìm thấy ô chọn file" | TikTok đổi giao diện TikTok Studio, hoặc trang tải quá chậm | Xem ảnh trong `data/agent/shots/` (giữ 20 ảnh mới nhất); sửa bộ chọn phần tử ở `services/agent/src/trendvn_agent/publisher/post.py::_publish_one` |
 | Bấm nút mà báo "Agent đang bận" | Lịch tự động hoặc một nút khác đang dùng trình duyệt | Bình thường, đợi vài phút rồi bấm lại |
 | `./trendvn doctor` báo "Container gọi được agent" lỗi dù agent chạy | Tường lửa của máy chặn cầu nối Docker (Linux/ufw) | `sudo ufw allow from <dải TRENDVN_SUBNET trong .env> to any port <TRENDVN_AGENT_PORT>` |
 | Bấm nút mà báo "Không gọi được agent" | Dịch vụ agent không chạy | `./trendvn doctor`, rồi `./trendvn agent restart` và `./trendvn agent logs` |

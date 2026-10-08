@@ -115,7 +115,7 @@ class IngestMixin:
                 dict(r)
                 for r in db.execute(
                     "SELECT id,platform,source_id,url,title,topic_hint FROM jobs WHERE %s "
-                    "ORDER BY COALESCE(json_extract(meta,'$.score'),0) DESC, first_seen DESC LIMIT ?" % where,
+                    "ORDER BY COALESCE(json_extract(meta,'$.score'),0) DESC, first_seen DESC, id LIMIT ?" % where,
                     (*args, max(1, min(int(limit), 200))),
                 )
             ]

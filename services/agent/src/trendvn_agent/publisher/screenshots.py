@@ -23,10 +23,13 @@ def shot(page, name):
         folder = DATA / "shots"
         path = folder / ("%s_%d.png" % (name, int(time.time())))
         page.screenshot(path=str(path), full_page=True)
-        prune_shots(folder)
-        return str(path)
     except Exception:
         return None
+    try:
+        prune_shots(folder)
+    except OSError:  # a file that changed under us (another process, a stray link): the screenshot itself was taken
+        pass
+    return str(path)
 
 
 def export_shot(page, name):

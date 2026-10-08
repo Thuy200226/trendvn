@@ -6,7 +6,8 @@ import uuid
 
 PENDING_SECONDS = 300  # a grant nobody claimed in this time is void (the claim itself enforces the same limit)
 DELETING_SECONDS = 600  # longer than the worker waits for the agent, plus a margin
-POST = re.compile(r"https://www\.tiktok\.com/@([A-Za-z0-9._-]{1,50})/video/(\d{6,25})")
+RUNNING_TASK_SECONDS = 900  # a delete task still marked running after this long is taken for dead, so it no longer holds the cleanup back
+POST = re.compile(r"https://www\.tiktok\.com/@([A-Za-z0-9._-]{1,50})/video/([0-9]{6,25})")
 
 
 class PostDeletionsMixin:
@@ -23,7 +24,7 @@ class PostDeletionsMixin:
             if old and old[0] != "failed":
                 raise ValueError("Bài đã xóa, đang xóa hoặc cần kiểm tra; không gửi lặp")
             twin = db.execute(  # two jobs can end up with one address (a post found again by its caption): the post is deleted once
-                "SELECT 1 FROM post_deletions d JOIN jobs j ON j.id=d.job_id WHERE j.publish_url=? AND d.job_id<>? AND d.state<>'failed'",
+                "SELECT 1 FROM post_deletions d JOIN jobs j ON j.id=d.job_id WHERE lower(j.publish_url)=lower(?) AND d.job_id<>? AND d.state<>'failed'",
                 (url, jid),
             ).fetchone()
             if twin:
@@ -101,7 +102,8 @@ class PostDeletionsMixin:
         self._delete_post_checked(jid, url, account, "present")
 
     def delete_post_checked_deleted(self, jid, url, account):
-        """Reconcile an uncertain result only after the owner explicitly verifies deletion."""
+        """Reconcile an uncertain (or failed: the owner may have removed it by hand) result only after the owner explicitly verifies
+        deletion."""
         self._delete_post_checked(jid, url, account, "deleted")
 
     def _delete_post_checked(self, jid, url, account, outcome):
@@ -112,7 +114,7 @@ class PostDeletionsMixin:
             ).fetchone()
             if (
                 not row
-                or row["state"] != "unknown"
+                or row["state"] not in (("unknown", "failed") if outcome == "deleted" else ("unknown",))
                 or row["job_state"] != "published"
                 or (row["job_account"] or "main") != account
                 or row["url"] != url
@@ -146,7 +148,9 @@ class PostDeletionsMixin:
         """Rows that stayed unfinished while no deletion runs (the thread died, the disk was full): after PENDING_SECONDS a request nobody
         took up is failed, after DELETING_SECONDS one that was taken up becomes unknown. Returns how many were freed."""
         with self.transaction() as db:
-            if db.execute("SELECT 1 FROM tasks WHERE kind='delete_post' AND state='running'").fetchone():
+            if db.execute(
+                "SELECT 1 FROM tasks WHERE kind='delete_post' AND state='running' AND started>?", (now - RUNNING_TASK_SECONDS,)
+            ).fetchone():
                 return 0
             freed = db.execute(
                 "UPDATE post_deletions SET state='failed',reason='Chưa thử xóa (quá lâu không có phản hồi); có thể thử lại',updated=? "

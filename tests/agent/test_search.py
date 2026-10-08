@@ -224,8 +224,8 @@ class SearchRoutingTests(StoreCase):
         self.assertEqual(len(result["items"]), 4)
 
     def test_a_chinese_source_with_no_chinese_words_is_skipped_with_a_note_and_the_others_still_run(self):
-        result, asked = self.run_four({"queries": {"tiktok": "mchose ace68"}, "query": "mchose ace68"})
-        self.assertEqual(sorted(asked), ["instagram", "tiktok"])  # never Vietnamese or English sent to a Chinese site
+        result, asked = self.run_four({"queries": {"tiktok": "bàn phím mchose"}, "query": "bàn phím mchose"})
+        self.assertEqual(sorted(asked), ["instagram", "tiktok"])  # never Vietnamese sent to a Chinese site
         self.assertIn("douyin: chưa có từ khóa tiếng Trung", result["note"])
         self.assertIn("kuaishou: chưa có từ khóa tiếng Trung", result["note"])
 
@@ -247,6 +247,22 @@ class SearchRoutingTests(StoreCase):
     def test_the_chinese_sources_borrow_from_each_other_and_never_from_the_plain_query(self):
         _, asked = self.run_four({"queries": {"kuaishou": "快 words"}, "query": "plain"}, sources=("douyin", "kuaishou"))
         self.assertEqual(asked, {"douyin": "快 words", "kuaishou": "快 words"})
+
+    def test_a_plan_that_is_missing_or_empty_never_hands_a_vietnamese_query_to_a_chinese_source(self):
+        for plan in ({}, None):
+            _, asked = self.run_four({"queries": plan, "query": "bàn phím cơ mini"})
+            self.assertEqual(sorted(asked), ["instagram", "tiktok"], plan)
+
+    def test_a_plain_model_name_or_chinese_query_may_go_to_the_chinese_sources(self):
+        for plain in ("迈从 ACE68", "iPhone 15 Pro", "迈从 ACE68 bàn phím".replace(" bàn phím", "")):
+            _, asked = self.run_four({"query": plain}, sources=("douyin", "kuaishou", "tiktok"))
+            self.assertEqual(asked, {"douyin": plain, "kuaishou": plain, "tiktok": plain})
+
+    def test_a_latin_source_with_no_words_is_skipped_without_losing_what_the_other_found(self):
+        result, asked = self.run_four({"queries": {"douyin": "迈从 ACE68"}}, sources=("douyin", "tiktok"))
+        self.assertEqual(list(asked), ["douyin"])
+        self.assertEqual(len(result["items"]), 1)
+        self.assertIn("tiktok: chưa có từ khóa", result["note"])
 
     def test_when_every_source_is_skipped_the_notes_are_the_error(self):
         with self.assertRaises(ValueError) as caught:

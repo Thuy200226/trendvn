@@ -1,5 +1,6 @@
 """One collection run: scan the sources, qualify, hand to the worker, download the best."""
 
+import re
 import shutil
 import time
 
@@ -127,7 +128,19 @@ def run_platform(ctx, platform, thresholds, download_media, ingest, limit, topic
     }
 
 
+SOURCE_ID = re.compile(r"[A-Za-z0-9_-]{1,100}")  # what the worker takes in as a video id (domain/observations.py), and as a filter
+MAX_SOURCE_IDS = 300  # what /api/media/pending takes in one request
+
+
+def _ids_to_ask_about(seen_now):
+    """Only what this scan saw can be downloaded now, so the worker cuts to the best 100 AMONG these, not before. Best score first, so
+    that when more than the worker takes were seen, the ones left out are the weakest."""
+    best_first = sorted(seen_now, key=lambda sid: -(seen_now[sid].get("score") or 0))
+    return [sid for sid in best_first if SOURCE_ID.fullmatch(sid)][:MAX_SOURCE_IDS]
+
+
 def fetch_pending(ctx, platform, seen_now, limit, wanted=()):
+    """`wanted` are the topics the accounts take (a candidate with a hint outside them is not downloaded)."""
     free = free_bytes()
     if free is not None and free < MIN_FREE_BYTES:
         return {
@@ -144,18 +157,18 @@ def fetch_pending(ctx, platform, seen_now, limit, wanted=()):
     room = max(0, status["thresholds"].get("max_backlog", 4) - backlog)
     limit = min(limit, room)
     if limit == 0:
-        wanted_room = status["thresholds"].get("max_backlog", 4)
         return {
             "downloaded": 0,
             "failed": 0,
             "waiting": 0,
-            "note": "Hàng chờ đã đủ (%d/%d): chưa tải thêm cho tới khi có video được đăng hoặc bỏ" % (backlog, wanted_room),
+            "note": "Hàng chờ đã đủ (%d/%d): chưa tải thêm cho tới khi có video được đăng hoặc bỏ"
+            % (backlog, status["thresholds"].get("max_backlog", 4)),
         }
     # the worker lists this platform's candidates best score first, so the newest 100 of other platforms cannot push the best ones out
-    wanted = list(seen_now)[:300]  # only what this scan saw can be downloaded now: the worker cuts to the best 100 AMONG these, not before
+    seen_ids = _ids_to_ask_about(seen_now)
     pending = [
         p
-        for p in worker("/api/media/pending", {"limit": 100, "platform": platform, "source_ids": wanted})["items"]
+        for p in worker("/api/media/pending", {"limit": 100, "platform": platform, "source_ids": seen_ids})["items"]
         if p["source_id"] in seen_now
     ]
     scores = {sid: item.get("score", 0) for sid, item in seen_now.items()}

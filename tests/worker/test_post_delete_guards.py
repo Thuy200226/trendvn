@@ -5,7 +5,8 @@ import time
 import unittest
 
 from tests.worker.test_post_delete_safety import DeletionCase
-from trendvn_worker.store.post_deletions import DELETING_SECONDS, PENDING_SECONDS
+from trendvn_worker import tasks as tasks_mod
+from trendvn_worker.store.post_deletions import DELETING_SECONDS, PENDING_SECONDS, RUNNING_TASK_SECONDS
 
 
 class BeginGuards(DeletionCase):
@@ -77,6 +78,29 @@ class BeginGuards(DeletionCase):
         with self.assertRaises(ValueError):
             self.s.delete_post_claim(self.jid, old)  # the old grant is dead
         self.assertEqual(self.s.delete_post_claim(self.jid, new)["id"], self.jid)
+
+
+class TwinAndCase(DeletionCase):
+    def test_the_same_post_written_with_another_letter_case_is_still_the_same_post(self):
+        twin = "b" * 32
+        shouting = "https://www.tiktok.com/@%s/video/1234567890" % self.who.upper()
+        self.job(twin, "published", account="main", target=self.who, publish_url=shouting, published_at=100)
+        self.grant()
+        with self.assertRaises(ValueError):
+            self.s.delete_post_begin(twin, shouting, "main")
+
+    def test_the_username_in_the_address_may_differ_from_the_account_only_in_case(self):
+        shouting = "https://www.tiktok.com/@%s/video/1234567890" % self.who.upper()
+        with self.s.transaction() as db:
+            db.execute("UPDATE jobs SET publish_url=? WHERE id=?", (shouting, self.jid))
+        self.assertTrue(self.s.delete_post_begin(self.jid, shouting, "main")["grant"])
+
+    def test_only_ascii_digits_make_a_video_id(self):
+        arabic = "https://www.tiktok.com/@%s/video/١٢٣٤٥٦٧" % self.who
+        with self.s.transaction() as db:
+            db.execute("UPDATE jobs SET publish_url=? WHERE id=?", (arabic, self.jid))
+        with self.assertRaises(ValueError):
+            self.s.delete_post_begin(self.jid, arabic, "main")
 
 
 class ClaimGuards(DeletionCase):
@@ -212,17 +236,13 @@ class OwnerCheckGuards(DeletionCase):
                 check(self.jid, url or self.url, account)
         self.assertEqual(self.state(), "unknown")
 
-    def test_a_check_only_settles_an_unknown_result(self):
+    def test_a_check_settles_nothing_while_the_deletion_is_still_open_or_already_settled(self):
         token = self.grant()  # pending
         self.both_refused_in("pending")
         self.s.delete_post_claim(self.jid, token)  # deleting
         self.both_refused_in("deleting")
-        self.s.delete_post_finish(self.jid, token, "failed", "x")
-        self.both_refused_in("failed")
-        again = self.grant()
-        self.s.delete_post_claim(self.jid, again)
-        self.s.delete_post_finish(self.jid, again, "deleted", "x")
-        self.both_refused_in("deleted")
+        self.s.delete_post_finish(self.jid, token, "deleted", "TikTok xác nhận")
+        self.both_refused_in("deleted")  # and nothing leaves 'deleted'
 
     def both_refused_in(self, state):
         for check in (self.s.delete_post_checked_present, self.s.delete_post_checked_deleted):
@@ -354,6 +374,93 @@ class ExpiryLimits(DeletionCase):
         self.age(10)
         self.assertEqual(self.freed(), 1)
         self.assertEqual(self.state(), "failed")
+
+
+class OwnerRemovedItByHand(DeletionCase):
+    """A deletion that failed because the post was already gone: the owner can say so, and only that."""
+
+    def failed(self):
+        token = self.grant()
+        self.s.delete_post_claim(self.jid, token)
+        self.s.delete_post_finish(self.jid, token, "failed", "Không thấy bài trong Studio")
+
+    def test_a_failed_deletion_can_be_settled_as_deleted_by_the_owner(self):
+        self.failed()
+        self.s.delete_post_checked_deleted(self.jid, self.url, "main")
+        self.assertEqual(self.state(), "deleted")
+        with self.assertRaises(ValueError):
+            self.grant()
+
+    def test_a_failed_deletion_cannot_be_settled_as_still_there(self):
+        self.failed()
+        with self.assertRaises(ValueError):
+            self.s.delete_post_checked_present(self.jid, self.url, "main")
+        self.assertEqual(self.state(), "failed")
+
+    def test_the_same_guards_hold_for_a_failed_deletion(self):
+        self.failed()
+        for kwargs in ({"url": "https://www.tiktok.com/@%s/video/9999999999" % self.who}, {"account": "other"}):
+            with self.assertRaises(ValueError):
+                self.s.delete_post_checked_deleted(self.jid, kwargs.get("url", self.url), kwargs.get("account", "main"))
+        self.assertEqual(self.state(), "failed")
+
+
+class EventsAndTimes(DeletionCase):
+    def events(self):
+        with self.s.connect() as db:
+            return [r[0] for r in db.execute("SELECT event FROM events WHERE job_id=? ORDER BY rowid", (self.jid,))]
+
+    def test_begin_and_abort_leave_a_trace(self):
+        token = self.grant()
+        self.s.delete_post_abort(self.jid, token, "x" * 3000)
+        self.assertEqual(self.events(), ["delete_requested", "post_failed"])
+        with self.s.connect() as db:
+            self.assertLessEqual(len(db.execute("SELECT reason FROM post_deletions WHERE job_id=?", (self.jid,)).fetchone()[0]), 700)
+
+    def test_the_time_a_deletion_may_take_counts_from_the_claim_not_from_the_click(self):
+        token = self.grant()
+        self.age(PENDING_SECONDS - 10)
+        self.s.delete_post_claim(self.jid, token)
+        self.age(DELETING_SECONDS - PENDING_SECONDS)  # long after the click, but not long after the claim
+        self.assertEqual(self.s.delete_post_expire(time.time()), 0)
+        self.assertEqual(self.state(), "deleting")
+
+    def test_the_cleanup_waits_longer_than_the_worker_waits_for_the_agent(self):
+        self.assertGreaterEqual(DELETING_SECONDS, tasks_mod.DELETE_TIMEOUT + 120)
+
+
+class RunningTaskGuard(DeletionCase):
+    def stuck(self, kind, age):
+        tid = self.s.task_create(kind, self.jid)
+        with self.s.transaction() as db:
+            db.execute("UPDATE tasks SET started=started-? WHERE id=?", (age, tid))
+
+    def deleting(self):
+        token = self.grant()
+        self.s.delete_post_claim(self.jid, token)
+        self.age(DELETING_SECONDS + 5)
+
+    def test_a_deletion_task_that_is_really_running_holds_the_cleanup_back(self):
+        self.deleting()
+        self.stuck("delete_post", 5)
+        self.assertEqual(self.s.delete_post_expire(time.time()), 0)
+
+    def test_a_deletion_task_stuck_for_longer_than_any_deletion_can_take_no_longer_does(self):
+        self.deleting()
+        self.stuck("delete_post", RUNNING_TASK_SECONDS + 60)
+        self.assertEqual(self.s.delete_post_expire(time.time()), 1)
+        self.assertEqual(self.state(), "unknown")
+
+    def test_the_time_after_which_a_running_task_is_taken_for_dead_is_sensible(self):
+        self.assertGreater(RUNNING_TASK_SECONDS, tasks_mod.DELETE_TIMEOUT + 60)  # a slow but live deletion is never given up on
+        self.deleting()
+        self.stuck("delete_post", 3600)  # an hour: dead whatever the exact limit
+        self.assertEqual(self.s.delete_post_expire(time.time()), 1)
+
+    def test_a_running_task_of_another_kind_never_holds_it_back(self):
+        self.deleting()
+        self.stuck("publish", 5)
+        self.assertEqual(self.s.delete_post_expire(time.time()), 1)
 
 
 class RecoverGuards(DeletionCase):

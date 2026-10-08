@@ -88,7 +88,8 @@ Ngoại lệ hiện có cần giữ khi sửa lỗi này: video tìm sản phẩ
 3. Chờ nút/hộp xác nhận tải xong; không coi menu đang mở là hộp xác nhận cuối. Chỉ bấm duy nhất nút xóa được xác định rõ.
 4. Tự động ghi deleted chỉ khi có thông báo thành công rõ của TikTok, observer được gắn trước nút cuối và loại thông báo ẩn. Bài biến mất/404 không đủ bằng chứng.
 5. Chưa rõ giữ unknown. Chủ kiểm đúng bài trong tài khoản sở hữu có thể xác nhận vẫn còn (failed rồi tạo quyền mới) hoặc đã xóa (deleted, lưu rõ bằng chứng do chủ kiểm). Chỉ nhận đúng URL/tài khoản/danh tính/job published và chỉ một lần. Quyền cũ không dùng lại, không tự xóa lại.
-6. Giữ lịch sử đăng, hạn mức và chống trùng. Bài kiểm thử riêng 7693824713411317013 đã bấm xóa, chủ kiểm tra xác nhận đã xóa; cần chốt trạng thái ứng dụng qua bước xác nhận kết quả.
+6. Trạng thái và thời gian (1.9, sau rà soát độc lập): `pending` (chờ agent nhận; quá 300 giây thành `failed`) → `deleting` (agent đã nhận; quá 600 giây thành `unknown`) → `deleted` | `failed` | `unknown`. `deleted` chỉ đi qua `deleting`; không trạng thái nào rời `deleted`. Worker chờ agent tối đa 420 giây; không nhận được phản hồi thì chưa nhận việc = `failed`, đã nhận = `unknown`. Dọn định kỳ chỉ chạy khi không có tác vụ xóa nào đang chạy dưới 900 giây. Một bài (cùng URL, không phân biệt hoa thường) chỉ được xóa một lần dù có hai video trỏ tới. Tab Đã đăng chỉ hiện nút mà worker sẽ nhận: `unknown` → hai nút "Đã kiểm tra"; `failed` → "Thử xóa lại" hoặc "Đã kiểm tra: bài đã xóa" (chủ tự xóa bằng tay); ảnh chụp lỗi giữ tối đa 20 cái.
+7. Giữ lịch sử đăng, hạn mức và chống trùng. Bài kiểm thử riêng 7693824713411317013 đã bấm xóa, chủ kiểm tra xác nhận đã xóa; cần chốt trạng thái ứng dụng qua bước xác nhận kết quả.
 
 ## 10. Lịch sử và giao diện
 
@@ -96,7 +97,7 @@ Ngoại lệ hiện có cần giữ khi sửa lỗi này: video tìm sản phẩ
 - Cần tái hiện lỗi chủ báo trước khi quyết định sửa: phân biệt lỗi nút/hộp xác nhận, phản hồi máy chủ, lượt đang chạy và tin con xuất hiện lại. Không thay toàn bộ máy trạng thái chỉ để che một lỗi hiển thị.
 - Lượt đang chạy: không âm thầm xóa tham chiếu; nếu chưa cho xóa phải báo ngay tại nút, nêu lý do rõ. Nếu hỗ trợ ẩn phải bảo đảm mọi kết quả đến muộn cùng lượt vẫn ẩn và tác vụ không bị mồ côi.
 - Polling chỉ có một yêu cầu đang bay; không kéo người đang đọc xuống cuối, không mất draft chữ/tệp hoặc trạng thái tick.
-- Dấu nhận `request_key` phải sống độc lập với việc xóa phần hiển thị lịch sử, tối thiểu 30 ngày. Gửi lại cùng mã trong thời hạn đó không tạo lượt mới/gọi Gemini lại, kể cả sau xóa lịch sử.
+- Dấu nhận `request_key` phải sống độc lập với việc xóa phần hiển thị lịch sử, tối thiểu 30 ngày. Gửi lại cùng mã trong thời hạn đó không tạo lượt mới/gọi Gemini lại, kể cả sau xóa lịch sử; riêng khi câu trả lời cũ đã lỗi, mã được trả lại và lần gửi chạy như mới (người dùng bấm gửi lại sau khi trình duyệt bận không được nhận lầm là đã làm xong).
 - Checkbox vẽ ô khoảng 20–24 px, vùng nhấn cả nhãn tối thiểu 44 px. Không dùng ô vuông 44 px để đạt chuẩn vùng nhấn. Tái sử dụng component, focus và select chung.
 
 ## 11. Đánh giá tối ưu trước sửa

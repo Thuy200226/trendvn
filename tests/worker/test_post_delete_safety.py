@@ -86,6 +86,16 @@ class TaskStepTests(DeletionCase):
     def test_the_wait_for_the_agent_is_longer_than_the_agents_own_slowest_path(self):
         self.assertGreaterEqual(tasks_mod.DELETE_TIMEOUT, 300)
 
+    def test_any_kind_of_failure_of_the_call_is_told_apart_the_same_way(self):
+        import json
+
+        for error in (RuntimeError("boom"), json.JSONDecodeError("bad", "x", 0), OSError("reset"), ValueError("odd")):
+            with self.s.transaction() as db:
+                db.execute("DELETE FROM post_deletions WHERE job_id=?", (self.jid,))
+            ok, _ = self.run_step(mock.Mock(side_effect=error))
+            self.assertFalse(ok)
+            self.assertEqual(self.state(), "failed", repr(error))  # never claimed: nothing was attempted
+
     def test_the_agent_is_really_given_that_long(self):
         agent = mock.Mock(return_value={"status": "deleted", "reason": "ok"})
         self.run_step(agent)
@@ -126,6 +136,12 @@ class FinishTests(DeletionCase):
 
 
 class RecoveryTests(DeletionCase):
+    def test_a_restart_of_the_worker_settles_what_was_left_open(self):
+        token = self.grant()
+        self.s.delete_post_claim(self.jid, token)
+        tasks_mod.Tasks(self.s, "t" * 40, lambda *a, **k: None, mock.MagicMock())
+        self.assertEqual(self.state(), "unknown")
+
     def test_after_a_restart_what_never_started_is_failed_and_what_may_have_run_is_unknown(self):
         pending = self.grant()
         other = "b" * 32
@@ -207,10 +223,51 @@ class PostedTabTests(DeletionCase):
     def test_each_state_offers_only_what_the_store_will_accept(self):
         actions = lambda state: {a for a, *_ in self.buttons(state)}  # noqa: E731
         self.assertEqual(actions(None), {"/post-delete"})
-        self.assertEqual(actions("failed"), {"/post-delete"})
+        self.assertEqual(actions("failed"), {"/post-delete", "/post-delete-checked"})  # try again, or say the post was removed by hand
         self.assertEqual(actions("unknown"), {"/post-delete-checked"})
         for state in ("pending", "deleting", "deleted"):
             self.assertEqual(actions(state), set(), state)
+
+    def render(self, state, reason="", busy=False):
+        from trendvn_worker.ui.tabs.posted import _delete_action
+
+        view = mock.Mock(csrf="CSRF", busy_browser=busy)
+        post = {
+            "id": self.jid, "publish_url": self.url, "account": "main", "title": "t", "target": self.who,
+            "delete_state": state, "delete_reason": reason,
+        }  # fmt: skip
+        return _delete_action(view, post)
+
+    def test_every_form_that_changes_something_asks_the_owner_first(self):
+        import re
+
+        for state in (None, "failed", "unknown"):
+            html = self.render(state)
+            forms = re.findall(r"<form.*?</form>", html, re.S)
+            self.assertTrue(forms, state)
+            for form in forms:
+                self.assertIn("data-confirm=", form, state)
+
+    def test_the_retry_button_waits_while_the_browser_is_busy_the_checks_do_not(self):
+        import re
+
+        failed = self.render("failed", busy=True)
+        form_of = lambda label: next(f for f in re.findall(r"<form.*?</form>", failed, re.S) if label in f)  # noqa: E731
+        self.assertIn("disabled", form_of("Thử xóa lại"))
+        self.assertNotIn("disabled", form_of("Đã kiểm tra"))
+
+    def test_a_reason_is_shown_as_text_never_as_markup(self):
+        for state in ("failed", "unknown", "deleted"):
+            html = self.render(state, '<img src=x onerror=alert(1)> "quoted" <script>x</script>')
+            self.assertNotIn("<img", html)
+            self.assertNotIn("<script", html)
+
+    def test_a_result_nobody_knows_is_never_worded_as_wait_and_retry(self):
+        for reason in ("Connection refused (urlopen error)", "Trình duyệt agent đang bận việc khác", "HTTP 500 busy"):
+            unknown = self.render("unknown", reason)
+            self.assertNotIn("Video được giữ", unknown, reason)
+            self.assertNotIn("thử lại", unknown.split("<form")[0], reason)
+        self.assertIn("Chưa kết nối được agent", self.render("failed", "Connection refused (urlopen error)"))  # a failed one may be retried
 
     def test_an_unknown_result_offers_both_owner_checks_and_never_a_new_deletion(self):
         from trendvn_worker.ui.tabs.posted import _delete_action

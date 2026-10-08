@@ -39,7 +39,7 @@ Toàn bộ lệnh: `docs/COMMANDS.md`. Tiến độ và nhật ký rà soát t�
 - Công cụ định dạng và lint **ghim đúng phiên bản** trong `requirements-dev.txt` (black, ruff): bản khác cho kiểu mã khác. Không có đúng bản thì `./trendvn test lint` tự bỏ qua kèm thông báo; dựng venv phát triển riêng (ví dụ ở thư mục tạm) bằng `pip install -r requirements-dev.txt` và đặt nó đầu `PATH`. Đừng dùng black của anaconda/hệ thống: nó định dạng lại file khác đi.
 - Test không được ghi vào `data/` hay `agent.log` thật (`tests/support.py` đã chuyển hướng log); test đổi trạng thái chung (tài khoản, cài đặt) dùng máy chủ/CSDL riêng.
 - Bộ test đầy đủ chạy cả trong image Docker (có ffmpeg thật); host không có ffmpeg sẽ bỏ qua một số test. Nếu Docker Hub không với tới được, chạy bước container bằng tay trong image sẵn có và nói rõ.
-- Bố cục e2e đo sau khi trang đã đứng yên; sau khi thêm giao diện, chạy `./trendvn test e2e` (Chrome thật, 7 cỡ màn hình, ô chạm >= 44 px).
+- Bố cục e2e đo sau khi trang đã đứng yên; sau khi thêm giao diện, chạy `./trendvn test e2e` (Chrome thật, 9 cỡ màn hình, ô chạm >= 44 px).
 
 ## An toàn (bắt buộc)
 - Hệ thống thật đang chạy trong thư mục này: container `trendvn-*`, dịch vụ nền `trendvn-agent`, cổng 5680-5682, `data/`. **Không bao giờ** chạy thử lệnh phá hủy (down, restore, uninstall, xóa volume) trên project mặc định; test như vậy phải export `COMPOSE_PROJECT_NAME` riêng và kiểm ID container trước/sau. `guard_project` chặn lệnh thay đổi khi project thuộc thư mục khác (`TRENDVN_ALLOW_TAKEOVER=1` chỉ chủ dùng).

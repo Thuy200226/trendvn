@@ -350,7 +350,7 @@ async () => {
   [...document.querySelectorAll('body *')].filter(vis).forEach(e => {
     const s = getComputedStyle(e);
     if (e.scrollWidth > e.clientWidth + 2 && ['hidden', 'clip'].includes(s.overflowX) && !['VIDEO', 'SELECT', 'TEXTAREA', 'INPUT', 'BUTTON'].includes(e.tagName) && e.clientWidth > 0) issues.push('clipped text: ' + desc(e));
-    if (parseFloat(s.fontSize) < (innerWidth <= 400 && e.closest('.bottomnav') ? 10 : 11) && (e.innerText || '').trim() && e.children.length === 0 && !e.closest('svg')) issues.push('tiny font ' + s.fontSize + ': ' + desc(e));
+    if (parseFloat(s.fontSize) < (innerWidth <= 420 && e.closest('.bottomnav') ? 10 : 11) && (e.innerText || '').trim() && e.children.length === 0 && !e.closest('svg')) issues.push('tiny font ' + s.fontSize + ': ' + desc(e));
     const r = box(e);
     if (r.right > innerWidth + 1 && s.position !== 'fixed' && !e.closest('.tablewrap')) issues.push('sticks out right by ' + Math.round(r.right - innerWidth) + 'px: ' + desc(e));
   });
@@ -453,6 +453,8 @@ def main():
                 (320, 640, True),
                 (360, 740, True),
                 (375, 812, True),
+                (390, 844, True),
+                (412, 915, True),  # the widths between 400 and 414 once clipped "Tổng quan"
                 (414, 896, True),
                 (768, 1024, True),
                 (1280, 900, False),

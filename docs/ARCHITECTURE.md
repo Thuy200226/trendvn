@@ -109,7 +109,7 @@ Douyin và Kuaishou chỉ phục vụ nội dung trong nước nên IP nào cũn
 - `data/worker/inbox/` video gốc tải về; `data/worker/jobs/<id>/` sản phẩm dựng (`final.mp4`, `vi.ass`, `manifest.json` ghi cả phiên bản prompt).
 - **Dọn đĩa** (`store/retention.py`, chạy trong `/api/housekeeping`): ứng viên quá 3 ngày chưa tải và video quá 21 ngày không ai quyết định thành `rejected`; video đã đăng/bỏ/trùng/lỗi mất tệp gốc và bản dựng sau 7 ngày (giữ `manifest.json`, `poster.jpg` và dòng trong CSDL để không đăng trùng); xóa lịch sử cũ (quan sát 30 ngày, nhật ký 60, tác vụ 14); tệp mồ côi và ảnh chụp cũ. Dưới 1 GB trống thì ngừng tải thêm, dưới 512 MB thì ngừng dựng; ô "Ổ đĩa" ở trang Tổng quan cho biết còn bao nhiêu. Worker khởi động lại tự xếp lại video đang xử lý dở (mỗi video được thử tối đa 2 lần, sau đó chờ chủ xem); tuổi tệp mồ côi tính theo thời điểm đổi inode (`ctime`), không phải `mtime` (yt-dlp chép ngày của máy chủ vào `mtime`); việc xóa tệp thất bại không bị ghi là đã xong mà thử lại sau 24 giờ; tệp một video khác còn sống đang dùng không bao giờ bị xóa; còn dưới 1 GB trống thì housekeeping gửi một tin nhắn điện thoại.
 - `data/worker/gemini.key`, `data/worker/notify.json`: bí mật, quyền 0600, không bao giờ trả về qua API.
-- `data/agent/agent.log`, `data/agent/shots/` (ảnh chụp khi đăng lỗi; ảnh của lần chạy thử nằm ở `data/worker/exports/` để bảng điều khiển hiển thị).
+- `data/agent/agent.log`, `data/agent/shots/` (ảnh chụp khi đăng hoặc xóa bài lỗi, giữ 20 ảnh mới nhất cùng tệp chữ đi kèm; ảnh của lần chạy thử nằm ở `data/worker/exports/` để bảng điều khiển hiển thị).
 
 ## 6. Mở rộng
 

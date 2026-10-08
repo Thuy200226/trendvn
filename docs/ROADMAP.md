@@ -249,3 +249,26 @@ Kiểm chứng hiện tại: **946/946 test Docker**, 0 bỏ qua và ffmpeg đ�
 Thử chống trùng trên CSDL thật bằng đọc trong container: đúng video đã chọn queued và ACE75 vừa bỏ rejected; đưa hai ID/URL này qua bộ lọc trả 0 mới, loại 2. Tệp nguồn ACE68 tồn tại **22.961.755 byte**, không chỉ trạng thái ghi trong bảng. Rà độc lập cuối đã hết blocker trong phạm vi sửa; Gemini dựng thật vẫn lỗi HTTP 504/240 giây và trả về hàng chờ.
 
 Áp dụng cuối: worker 1.9 khỏe, agent được cập nhật và khởi động lại; doctor mọi mục bắt buộc đạt, tự đăng giữ TẮT. Bài thử đã chốt deleted qua UI sau xác nhận trực tiếp của chủ, không gọi xóa thêm; các bài cũ giữ nguyên. Chưa gọi lần thử đăng mới.
+
+## Phase O — Đánh giá toàn luồng và sửa an toàn (2026-10-08, trên bản 1.9)
+
+Mục tiêu: chạy 1.9 theo từng luồng, đánh giá nghiệp vụ bằng số liệu thật (chỉ đọc), sửa các lỗi chặn việc hoặc gây mất an toàn trước khi đưa 1.9 lên hệ thống thật. Hệ thống thật **vẫn chạy 1.8**; 1.9 chưa được áp dụng.
+
+**Số đo trước sửa (CSDL thật, chỉ đọc bản sao):** 360 video thấy trong 7 ngày → 7 được xử lý → 1 đăng (0 lượt xem); hàng chờ đầy 4/4 nên mỗi lần quét tải 0 mà không nói lý do; 130 ứng viên, Douyin 129 (> 100); khoảng 55% ứng viên thuộc chủ đề không tài khoản nào nhận; lần quét cuối cách 2,8 ngày (lịch n8n tắt, "Tự đăng" tắt). Chuyển CSDL thật 8 → 10 trên bản sao: 6 ms, toàn vẹn. Trang chính 110 ms / 34 KB; rảnh chỉ 3 yêu cầu cập nhật trong 32 giây.
+
+**Đã sửa (mỗi lỗi có test thất bại nếu bỏ bản sửa):**
+- `?err=` dài chạy biểu thức chính quy bậc hai: 60 KB mất 26 giây và làm `/health` đứng; nay cắt trước khi xử lý và giới hạn hai biểu thức (đầu ra giống bản cũ trên 6494 chuỗi thật trong mã và test, 0 khác biệt).
+- Xóa bài: lượt chưa bắt đầu bị ghi `unknown` oan; nút chết ở tab Đã đăng; lượt kẹt `pending/deleting`; `deleted` ghi thẳng từ `pending`; thời hạn chờ 180 giây ngắn hơn đường chậm nhất; so tên tài khoản và URL không đồng nhất; hai video chung một bài; ngõ cụt khi chủ tự xóa tay (`failed`); lời nhắn "Video được giữ" lẫn vào kết quả chưa rõ; thư mục ảnh lỗi không giới hạn.
+- Đói tải ứng viên: **kho Douyin thật 129 ứng viên, hàm cũ trả 100, nên 29 video không bao giờ được xét; hàm mới hỏi đúng các mã vừa thấy và trả đủ 29** (đo trên bản sao CSDL thật). `jobs.updated` không còn bị đẩy mới khi thấy lại video.
+- Chat gửi lại sau lỗi, mã yêu cầu chéo tài khoản, thiếu `crypto.randomUUID` trên `http://`, nguồn tìm kiếm thiếu từ khóa.
+- Nhãn "Tổng quan" bị cắt ở 320 px và ở 401–412 px (phát hiện thêm sau rà độc lập, đo bằng Chrome thật).
+
+**Rà soát:** tĩnh (tự đọc diff, ruff, black đúng bản ghim, doclint); động (e2e Chrome thật 147/147 ở 9 cỡ; 1086/1086 unit trên máy và trong container có ffmpeg, 0 bỏ qua; dựng video thật bằng ffmpeg đạt; bản sao CSDL thật); độc lập (hai tác tử chỉ-đọc, thư mục tạm, không chạm hệ thống thật).
+- Kiểm tra đột biến: 41 đột biến vào `post_deletions.py` (trước đó 11/15 sống sót), 41 vào phần còn lại của Bước 1, 13 vào lần sửa thu thập/tìm kiếm, 20 vào lần sửa sau rà xóa bài: mọi đột biến thật đều bị bắt (chỉ mẫu đối chứng không đổi gì sống sót).
+- Tác tử rà thu thập/chat/tìm kiếm tìm ra **lỗi do chính lần sửa của tôi** (commit `25d2280`): biến `wanted` (danh sách chủ đề) bị ghi đè bằng danh sách mã video nên mọi video có gợi ý chủ đề bị bỏ khi tài khoản có chủ đề; test cũ luôn truyền chủ đề rỗng nên không thấy. Đã sửa, thêm test có chủ đề và gợi ý; cùng đợt: mã dài 81–100 ký tự làm cả lần quét lỗi 400 (nay hai bên cùng giới hạn 100 và agent lọc trước), 300 mã đầu cắt theo thứ tự luồng (nay theo điểm), từ khóa thiếu/rỗng đưa câu Việt sang Douyin (nay không), tài liệu chưa cập nhật.
+- Tác tử rà xóa bài: 48.000 thao tác ngẫu nhiên trên Store thật so với mô hình đối chiếu, 0 sai lệch; 29.720 lời gọi song song 24 luồng không lỗi; 197 đầu vào độc hại; 60 lần dựng tab Đã đăng chống chèn mã. Không có lỗi; các rủi ro nêu (so URL phân biệt hoa thường, dọn bị treo bởi tác vụ kẹt, dọn ảnh ném lỗi, lời nhắn, ngõ cụt `failed`, giới hạn thời gian) đã sửa có test.
+
+**Chưa sửa, ghi nhận cho các bước sau (xem báo cáo đánh giá):** truy vấn tìm kiếm vẫn ghép chủ đề mặc định vào mọi nguồn và kế hoạch từ khóa tiếng Trung vẫn điền câu tiếng Việt khi không có từ Trung (phần "bỏ qua nguồn" chỉ áp dụng khi kế hoạch thật sự thiếu); so khớp tiêu đề sai 27% trên 74 ca; ứng viên chủ đề không ai nhận vẫn được lưu; Bỏ/Duyệt ở Đăng bài nhảy sang Cần xem; vị trí cuộn, giữ focus khi cập nhật trực tiếp, bản nháp mất khi tải lại, tương phản chế độ tối, ô chạm 22 px; hai ngưỡng thời gian xóa bài chưa đo trên Studio thật (420/600 giây là ước tính từ tổng các thời hạn trong mã).
+
+**Chưa kiểm chứng được:** TikTok, Douyin và Gemini thật, xóa bài thật, Safari, thiết bị cảm ứng thật; thời gian xóa bài thực tế của Studio.
+

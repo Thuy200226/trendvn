@@ -20,6 +20,9 @@ def _checked_form(view, post, label, outcome, question):
     )
 
 
+GONE = "Bạn đã kiểm tra đúng bài trong tài khoản sở hữu và xác nhận nó đã xóa? Chỉ cập nhật trạng thái, không gửi lệnh xóa."
+
+
 def _delete_action(view, post):
     state = post.get("delete_state")
     if state in ("deleted", "pending", "deleting", "unknown", "failed"):
@@ -30,17 +33,14 @@ def _delete_action(view, post):
             "unknown": "Cần kiểm tra trên TikTok",
             "failed": "Chưa xóa được",
         }[state]
-        detail = "<p>%s</p><small>%s</small>" % (E(label), E(user_message(post.get("delete_reason") or "", state in ("unknown", "failed"))))
+        detail = "<p>%s</p><small>%s</small>" % (
+            E(label),
+            E(user_message(post.get("delete_reason") or "", state in ("unknown", "failed"), retry_ok=state != "unknown")),
+        )
         if (
             state == "unknown"
         ):  # the post may be gone: the owner looks at TikTok and says what they saw (the system never deletes again by itself)
-            detail += _checked_form(
-                view,
-                post,
-                "Đã kiểm tra: bài đã xóa",
-                "deleted",
-                "Bạn đã kiểm tra đúng bài trong tài khoản sở hữu và xác nhận nó đã xóa? Chỉ cập nhật trạng thái, không gửi lệnh xóa.",
-            )
+            detail += _checked_form(view, post, "Đã kiểm tra: bài đã xóa", "deleted", GONE)
             detail += _checked_form(
                 view,
                 post,
@@ -48,7 +48,8 @@ def _delete_action(view, post):
                 "present",
                 "Bạn đã mở đúng bài và kiểm tra nó vẫn còn trên TikTok? Chỉ xác nhận sau khi kiểm tra.",
             )
-        elif state == "failed":  # nothing was deleted: it may be tried again
+        elif state == "failed":  # nothing was deleted: it may be tried again, or the owner may have removed the post by hand
+            detail += _checked_form(view, post, "Đã kiểm tra: bài đã xóa", "deleted", GONE)
             detail += action_form(
                 view.csrf,
                 "/post-delete",

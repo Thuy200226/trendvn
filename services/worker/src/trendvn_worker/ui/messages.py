@@ -12,15 +12,16 @@ TECHNICAL = re.compile(
 FALLBACK = "Chưa hoàn tất thao tác. Dữ liệu được giữ; xem chi tiết trong Thêm → Nhật ký."
 
 
-def user_message(text, failed=False):
-    """Translate known failures, preserve useful Vietnamese instructions and bound noisy output."""
+def user_message(text, failed=False, retry_ok=True):
+    """Translate known failures, preserve useful Vietnamese instructions and bound noisy output. `retry_ok=False` for a result that
+    must not read as 'try again later' (a deletion that may have happened): the busy and connection wordings are then left out."""
     text = str(text or "")[:TEXT_LIMIT]
     low = text.lower()
     if "gemini" in low and any(word in low for word in ("503", "504", "timeout", "timed out", "hết thời gian")):
         return "Gemini đang bận. Video được giữ trong hàng chờ để thử lại."
-    if any(word in low for word in ("connection refused", "urlopen error", "failed to establish")):
+    if retry_ok and any(word in low for word in ("connection refused", "urlopen error", "failed to establish")):
         return "Chưa kết nối được agent trên máy. Video được giữ; kiểm tra tình trạng trong Thêm."
-    if "busy" in low or "agent đang bận" in low:
+    if retry_ok and ("busy" in low or "agent đang bận" in low):
         return "Trình duyệt đang bận với việc khác. Chờ việc đó xong rồi thử lại."
     text = vi_error(vi_reason(text))
     technical = TECHNICAL.search(text)

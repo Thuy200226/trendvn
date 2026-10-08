@@ -41,7 +41,9 @@ CHAT_KINDS = (
     "channel_login",
     "channel_check",
 )  # the jobs behind the product chat (search/runner.py)
-DELETE_TIMEOUT = 300  # seconds to wait for the agent to delete a post: longer than the slowest path through TikTok Studio (about 215 s)
+# seconds to wait for the agent to delete a post: the step timeouts in publisher/delete.py add up to about 215 s, plus Chrome starting, the
+# page loads of the check and a failure screenshot; the cleanup frees an unanswered deletion only after much more than this
+DELETE_TIMEOUT = 420
 LABELS = {
     "queue_download": "Tải ứng viên vào chờ xử lý",
     "delete_post": "Xóa bài trên TikTok",

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 from tests.support import StoreCase
 from trendvn_worker import tasks as tasks_mod
+from trendvn_worker.store.retention import CANDIDATE_EXPIRY_DAYS
 from trendvn_worker.web import api
 
 
@@ -50,9 +51,20 @@ class StarvationTests(StoreCase):
         app = SimpleNamespace(store=self.s)
         add(self, "a1", 5)
         self.assertEqual(len(api.handle(app, "/api/media/pending", {"platform": "douyin", "source_ids": ["a1"]})["items"]), 1)
-        for bad in ("a1", [1], ["a b"], ["x" * 81], ["ok"] * 301, {"a1": 1}, [None]):
+        longest = "x" * 100  # the longest id the worker itself takes in (ingest and Kuaishou allow 100)
+        self.assertEqual(api.handle(app, "/api/media/pending", {"platform": "douyin", "source_ids": [longest]})["items"], [])
+        for bad in ("a1", [1], ["a b"], ["x" * 101], ["ok"] * 301, {"a1": 1}, [None]):
             with self.subTest(bad=str(bad)[:30]), self.assertRaises(ValueError):
                 api.handle(app, "/api/media/pending", {"platform": "douyin", "source_ids": bad})
+
+    def test_scores_that_tie_come_out_in_one_fixed_order(self):
+        for jid in ("b", "a", "c"):
+            add(self, jid, 5)
+        with self.s.transaction() as db:
+            db.execute("UPDATE jobs SET first_seen=1")
+        first = [j["source_id"] for j in self.s.candidates_without_media(2, "douyin")]
+        self.assertEqual(first, [j["source_id"] for j in self.s.candidates_without_media(2, "douyin")])
+        self.assertEqual(first, ["a", "b"])
 
 
 class ReSightingTests(StoreCase):
@@ -121,6 +133,7 @@ class FullQueueNoticeTests(StoreCase):
             self.job("q%d" % number, "queued")
         html = self.home()
         self.assertIn("Hàng chờ đang đầy (4/4)", html)
+        self.assertIn("hết hạn sau %d ngày" % CANDIDATE_EXPIRY_DAYS, html)  # the figure the retention rule really uses
 
     def test_it_stays_quiet_while_there_is_room(self):
         self.job("q0", "queued")

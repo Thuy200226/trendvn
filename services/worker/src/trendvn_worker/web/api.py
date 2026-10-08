@@ -7,7 +7,7 @@ from ..domain.platforms import PLATFORMS
 from ..pipeline import process_many
 
 JOB_ID = re.compile(r"[0-9a-f]{32}")
-SOURCE_ID = re.compile(r"[A-Za-z0-9_-]{1,80}")
+SOURCE_ID = re.compile(r"[A-Za-z0-9_-]{1,100}")  # the same as a video id at ingest (domain/observations.py)
 MAX_SOURCE_IDS = 300
 PROCESSED_STATUSES = ("ready", "awaiting_approval", "needs_review")
 MAX_PROCESS_BATCH = 8

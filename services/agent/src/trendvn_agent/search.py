@@ -143,16 +143,19 @@ def _ask(platform, account, payload, query, human):
 
 
 CHINESE = ("douyin", "kuaishou")  # the sources that are searched in Chinese
+NOT_CHINESE_NOR_PLAIN = re.compile(r"[^\x00-\x7f\u3000-\u9fff\uff00-\uffef]")  # e.g. a Vietnamese letter: useless to a Chinese site
 
 
 def _query_for(platform, queries, plain):
     """The words for one source: its own entry; else the other source of its language (the Chinese ones share a plan, so do TikTok and
-    Instagram); else, for a Latin source only, the plain query. None for a Chinese source that has no Chinese words at all."""
+    Instagram); else the plain query (for a Chinese source only if it holds no Vietnamese letters). None for a Chinese source that
+    has no words it can use."""
     own = queries.get(platform)
     if own:
         return own
-    if platform in CHINESE:
-        return queries.get("douyin") or queries.get("kuaishou")
+    if platform in CHINESE:  # the plain query only when it holds no Vietnamese letters (a model name such as ACE68 is fine)
+        fit = isinstance(plain, str) and plain != "" and not NOT_CHINESE_NOR_PLAIN.search(plain)
+        return queries.get("douyin") or queries.get("kuaishou") or (plain if fit else None)
     return queries.get("tiktok") or queries.get("instagram") or plain or ""
 
 
@@ -166,14 +169,14 @@ def search(payload, human=False):
         if not platforms:
             raise SignedOut("Chưa có nguồn đã đăng nhập. Bấm Kiểm tra hoặc Đăng nhập trong Kênh tìm kiếm trước.")
     account = _account(payload)
-    queries = payload.get("queries") or {p: payload.get("query", "") for p in platforms}
+    queries = payload.get("queries") or {}  # a missing or empty plan: every source then falls back on the plain query (see _query_for)
     if not isinstance(queries, dict):
         raise ValueError("Từ khóa không hợp lệ")
     items, notes = [], []
     for platform in platforms:
         query = _query_for(platform, queries, payload.get("query"))
-        if query is None:  # a Chinese source with no Chinese words: skipped with a note, never sent Vietnamese
-            notes.append("%s: chưa có từ khóa tiếng Trung; bỏ qua nguồn này" % platform)
+        if query is None or query == "":  # a source with no words of its language: skipped with a note, never sent Vietnamese
+            notes.append("%s: chưa có từ khóa%s; bỏ qua nguồn này" % (platform, " tiếng Trung" if platform in CHINESE else ""))
             continue
         if not isinstance(query, str) or not 1 <= len(query) <= 160:
             raise ValueError("Cần từ khóa/model để tìm")

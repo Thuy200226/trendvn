@@ -48,8 +48,54 @@ class PruneTests(unittest.TestCase):
             screenshots.prune_shots(Path(tmp))
             self.assertEqual(len(list(Path(tmp).glob("*.png"))), 3)
 
+    def test_with_equal_times_the_name_decides_which_are_older(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            names = ["shot_%02d" % n for n in (7, 3, 11, 0, 9, 5, 1, 10, 4, 8, 2, 6)]  # created in no particular order
+            for name in names:
+                picture = folder / (name + ".png")
+                picture.write_bytes(b"png")
+                os.utime(picture, (500, 500))
+            screenshots.prune_shots(folder, keep=4)
+            self.assertEqual(sorted(p.name for p in folder.iterdir()), ["shot_%02d.png" % n for n in (8, 9, 10, 11)])
+
+    def test_keeping_none_removes_every_screenshot_and_its_text(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            make(Path(tmp), 3)
+            screenshots.prune_shots(Path(tmp), keep=0)
+            self.assertEqual(list(Path(tmp).iterdir()), [])
+
+    def test_nothing_but_screenshots_and_their_text_is_ever_removed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            make(folder, 30)
+            for name in ("notes.json", "keep.jpg", "x.png.bak"):
+                (folder / name).write_text("mine")
+            (folder / "sub").mkdir()
+            (folder / "sub" / "old.png").write_bytes(b"png")
+            screenshots.prune_shots(folder)
+            self.assertTrue({"notes.json", "keep.jpg", "x.png.bak", "sub"} <= {p.name for p in folder.iterdir()})
+            self.assertTrue((folder / "sub" / "old.png").exists())
+
 
 class ShotTests(StoreCase):
+    def test_a_file_that_cannot_be_pruned_never_costs_the_screenshot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            shots = Path(tmp) / "shots"
+            shots.mkdir()
+            (shots / "dangling.png").symlink_to(Path(tmp) / "missing")  # its time cannot be read
+            page = mock.Mock()
+            page.screenshot.side_effect = lambda path, full_page: Path(path).write_bytes(b"png")
+            with mock.patch.object(screenshots, "DATA", Path(tmp)), mock.patch.object(screenshots.time, "time", return_value=9999):
+                path = screenshots.shot(page, "delete")
+            self.assertTrue(path and Path(path).exists())
+
+    def test_a_failed_screenshot_is_none(self):
+        page = mock.Mock()
+        page.screenshot.side_effect = RuntimeError("closed")
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(screenshots, "DATA", Path(tmp)):
+            self.assertIsNone(screenshots.shot(page, "delete"))
+
     def test_taking_a_screenshot_prunes_the_folder(self):
         with tempfile.TemporaryDirectory() as tmp:
             shots = Path(tmp) / "shots"
