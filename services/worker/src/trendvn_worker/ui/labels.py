@@ -126,6 +126,9 @@ REASONS = (
 VIETNAMESE_LETTER = re.compile(r"[àáạảãâăấầẩẫậắằẳẵặèéẹẻẽêếềểễệìíịỉĩòóọỏõôốồổỗộơớờởỡợùúụủũưứừửữựỳýỵỷỹđ]", re.I)
 
 
+TEXT_LIMIT = 1000  # characters of an error or a reason that are ever looked at (the rest is noise or an attack)
+
+
 def vi_reason(text):
     """Plain-language version of an internal reason (unknown reasons, and ones already written in Vietnamese, are shown as they are:
     a Vietnamese sentence that quotes Google's English after a colon must not lose itself to the table entry for that English)."""
@@ -164,7 +167,7 @@ def _integer(match):
 
 # (regex of the internal English error, the Vietnamese text or a function of the match): messages of forms and buttons
 ERRORS = (
-    (re.compile(r"(\S[\w. ]*?) must be an integer between (\S+) and (\S+)"), _integer),
+    (re.compile(r"(\S[\w. ]{0,60}?) must be an integer between (\S+) and (\S+)"), _integer),
     (re.compile(r"Settings must be an object"), "Dữ liệu cài đặt không hợp lệ"),
     (re.compile(r"audio_confidence must be"), "Độ chắc chắn tối thiểu của Gemini phải từ 0,5 đến 0,99"),
     (re.compile(r"post_windows: at most"), "Tối đa 6 khung giờ vàng"),
@@ -197,10 +200,11 @@ ERRORS = (
 
 def vi_error(text):
     """Plain-language version of an error message from a form or a button (Vietnamese and unknown messages are returned as they are)."""
-    if re.match(r"Gemini HTTP|Media operation failed", text or ""):
+    text = (text or "")[:TEXT_LIMIT]  # whatever comes in, the patterns below only ever see a bounded line
+    if re.match(r"Gemini HTTP|Media operation failed", text):
         return text  # an error of an outside service: its own words, not a guess about which setting it was
     for pattern, vietnamese in ERRORS:
-        match = pattern.search(text or "")
+        match = pattern.search(text)
         if match:
             return vietnamese(match) if callable(vietnamese) else vietnamese
-    return text or ""
+    return text

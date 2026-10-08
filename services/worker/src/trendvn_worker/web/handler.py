@@ -25,6 +25,7 @@ STALE_PAGE = (
 )
 
 MAX_BODY = 2 * 1024 * 1024
+ERR_SHOWN = 700  # characters (the longest message the app itself puts there) of an error carried in the address that are ever read: it is shown once, in a banner
 LOGIN_FORM_MAX = 4096
 # polled by the page or by Docker every few seconds: not worth a log line
 QUIET_PATHS = ("/health", "/fragment/", "/media/", "/favicon")
@@ -128,7 +129,11 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
         if path == "/" and self.local_ui():
             query = parse_qs(url.query)
             ok_key = query.get("ok", [""])[0]
-            flash = ("ok", forms.FLASH[ok_key]) if ok_key in forms.FLASH else (("err", query["err"][0]) if query.get("err") else None)
+            flash = (
+                ("ok", forms.FLASH[ok_key])
+                if ok_key in forms.FLASH
+                else (("err", query["err"][0][:ERR_SHOWN]) if query.get("err") else None)
+            )
             return self.send(200, dashboard_html(self.app, flash, self.headers.get("Host", "")), "text/html; charset=utf-8")
         if path == "/fragment/live" and self.local_ui():
             tab = parse_qs(url.query).get("tab", ["home"])[0]

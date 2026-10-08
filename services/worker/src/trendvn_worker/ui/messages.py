@@ -2,11 +2,11 @@
 
 import re
 
-from .labels import VIETNAMESE_LETTER, vi_error, vi_reason
+from .labels import TEXT_LIMIT, VIETNAMESE_LETTER, vi_error, vi_reason
 
 TECHNICAL = re.compile(
     r"Locator\.|Call log:|Traceback|\b(?:TimeoutError|HTTPError|ConnectionError|Exception)\b|"
-    r"waiting for locator|\b(?:SELECT|INSERT|UPDATE)\b.+\b(?:FROM|INTO|SET)\b|\{[\s\"']|/Users/|/data/|/tmp/",
+    r"waiting for locator|\b(?:SELECT|INSERT|UPDATE)\b.{1,200}?\b(?:FROM|INTO|SET)\b|\{[\s\"']|/Users/|/data/|/tmp/",
     re.I | re.S,
 )
 FALLBACK = "Chưa hoàn tất thao tác. Dữ liệu được giữ; xem chi tiết trong Thêm → Nhật ký."
@@ -14,7 +14,7 @@ FALLBACK = "Chưa hoàn tất thao tác. Dữ liệu được giữ; xem chi ti�
 
 def user_message(text, failed=False):
     """Translate known failures, preserve useful Vietnamese instructions and bound noisy output."""
-    text = str(text or "")
+    text = str(text or "")[:TEXT_LIMIT]
     low = text.lower()
     if "gemini" in low and any(word in low for word in ("503", "504", "timeout", "timed out", "hết thời gian")):
         return "Gemini đang bận. Video được giữ trong hàng chờ để thử lại."
