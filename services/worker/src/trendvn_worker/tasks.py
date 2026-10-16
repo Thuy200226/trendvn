@@ -21,7 +21,6 @@ PROCESS_BATCH = 4  # videos processed per press of the button
 BROWSER_KINDS = {
     "queue_download",
     "delete_post",
-    "identify",
     "collect",
     "publish",
     "dryrun",
@@ -31,6 +30,7 @@ BROWSER_KINDS = {
     "search_human",
     "channel_login",
     "channel_check",
+    "batch_sales_search",
 }
 CHAT_KINDS = (
     "identify",
@@ -40,10 +40,10 @@ CHAT_KINDS = (
     "search_download",
     "channel_login",
     "channel_check",
+    "batch_sales_search",
 )  # the jobs behind the product chat (search/runner.py)
-# seconds to wait for the agent to delete a post: the step timeouts in publisher/delete.py add up to about 215 s, plus Chrome starting, the
-# page loads of the check and a failure screenshot; the cleanup frees an unanswered deletion only after much more than this
-DELETE_TIMEOUT = 420
+# The agent keeps its one-use grant alive while waiting for the owner; lost heartbeats still expire safely.
+DELETE_TIMEOUT = None  # owner login/verification can take as long as needed; the agent renews its grant while waiting
 LABELS = {
     "queue_download": "Tải ứng viên vào chờ xử lý",
     "delete_post": "Xóa bài trên TikTok",
@@ -54,6 +54,7 @@ LABELS = {
     "search_human": "Tự xác minh và tìm lại",
     "search": "Tìm video về sản phẩm",
     "search_download": "Tải video đã chọn",
+    "batch_sales_search": "Tìm kiếm & tạo video hàng loạt",
     "update": "Cập nhật tổng hợp",
     "collect": "Thu thập video mới",
     "process": "Xử lý video đang chờ",
@@ -104,6 +105,13 @@ def call_agent(path, payload, token, timeout=1500):
             detail = json.loads(e.read().decode()).get("error", "")
         except Exception:
             pass
+        if e.code in (428, 401) or (detail and any(k in detail.lower() for k in ("captcha", "xác minh", "xác nhận", "wall"))):
+            clean_detail = (
+                detail.split(": ", 1)[-1] if ": " in detail and detail.startswith(("douyin:", "tiktok:", "kuaishou:")) else detail
+            )
+            raise AgentError(clean_detail[:300]) from None
+        if detail and not detail.startswith("Internal failure"):
+            raise AgentError(detail[:300]) from None
         raise AgentError("Agent báo lỗi %d%s" % (e.code, ": " + detail[:200] if detail else "")) from None
     except (urllib.error.URLError, ConnectionError, TimeoutError, OSError):
         raise AgentError("Không gọi được agent trình duyệt. Kiểm tra dịch vụ trendvn-agent đang chạy (./trendvn doctor).") from None
@@ -177,6 +185,11 @@ class Tasks:
         store.chat_recover()
         store.delete_post_recover()
 
+    def cancel_for_job(self, job_id):
+        with self.guard:
+            self.references.pop(job_id, None)
+            self.store.task_cancel_for_job(job_id)
+
     def start(self, kind, job_id=None, reference=None):
         if kind not in LABELS:
             raise ValueError("Việc không hợp lệ")
@@ -191,8 +204,6 @@ class Tasks:
         with self.guard:  # check-and-create is atomic, so a double click starts one task, not two
             running = {t["kind"] for t in self.store.tasks_running()}
             wants_browser = kind in BROWSER_KINDS or kind == "update"
-            if kind == "identify":
-                wants_browser = bool(self.store.chat_get(int(job_id))["body"].get("discovery"))
             wants_gemini = kind in ("process", "process_one", "update")
             if wants_browser and running & (BROWSER_KINDS | {"update"}):
                 raise TaskBusy(
@@ -222,7 +233,13 @@ class Tasks:
             if kind in ("update", "process"):
                 outcomes.append(self._process_step(steps))
             if kind == "process_one":
-                outcomes.append(self._process_step(steps, job_id))
+                worked = self._process_step(steps, job_id)
+                outcomes.append(worked)
+                if worked:
+                    cfg = self.store.settings()
+                    row = self.store.job(job_id)
+                    if row and row.get("state") == "ready" and cfg.get("publisher_enabled") and not cfg.get("require_approval", False):
+                        outcomes.append(self._publish_step(steps, "publish", job_id))
             if kind in ("publish", "dryrun"):
                 outcomes.append(self._publish_step(steps, kind, job_id))
             if kind == "stats":
@@ -307,7 +324,7 @@ class Tasks:
         return True
 
     def _delete_post_step(self, steps, job_id):
-        index = steps.begin("Xác minh tài khoản và xóa đúng bài trên TikTok")
+        index = steps.begin("Xác minh tài khoản và xóa đúng bài trên TikTok; chờ bạn đăng nhập/xác minh nếu cần, đóng Chrome để dừng")
         grant = self.references.pop(job_id)
         try:
             result = call_agent("/api/post-delete", grant, self.token, timeout=DELETE_TIMEOUT)

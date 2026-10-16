@@ -1,5 +1,7 @@
 """Validated discovery choices become actual source queries before the browser searches, never only local filters."""
 
+import re
+
 from .topics import TOPIC_IDS, TOPIC_LABEL
 
 TOPIC_ZH = {
@@ -48,14 +50,24 @@ def queries(identity, chosen):
     base = identity.get("queries", {})
     original = identity.get("query") or identity.get("name", "")
     result = {}
+    from .search_queries import NOT_CHINESE_NOR_PLAIN
+
     for source in ("tiktok", "douyin", "kuaishou", "instagram"):
         chinese = source in ("douyin", "kuaishou")
-        text = base.get(source) or base.get("douyin" if chinese else "tiktok") or original
+        text = base.get(source) or (base.get("douyin") if chinese else base.get("tiktok")) or ""
+        if chinese and not text and not NOT_CHINESE_NOR_PLAIN.search(original):
+            text = original
+        elif not chinese and not text:
+            text = original
         topic = (TOPIC_ZH if chinese else TOPIC_LABEL).get(chosen.get("topic"), "")
         category = PRODUCT_CATEGORIES.get(chosen.get("category"))
         category = category[1 if chinese else 0] if category else ""
-        intent = ("好物 推荐" if chinese else "review sản phẩm") if chosen.get("sales") else ""
-        result[source] = " ".join(dict.fromkeys(part.strip() for part in (text, topic, category, intent) if part.strip()))[:160]
+        intent = ("测评 开箱" if chinese else "review đập hộp") if chosen.get("sales") else ""
+        parts = [part.strip() for part in (text, topic, category, intent) if part and part.strip()]
+        if chinese:
+            parts = [re.sub(NOT_CHINESE_NOR_PLAIN, " ", p).strip() for p in parts]
+            parts = [p for p in parts if p]
+        result[source] = " ".join(dict.fromkeys(parts))[:160]
     return result
 
 

@@ -5,7 +5,7 @@ import time
 
 from ..jsonsafe import loads
 
-KINDS = ("say", "product", "videos", "link", "login", "note")
+KINDS = ("say", "product", "videos", "link", "login", "note", "top_products", "duplicate_confirm", "batch_search")
 STATES = ("pending", "running", "done", "error")
 KEEP = 300  # messages kept; older ones go (a long chat is not a record anyone needs, and attachments never are kept at all)
 REQUEST_KEEP = 30 * 86400  # deleting history must not make a retried request a new Gemini call
@@ -21,9 +21,19 @@ class ChatMixin:
             and db.execute("SELECT count(*) FROM chat WHERE state IN ('pending','running')").fetchone()[0] >= BUSY_LIMIT
         ):
             raise ValueError("Đang có việc chưa xong; đợi nó hoàn tất rồi gửi tiếp")
+        parents = [
+            body.get(key)
+            for key in ("turn_id", "product", "user_message")
+            if isinstance(body, dict) and isinstance(body.get(key), int) and not isinstance(body.get(key), bool)
+        ]
+        hidden = bool(
+            role == "bot"
+            and parents
+            and db.execute("SELECT 1 FROM chat WHERE hidden=1 AND id IN (%s) LIMIT 1" % ",".join("?" for _ in parents), parents).fetchone()
+        )
         mid = db.execute(
-            "INSERT INTO chat(created,role,kind,state,account,body) VALUES(?,?,?,?,?,?)",
-            (time.time(), role, kind, state, account, json.dumps(body, ensure_ascii=False)),
+            "INSERT INTO chat(created,role,kind,state,account,body,hidden) VALUES(?,?,?,?,?,?,?)",
+            (time.time(), role, kind, state, account, json.dumps(body, ensure_ascii=False), int(hidden)),
         ).lastrowid
         db.execute(
             "DELETE FROM chat WHERE id<=? AND state IN ('done','error') "
@@ -59,7 +69,7 @@ class ChatMixin:
             db.execute("UPDATE chat SET request_key=NULL WHERE id=? AND state='error'", (mid,))
 
     def chat_forget(self, mid):
-        """Hide a completed search turn, retaining internal references needed by selected videos."""
+        """Hide a whole search turn, including pending descendants, without cancelling owner windows or video references."""
         with self.transaction() as db:
             rows = {r["id"]: dict(r) | {"body": loads(r["body"], {})} for r in db.execute("SELECT * FROM chat")}
             row = rows.get(mid)
@@ -78,8 +88,6 @@ class ChatMixin:
                 for i, r in rows.items()
                 if r["kind"] == "videos" and isinstance(r["body"].get("product"), int) and r["body"]["product"] in turn
             )
-            if any(rows[i]["state"] not in ("done", "error") for i in turn):
-                raise ValueError("Chỉ xóa được lượt đã hoàn tất")
             user = rows[root]["body"].get("user_message")
             if isinstance(user, int) and not isinstance(user, bool) and user in rows and rows[user]["role"] == "user":
                 turn.add(user)
@@ -133,11 +141,11 @@ class ChatMixin:
             db.execute("DELETE FROM chat WHERE id=?", (mid,))
 
     def chat_clear(self, before=None):
-        """Forget the finished part of the history (only what is older than `before`, a Unix time, when given); returns how many messages
-        went. What is still being worked on stays, and so does what it needs: the answer a waiting video was picked from, and the product
-        a running search was started for (a failed search offers to try again on it). Picked or downloaded videos, saved links and sign-in
-        records are not history and are never touched."""
+        """Explicit clear hides every visible turn, retaining internal references and pending owner waits. Cutoff housekeeping instead
+        prunes only completed old turns. Neither operation changes videos, saved links or account sessions."""
         with self.transaction() as db:
+            if before is None:
+                return db.execute("UPDATE chat SET hidden=1 WHERE hidden=0").rowcount
             keep = {
                 int(r[0])
                 for r in db.execute("SELECT search_id FROM jobs WHERE search_id IS NOT NULL AND state IN ('search_selected','candidate')")
@@ -156,6 +164,12 @@ class ChatMixin:
             db.executemany("UPDATE chat SET hidden=1 WHERE id=?", [(r[0],) for r in selected if r[1] or r[0] in keep])
             db.executemany("DELETE FROM chat WHERE id=?", [(r[0],) for r in selected if not r[1] and r[0] not in keep])
         return len(ids)
+
+    def chat_waiting(self):
+        """Hidden history can still have an owner window open; show its activity outside the cleared log."""
+        with self.connect() as db:
+            rows = db.execute("SELECT * FROM chat WHERE hidden=1 AND state IN ('pending','running') ORDER BY id LIMIT 3").fetchall()
+        return [dict(r) | {"body": loads(r["body"], {})} for r in rows]
 
     def chat_recover(self):
         """After a restart nothing is really running: whatever was unfinished becomes an error the owner can retry."""

@@ -24,9 +24,11 @@ def chat_data(store):
         "channels": store.channel_states(),
         "saved": {a["id"]: store.commission_list(a["id"]) for a in roster},
         "messages": messages,
+        "waiting": store.chat_waiting(),
         "picked": picked,
         "accounts": {a["id"]: a["username"] for a in store.accounts()},
         "product": (store.chat_product() or {}).get("body", {}).get("identity"),
+        "store": store,
     }
 
 

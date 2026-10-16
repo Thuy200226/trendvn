@@ -30,6 +30,15 @@ def _actions(view, job):
         icon_name="trash",
         data_confirm="Bỏ video này khỏi hàng đợi?",
     )
+    purge = action_form(
+        view.csrf,
+        "/purge",
+        "Xóa sạch",
+        {"id": jid, "confirmed": "true", "next": "queue"},
+        css="ghost danger",
+        icon_name="trash",
+        data_confirm="Xóa hoàn toàn video này và toàn bộ tệp liên quan trên máy chủ?",
+    )
     if state == "search_selected":
         return (
             action_form(
@@ -41,6 +50,7 @@ def _actions(view, job):
                 disabled=view.busy_browser,
             )
             + remove
+            + purge
         )
     kind = "queue_download" if state == "candidate" else "process_one"
     run = action_form(
@@ -52,7 +62,7 @@ def _actions(view, job):
         icon_name="plus" if state == "candidate" else "play",
         disabled=view.busy_browser if state == "candidate" else view.busy_process,
     )
-    return '<div class="queue-actions">%s%s</div>' % (run, remove)
+    return '<div class="queue-actions">%s%s%s</div>' % (run, remove, purge)
 
 
 def _video_table(items, now, empty, view):

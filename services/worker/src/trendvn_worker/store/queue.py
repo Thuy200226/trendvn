@@ -53,7 +53,7 @@ class QueueMixin:
     def finish(self, jid, lease, state, **fields):
         if state not in ("ready", "awaiting_approval", "needs_review", "failed", "duplicate"):
             raise ValueError("Invalid processing terminal state")
-        allowed = {"reason", "analysis", "route", "output_file", "output_hash", "fingerprint", "duration", "output_info", "topic"}
+        allowed = {"reason", "analysis", "route", "output_file", "output_hash", "fingerprint", "duration", "output_info", "topic", "meta"}
         if set(fields) - allowed:
             raise ValueError("Invalid fields")
         with self.transaction() as db:
@@ -81,8 +81,17 @@ class QueueMixin:
         with self.transaction() as db:
             twin = None
             if check:
-                for row in db.execute("SELECT id,fingerprint,duration FROM jobs WHERE fingerprint IS NOT NULL AND id<>?", (jid,)):
-                    if abs(row["duration"] - duration) < 2 and similar(fingerprint, loads(row["fingerprint"], [])):
+                for row in db.execute(
+                    "SELECT id,fingerprint,duration FROM jobs WHERE fingerprint IS NOT NULL AND duration IS NOT NULL AND id<>?",
+                    (jid,),
+                ):
+                    row_dur = row["duration"]
+                    if (
+                        row_dur is not None
+                        and duration is not None
+                        and abs(row_dur - duration) < 2
+                        and similar(fingerprint, loads(row["fingerprint"], []))
+                    ):
                         twin = row["id"]
                         break
             changed = db.execute(

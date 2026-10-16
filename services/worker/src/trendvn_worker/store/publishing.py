@@ -8,15 +8,42 @@ from ..domain.accounts import account_flag, accepts, effective
 from ..domain.captions import build_caption
 from ..domain.platforms import valid_post_url
 from ..jsonsafe import loads
+from ..domain.product_binding import validate_binding, verify_evidence, commerce_required
 
 
 class PublishingMixin:
     """Everything between "a video is ready" and "it is on TikTok"."""
 
+    def _verified_product(self, db, row, account):
+        meta = loads(row["meta"], {})
+        binding = loads(row["product_binding"], None) or meta.get("product_binding")
+        if binding:
+            links = [
+                dict(r) for r in db.execute("SELECT account,url,title,product_id FROM commission_links WHERE account=?", (account["id"],))
+            ]
+            validate_binding(binding, links, account["id"], account["username"])
+            verify_evidence(meta.get("product_verification"), binding, row["output_hash"], account["id"], account["username"])
+        elif commerce_required(binding, meta):
+            raise ValueError("Video bán hàng chưa có sản phẩm Shop hợp lệ; dừng đăng")
+        return meta.get("product_verification")
+
+    def product_publish_authorize(self, jid, lease, binding, digest):
+        """Read-only final check of the live claim, immutable render and frozen catalog before the agent clicks Post."""
+        with self.transaction() as db:
+            row = db.execute("SELECT * FROM jobs WHERE id=? AND state='publishing' AND publish_lease=?", (jid, lease)).fetchone()
+            if not row or not lease or row["output_hash"] != digest:
+                raise ValueError("Quyền đăng hoặc thành phẩm đã thay đổi; dừng trước Đăng")
+            account = next((a for a in self._accounts_in(db, enabled_only=True) if a["id"] == row["account"]), None)
+            current = loads(row["product_binding"], None) or loads(row["meta"], {}).get("product_binding")
+            if not account or account["username"] != row["target"] or current != binding:
+                raise ValueError("Tài khoản hoặc giỏ hàng đã thay đổi; dừng trước Đăng")
+            self._verified_product(db, row, account)
+        return {"ok": True}
+
     def published_today(self, db=None, now=None, account=None):
         """Posts made today (confirmed, in flight or unconfirmed): on one account, or on all of them."""
         start = self.day_start(now)
-        q = "SELECT count(*) FROM jobs WHERE state IN ('published','publishing','publish_unknown') AND COALESCE(published_at,updated)>=?"
+        q = "SELECT count(*) FROM jobs WHERE state IN ('published','publishing','publish_unknown','post_deleted') AND COALESCE(published_at,updated)>=?"
         args = [start]
         if account is not None:
             q += " AND COALESCE(account,?)=?"
@@ -30,7 +57,8 @@ class PublishingMixin:
         """{account id: when it last posted} for every account in one pass (the spacing between two posts is counted from it)."""
         with self.connect() as db:
             rows = db.execute(
-                "SELECT COALESCE(account,?),max(published_at) FROM jobs WHERE state='published' GROUP BY 1", (self._default_id(),)
+                "SELECT COALESCE(account,?),max(published_at) FROM jobs WHERE state IN ('published','post_deleted') GROUP BY 1",
+                (self._default_id(),),
             ).fetchall()
         return {account: when for account, when in rows}
 
@@ -38,7 +66,7 @@ class PublishingMixin:
         """{account id: posts since `start`} for every account in one pass (the dashboard asks about each account and about the total)."""
         with self.connect() as db:
             rows = db.execute(
-                "SELECT COALESCE(account,?) who,count(*) n FROM jobs WHERE state IN ('published','publishing','publish_unknown') "
+                "SELECT COALESCE(account,?) who,count(*) n FROM jobs WHERE state IN ('published','publishing','publish_unknown','post_deleted') "
                 "AND COALESCE(published_at,updated)>=? GROUP BY who",
                 (self._default_id(), start),
             ).fetchall()
@@ -128,7 +156,8 @@ class PublishingMixin:
 
     def _last_post(self, db, account):
         return db.execute(
-            "SELECT max(published_at) FROM jobs WHERE state='published' AND COALESCE(account,?)=?", (self._default_id(), account["id"])
+            "SELECT max(published_at) FROM jobs WHERE state IN ('published', 'post_deleted') AND COALESCE(account,?)=?",
+            (self._default_id(), account["id"]),
         ).fetchone()[0]
 
     def _unconfirmed(self, db, account):
@@ -195,6 +224,7 @@ class PublishingMixin:
         """Mark the video as being published (with a lease the agent must present when it reports back) and return the claim."""
         if row["search_account"] and loads(row["meta"], {}).get("search_username") != account["username"]:
             raise ValueError("Tài khoản thực đã thay đổi; hãy tìm lại video")
+        self._verified_product(db, row, account)
         token = uuid.uuid4().hex
         db.execute(
             "UPDATE jobs SET state='publishing',publish_lease=?,prev_state=?,account=?,target=?,updated=? WHERE id=?",
@@ -203,6 +233,9 @@ class PublishingMixin:
         self.event(db, row["id"], "publishing", ("thủ công " if manual else "") + "@" + account["username"])
         analysis = loads(row["analysis"], {})
         caption = row["caption_user"] or build_caption(analysis, row["title"])
+        product_binding = loads(row["product_binding"], None) if "product_binding" in row.keys() and row["product_binding"] else None
+        if not product_binding and "meta" in row.keys() and row["meta"]:
+            product_binding = loads(row["meta"], {}).get("product_binding")
         db.execute("UPDATE jobs SET caption=? WHERE id=?", (caption, row["id"]))
         return {
             "status": "claimed",
@@ -217,6 +250,9 @@ class PublishingMixin:
             "target": account["username"],
             "visibility": effective(account, cfg)["visibility"],
             "search_account": row["search_account"],
+            "product_binding": product_binding,
+            "product_verification": loads(row["meta"], {}).get("product_verification"),
+            "commerce_required": commerce_required(product_binding, loads(row["meta"], {})),
         }
 
     def publish_peek(self, job_id=None, account_id=None):
@@ -246,6 +282,9 @@ class PublishingMixin:
             if row["search_account"] and loads(row["meta"], {}).get("search_username") != account["username"]:
                 raise ValueError("Tài khoản thực đã thay đổi; hãy tìm lại video")
         a = loads(row["analysis"], {})
+        product_binding = loads(row["product_binding"], None) if "product_binding" in row.keys() and row["product_binding"] else None
+        if not product_binding and "meta" in row.keys() and row["meta"]:
+            product_binding = loads(row["meta"], {}).get("product_binding")
         return {
             "status": "ready",
             "id": row["id"],
@@ -257,6 +296,9 @@ class PublishingMixin:
             "target": account["username"],
             "visibility": effective(account, cfg)["visibility"],
             "search_account": row["search_account"],
+            "product_binding": product_binding,
+            "product_verification": loads(row["meta"], {}).get("product_verification"),
+            "commerce_required": commerce_required(product_binding, loads(row["meta"], {})),
         }
 
     def publish_finish(self, jid, lease, outcome, url="", reason=""):
@@ -326,16 +368,46 @@ class PublishingMixin:
             )
         return True
 
-    def resolve_unknown(self, jid, outcome, url=""):
+    def resolve_unknown(self, jid, outcome, url="", cart_product_id=None, owner_confirmed=False):
         """Operator/agent verified the account: mark an uncertain publish as published or as not posted."""
         if outcome not in ("published", "failed"):
             raise ValueError("Invalid outcome")
         if url and not valid_post_url(url):
             raise ValueError("Invalid publish URL")  # the link is shown on the dashboard: only a TikTok https link is accepted
         with self.transaction() as db:
-            row = db.execute("SELECT state,prev_state FROM jobs WHERE id=?", (jid,)).fetchone()
+            row = db.execute("SELECT * FROM jobs WHERE id=?", (jid,)).fetchone()
             if not row or row["state"] != "publish_unknown":
                 raise ValueError("Job is not awaiting confirmation")
+            metadata = loads(row["meta"], {})
+            if not isinstance(metadata, dict):
+                metadata = {}
+            binding = loads(row["product_binding"], None) or metadata.get("product_binding")
+            required = commerce_required(binding, metadata)
+            if outcome == "published" and required and not isinstance(binding, dict):
+                raise ValueError("Bài bán hàng thiếu thông tin giỏ đã đối chiếu; chưa thể xác nhận")
+            if outcome == "published" and binding:
+                from ..domain.product_binding import PRODUCT_ID
+
+                if binding.get("account") != (row["account"] or self._default_id()) or binding.get("username") != row["target"]:
+                    raise ValueError("Giỏ hàng không thuộc đúng tài khoản đã đăng; cần đối chiếu lại")
+                if (
+                    not isinstance(cart_product_id, str)
+                    or not PRODUCT_ID.fullmatch(cart_product_id)
+                    or cart_product_id != binding.get("product_id")
+                ):
+                    raise ValueError("Cần kiểm đúng mã sản phẩm giỏ trên chính bài, không chỉ caption")
+                url = url or row["publish_url"] or ""
+                if not url or not valid_post_url(url):
+                    raise ValueError("Chưa có URL đúng bài để xác nhận giỏ hàng")
+                target = row["target"] or binding.get("username")
+                from urllib.parse import urlsplit
+
+                path = urlsplit(url).path
+                if not target or not path.startswith("/@" + target + "/video/"):
+                    raise ValueError("URL không thuộc đúng tài khoản đã đăng")
+                if row["publish_url"] and url != row["publish_url"]:
+                    raise ValueError("Cần kiểm đúng bài đã ghi nhận; không dùng bài khác cùng caption")
+
             now = time.time()
             back = "awaiting_approval" if row["prev_state"] == "awaiting_approval" else "ready"
             db.execute(
@@ -344,7 +416,11 @@ class PublishingMixin:
                     "published" if outcome == "published" else back,
                     url or None,
                     now if outcome == "published" else None,
-                    "Confirmed by account check",
+                    (
+                        "Chủ xác nhận video và đúng giỏ hàng"
+                        if owner_confirmed and binding
+                        else "Confirmed by account and cart check" if binding else "Confirmed by account check"
+                    ),
                     now,
                     jid,
                 ),
@@ -353,4 +429,17 @@ class PublishingMixin:
 
     def unresolved(self):
         with self.connect() as db:
-            return [dict(r) for r in db.execute("SELECT id,title,caption,updated,account,target FROM jobs WHERE state='publish_unknown'")]
+            rows = db.execute(
+                "SELECT id,title,caption,updated,account,target,publish_url,product_binding,meta FROM jobs WHERE state='publish_unknown'"
+            ).fetchall()
+        out = []
+        for raw in rows:
+            row = dict(raw)
+            metadata = loads(row.pop("meta"), {})
+            if not isinstance(metadata, dict):
+                metadata = {}
+            binding = loads(row["product_binding"], None) or metadata.get("product_binding")
+            row["commerce_required"] = commerce_required(binding, metadata)
+            row["product_binding"] = binding if isinstance(binding, dict) else None
+            out.append(row)
+        return out

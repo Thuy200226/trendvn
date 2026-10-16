@@ -134,7 +134,7 @@ def _product_chat(db):
         "title TEXT, markers TEXT NOT NULL, tracked INTEGER NOT NULL, PRIMARY KEY (account, product_id))"
     )
     present = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
-    for column in ("search_id TEXT", "search_account TEXT"):
+    for column in ("search_id TEXT", "search_account TEXT", "product_binding TEXT"):
         if column.split()[0] not in present:
             db.execute("ALTER TABLE jobs ADD COLUMN " + column)
 
@@ -175,6 +175,13 @@ def _post_deletions(db):
     )
 
 
+def _affiliate_binding(db):
+    """Version 11: store affiliate product binding on jobs for TikTok Shop linking."""
+    present = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
+    if "product_binding" not in present:
+        db.execute("ALTER TABLE jobs ADD COLUMN product_binding TEXT")
+
+
 MIGRATIONS = [
     _baseline,
     _accounts,
@@ -186,6 +193,7 @@ MIGRATIONS = [
     _channel_logins,
     _discovery_history,
     _post_deletions,
+    _affiliate_binding,
 ]
 
 
@@ -216,5 +224,10 @@ def seed_settings(db):
 def initialise(db):
     """Open-time setup: WAL mode, schema, default settings."""
     db.execute("PRAGMA journal_mode=WAL")
+    try:
+        db.execute("PRAGMA synchronous=NORMAL")
+        db.execute("PRAGMA busy_timeout=30000")
+    except Exception:
+        pass
     migrate(db)
     seed_settings(db)

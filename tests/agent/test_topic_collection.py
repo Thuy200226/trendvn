@@ -518,7 +518,8 @@ class LoginWindowTests(unittest.TestCase):
     def test_a_wrong_sign_in_keeps_the_window_open_until_it_is_corrected(self):
         from trendvn_agent.publisher import session
 
-        page = mock.MagicMock()
+        page = mock.MagicMock(url="https://www.tiktok.com/login/")
+        page.is_closed.return_value = False
         ctx = mock.MagicMock(pages=[page])
         context = mock.MagicMock()
         context.__enter__.return_value = ctx
@@ -529,6 +530,7 @@ class LoginWindowTests(unittest.TestCase):
             session,
             chrome=lambda *a, **k: context,
             logged_in=lambda c: True,
+            has_challenge=lambda p: False,
             wrong_account=lambda c, expected: next(answers),
             _report=lambda account, ok: reported.append((account, ok)),
         ):
@@ -539,7 +541,11 @@ class LoginWindowTests(unittest.TestCase):
         from trendvn_agent.publisher import session
 
         context = mock.MagicMock()
-        context.__enter__.return_value = mock.MagicMock(pages=[mock.MagicMock()])
+        page = mock.MagicMock(url="https://www.tiktok.com/login/")
+        page.is_closed.return_value = False
+        context.__enter__.return_value = mock.MagicMock(pages=[page])
         context.__exit__.return_value = False
-        with mock.patch.multiple(session, chrome=lambda *a, **k: context, logged_in=lambda c: True, _report=lambda a, ok: None):
+        with mock.patch.multiple(
+            session, chrome=lambda *a, **k: context, logged_in=lambda c: True, has_challenge=lambda p: False, _report=lambda a, ok: None
+        ):
             self.assertTrue(session.login(1, None))

@@ -253,7 +253,7 @@ def notify_form(view):
         '<div class="btns two"><form method="post" action="/notify-test">%s%s</form>'
         '<form method="post" action="/notify-clear">%s%s</form></div>'
     ) % (
-        E(", ".join(view.d["notify_channels"]) or "chưa cấu hình"),
+        E(", ".join(view.d.get("notify_channels", ())) or "chưa cấu hình"),
         token,
         groups,
         button("Lưu kênh thông báo"),

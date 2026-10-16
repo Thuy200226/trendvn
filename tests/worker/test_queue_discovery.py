@@ -94,15 +94,16 @@ class DiscoveryTests(StoreCase):
         self.s.chat_forget(first)
         self.assertEqual([m["id"] for m in self.s.chat_thread()], [other - 1, other])
         self.assertEqual(self.s.chat_get(first)["state"], "done")
-        with self.assertRaises(ValueError):
-            self.s.chat_forget(other)
+        self.s.chat_forget(other)
+        self.assertEqual(self.s.chat_thread(), [])
 
     def test_deleting_search_child_hides_whole_turn_and_preserves_download_reference(self):
         root = self.s.chat_ask("main", {"text": "model"}, "product", {})
         self.s.chat_set(root, "done")
         child = self.s.chat_add("bot", "videos", {"product": root, "turn_id": root}, account="main", state="running")
-        with self.assertRaises(ValueError):
-            self.s.chat_forget(root)
+        self.s.chat_forget(root)
+        self.assertEqual(self.s.chat_thread(), [])
+        self.assertEqual(self.s.chat_waiting()[0]["id"], child)
         self.s.chat_set(child, "done")
         self.s.chat_forget(child)
         self.assertEqual(self.s.chat_thread(), [])

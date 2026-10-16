@@ -25,14 +25,14 @@ GONE = "Bạn đã kiểm tra đúng bài trong tài khoản sở hữu và xác
 
 def _delete_action(view, post):
     state = post.get("delete_state")
-    if state in ("deleted", "pending", "deleting", "unknown", "failed"):
+    if state in ("deleted", "pending", "deleting", "unknown", "failed") or post.get("state") == "post_deleted":
         label = {
-            "deleted": "Đã xóa trên TikTok",
+            "deleted": "Đã xóa trên TikTok & sạch tệp",
             "pending": "Chờ xóa",
-            "deleting": "Đang xóa",
+            "deleting": "Đang xóa · chờ bạn trong Chrome nếu cần xác minh",
             "unknown": "Cần kiểm tra trên TikTok",
             "failed": "Chưa xóa được",
-        }[state]
+        }.get(state, "Đã xóa trên TikTok & sạch tệp")
         detail = "<p>%s</p><small>%s</small>" % (
             E(label),
             E(user_message(post.get("delete_reason") or "", state in ("unknown", "failed"), retry_ok=state != "unknown")),
@@ -62,7 +62,7 @@ def _delete_action(view, post):
         return detail
     who = post.get("target") or "?"
     fields = {"id": post["id"], "url": post.get("publish_url") or "", "account": post.get("account") or "main", "confirmed": "true"}
-    return action_form(
+    del_tiktok = action_form(
         view.csrf,
         "/post-delete",
         "Xóa bài TikTok",
@@ -72,6 +72,15 @@ def _delete_action(view, post):
         disabled=view.busy_browser or not post.get("publish_url"),
         data_confirm="Xóa bài ‘%s’ trên TikTok @%s?\n%s" % (post.get("title", ""), who, post.get("publish_url") or ""),
     )
+    purge_local = action_form(
+        view.csrf,
+        "/purge",
+        "Xóa sạch tệp",
+        {"id": post["id"], "confirmed": "true", "next": "posted"},
+        css="ghost",
+        data_confirm="Xóa toàn bộ tệp video của bài này trên máy chủ để giải phóng dung lượng đĩa?",
+    )
+    return '<div class="post-actions">%s%s</div>' % (del_tiktok, purge_local)
 
 
 def _performance_table(view):

@@ -6,6 +6,7 @@ import threading
 
 from ..domain import discovery
 from ..domain.channels import CHANNELS
+from ..domain.discovery import PRODUCT_CATEGORIES
 from ..domain.product_links import product_link
 from ..domain.product_search import validate_input
 
@@ -68,6 +69,26 @@ def _send(app, payload, account, key):
     anything else describes a product to recognise."""
     chosen = discovery.options(payload)
     reference = validate_input(payload)
+    reference["sales"] = chosen["sales"]
+
+    # 1. Nếu tick chọn tìm video bán hàng và chưa có text / file: tổng hợp top sản phẩm bán chạy theo ngành hàng
+    if chosen.get("sales") and not reference["text"] and not reference["files"]:
+        cat = chosen.get("category")
+        top_items = app.store.category_top_products(cat, account=account)
+        cat_label = PRODUCT_CATEGORIES.get(cat, ("", ""))[0]
+        body = {
+            "category": cat,
+            "category_label": cat_label,
+            "products": top_items,
+            "account": account,
+            "account_username": app.store.account(account)["username"],
+            "discovery": chosen,
+        }
+        said_ref = dict(reference, text="Xem top sản phẩm bán chạy ngành " + cat_label)
+        mid = app.store.chat_ask(account, _said(said_ref, None), "top_products", body, request_key=key)
+        app.store.chat_set(mid, "done")
+        return {"id": mid}
+
     if not reference["text"] and not reference["files"]:
         reference["text"] = discovery.fallback_text(chosen)
     if not reference["text"] and not reference["files"]:
@@ -76,6 +97,23 @@ def _send(app, payload, account, key):
     if link:
         mid = app.store.chat_ask(account, _said(reference, link), "link", {"url": link["url"]}, request_key=key)
         return _start(app, mid, "link")
+
+    # 2. Nếu tìm kiếm sản phẩm mà đã có video trong hệ thống và chưa có cờ allow_duplicate: cảnh báo xác nhận
+    allow_duplicate = payload.get("allow_duplicate") in (True, "true", "1")
+    if not allow_duplicate and reference["text"]:
+        duplicates = app.store.existing_product_videos(reference["text"])
+        if duplicates:
+            body = {
+                "query": reference["text"],
+                "existing": duplicates,
+                "account": account,
+                "account_username": app.store.account(account)["username"],
+                "discovery": chosen,
+            }
+            mid = app.store.chat_ask(account, _said(reference, None), "duplicate_confirm", body, request_key=key)
+            app.store.chat_set(mid, "done")
+            return {"id": mid}
+
     body = {"discovery": chosen, "account_username": app.store.account(account)["username"]} if "source" in payload else {}
     mid = app.store.chat_ask(account, _said(reference, None), "product", body, request_key=key)
     return _start(app, mid, "identify", reference=reference)
@@ -84,9 +122,9 @@ def _send(app, payload, account, key):
 def find(app, payload):
     """Look for videos of the product an answer recognised, in the chosen account's own browser session."""
     product = app.store.chat_get(_message_id(payload))
-    if product["kind"] != "product" or product["state"] != "done":
+    if product["hidden"] or product["kind"] != "product" or product["state"] != "done":
         raise ValueError("Chưa có sản phẩm đã nhận diện để tìm")
-    source, human = payload.get("source", "auto"), payload.get("human") is True
+    source, human = payload.get("source", "auto"), payload.get("human") in (True, "true", "1")
     if source not in SOURCES or (human and source == "auto"):
         raise ValueError("Chọn một nguồn tìm kiếm")
     account = _account(app, payload, product["account"])
@@ -96,12 +134,21 @@ def find(app, payload):
         "discovery": product["body"].get("discovery", {}),
         "turn_id": product["body"].get("turn_id", product["id"]),
     }  # fmt: skip
-    mid = app.store.chat_add("bot", "videos", body, state="running", account=account)
-    return _start(app, mid, "search_human" if human else "search", discard=True)
+    with SEND_LOCK:
+        mid, start, previous = app.store.chat_find(account, body)
+        if start:
+            try:
+                app.tasks.start("search_human" if human else "search", str(mid))
+            except Exception:
+                app.store.chat_find_refused(mid, previous)
+                raise
+    return {"id": mid}
 
 
 def delete_history(app, payload):
-    return app.store.chat_forget(_message_id(payload))
+    mid = _message_id(payload)
+    app.tasks.cancel_for_job(str(mid))
+    return app.store.chat_forget(mid)
 
 
 def dismiss(app, payload):
@@ -155,7 +202,7 @@ def login(app, payload):
 
 
 def check(app, payload):
-    """Look whether the account's profile is signed in on a channel (reads cookies, opens no page)."""
+    """Check the selected profile; Douyin requires evidence from its own page."""
     return _sign_in(app, payload, "channel_check")
 
 
@@ -172,6 +219,72 @@ def forget(app, payload):
     return {"ok": True}
 
 
+def confirm_duplicate(app, payload):
+    """Continue exactly the saved request once; never relax video deduplication."""
+    message = app.store.chat_get(_message_id(payload))
+    if message["hidden"] or message["kind"] != "duplicate_confirm" or message["state"] != "done":
+        raise ValueError("Không có lượt tìm cần xác nhận này")
+    account = _account(app, payload, message["account"])
+    if account != message["account"] or app.store.account(account)["username"] != message["body"].get("account_username"):
+        raise ValueError("Tài khoản đã thay đổi; hãy tìm lại")
+    chosen = discovery.options(message["body"].get("discovery", {}))
+    return send(
+        app,
+        dict(
+            chosen,
+            account=account,
+            text=message["body"]["query"],
+            allow_duplicate=True,
+            request_key="continue_duplicate_%s" % message["id"],
+        ),
+    )
+
+
+def dismiss_product(app, payload):
+    """Exclude a product from top catalog."""
+    account = _account(app, payload)
+    item_key = payload.get("item_key") or payload.get("model") or payload.get("name")
+    if not item_key:
+        raise ValueError("Thiếu thông tin sản phẩm cần bỏ qua")
+    app.store.dismiss_product(account, item_key)
+    return {"ok": True, "dismissed": item_key}
+
+
+def undismiss_products(app, payload):
+    """Restore all dismissed products."""
+    account = _account(app, payload)
+    app.store.undismiss_products(account)
+    return {"ok": True}
+
+
+def batch_find(app, payload):
+    """Batch process: for each selected product, search Douyin, pick top candidate, download, bind affiliate, and queue for processing."""
+    account = _account(app, payload)
+    products = payload.get("products") or []
+    if not isinstance(products, list) or not products:
+        raise ValueError("Hãy chọn ít nhất 1 sản phẩm để tìm kiếm hàng loạt")
+    products = products[:10]  # Giới hạn an toàn
+    category = payload.get("category", "")
+    body = {
+        "category": category,
+        "products": products,
+        "account": account,
+        "account_username": app.store.account(account)["username"],
+        "status": "queued",
+        "current": 0,
+        "total": len(products),
+        "jobs": [],
+        "logs": [],
+    }
+    mid = app.store.chat_add("bot", "batch_search", body, state="running", account=account)
+    try:
+        app.tasks.start("batch_sales_search", str(mid))
+    except Exception as error:
+        app.store.chat_set(mid, "error", error=str(error)[:300] or "Không bắt đầu được")
+        raise
+    return {"id": mid}
+
+
 ACTIONS = {
     "find": find,
     "pick": pick,
@@ -182,6 +295,10 @@ ACTIONS = {
     "forget": forget,
     "delete_history": delete_history,
     "dismiss": dismiss,
+    "confirm_duplicate": confirm_duplicate,
+    "dismiss_product": dismiss_product,
+    "undismiss_products": undismiss_products,
+    "batch_find": batch_find,
 }
 
 

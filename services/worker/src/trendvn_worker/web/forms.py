@@ -170,8 +170,34 @@ def delete_post(app, form):
     return Redirect("started", anchor="#posted")
 
 
+def purge_video(app, form):
+    jid = form.get("id", [""])[0]
+    if not jid or not re.fullmatch(r"[0-9a-f]{32}", jid):
+        raise ValueError("Mã video không hợp lệ")
+    if form.get("confirmed", [""])[0] != "true":
+        raise ValueError("Cần xác nhận xóa video và toàn bộ tệp liên quan")
+    app.tasks.cancel_for_job(jid)
+    app.store.purge_job(jid)
+    back = form.get("next", ["publish"])[0]
+    if back not in ("home", "publish", "attention", "queue", "posted"):
+        back = "publish"
+    return Redirect("purged", anchor="#" + back)
+
+
 def resolve_unknown(app, form):
-    app.store.resolve_unknown(form["id"][0], form["outcome"][0])
+    jid, outcome = form["id"][0], form["outcome"][0]
+    job = app.store.job(jid)
+    from ..jsonsafe import loads
+
+    metadata = loads((job or {}).get("meta"), {})
+    metadata = metadata if isinstance(metadata, dict) else {}
+    binding = loads((job or {}).get("product_binding"), None) or metadata.get("product_binding")
+    owner = form.get("confirm_cart", [""])[0] == "true"
+    if outcome == "published" and binding and not owner:
+        raise ValueError("Hãy xem đúng bài và giỏ hàng rồi tích xác nhận sản phẩm trước")
+    app.store.resolve_unknown(
+        jid, outcome, url=form.get("url", [""])[0], cart_product_id=form.get("cart_product_id", [None])[0], owner_confirmed=owner
+    )
     return Redirect("resolved", anchor="#attention")
 
 
@@ -245,6 +271,7 @@ FORMS = {
     "/account-add": account_add,
     "/account-save": account_save,
     "/account-delete": account_delete,
+    "/purge": purge_video,
 }
 
 
@@ -257,6 +284,7 @@ FLASH = {
     "key": "Đã lưu khóa Gemini.",
     "decided": "Đã ghi nhận quyết định của bạn.",
     "resolved": "Đã cập nhật trạng thái bài đăng.",
+    "purged": "Đã xóa video và toàn bộ tệp liên quan, giải phóng dung lượng đĩa.",
     "notify": "Đã lưu kênh thông báo.",
     "notify_cleared": "Đã xóa kênh thông báo.",
     "notify_sent": "Đã gửi tin thử. Hãy kiểm tra điện thoại.",

@@ -319,18 +319,17 @@ class DouyinWallTests(StoreCase):
         page.title.side_effect = RuntimeError("Execution context was destroyed")
         self.assertFalse(blocked(page))
 
-    def test_a_keyword_search_that_found_videos_proves_a_session_and_a_video_opened_by_its_address_does_not(self):
+    def test_public_keyword_or_direct_videos_do_not_prove_an_owner_session(self):
         from trendvn_agent import search_douyin
 
         link = "https://www.douyin.com/video/7234567890123456789"
         item = {"source_id": "7234567890123456789", "url": link, "platform": "douyin"}
 
-        def run(links, cookies):
+        def run(links, verified):
             ctx = mock.Mock()
-            ctx.cookies.return_value = cookies
             ctx.new_page.return_value = mock.Mock(is_closed=mock.Mock(return_value=False))
 
-            def wait(page, capture, human, check, rounds):
+            def wait(page, capture, human, check, rounds, **kwargs):
                 capture.take([item])
 
             from contextlib import contextmanager
@@ -341,17 +340,17 @@ class DouyinWallTests(StoreCase):
 
             with (
                 mock.patch.object(search_douyin, "chrome", launched),
+                mock.patch.object(search_douyin, "Session") as observer,
                 mock.patch.object(search_douyin, "wait_for_results", wait),
                 mock.patch.object(search_douyin, "window_ok", return_value=True),
             ):
-                return search_douyin.search({"id": "main"}, "x", links)
+                observer.return_value.state.return_value = "ok" if verified else "unknown"
+                observer.return_value.who = "owner" if verified else ""
+                return search_douyin.search({"id": "main", "username": "creator"}, "x", links)
 
-        guest, member = [{"name": "ttwid", "domain": ".douyin.com", "value": "x"}], [
-            {"name": "sessionid", "domain": ".douyin.com", "value": "x"}
-        ]
-        self.assertTrue(run([], guest)["proves_session"])  # got past the wall with a keyword
-        self.assertFalse(run([link], guest)["proves_session"])  # a public video opens for anyone
-        self.assertTrue(run([link], member)["proves_session"])
+        self.assertFalse(run([], False)["proves_session"])
+        self.assertFalse(run([link], False)["proves_session"])
+        self.assertTrue(run([link], True)["proves_session"])
 
 
 class TikTokSearchTests(StoreCase):
@@ -436,3 +435,63 @@ class ChannelRouteTests(StoreCase):
                     server._channel_args(payload)
         self.assertIn("/api/channel/login", server.ROUTES)
         self.assertIn("/api/channel/check", server.ROUTES)
+
+
+class DouyinFilterAndWallTests(StoreCase):
+    def test_query_for_strictly_rejects_vietnamese_for_chinese_platforms(self):
+        from trendvn_agent.search import _query_for
+
+        # Normal English/alphanumeric or Chinese queries pass
+        self.assertEqual(_query_for("douyin", {"douyin": "ACE68"}, "bàn phím"), "ACE68")
+        self.assertEqual(_query_for("douyin", {"douyin": "机械键盘"}, "bàn phím"), "机械键盘")
+        # Vietnamese query in queries["douyin"] is strictly rejected
+        self.assertIsNone(_query_for("douyin", {"douyin": "bàn phím cơ"}, "bàn phím cơ"))
+        self.assertIsNone(_query_for("douyin", {}, "tai nghe bluetooth"))
+        # TikTok still gets the Vietnamese or original query
+        self.assertEqual(_query_for("tiktok", {"douyin": "机械键盘"}, "bàn phím"), "bàn phím")
+
+    def test_douyin_search_uses_appropriate_filters_for_normal_and_sales(self):
+        from trendvn_agent import search_douyin
+
+        opened_urls = []
+
+        def fake_read(ctx, url, query, direct, capture, account, human, require_session):
+            opened_urls.append(url)
+            capture.take([{"source_id": "123", "url": "https://www.douyin.com/video/123", "platform": "douyin"}])
+            return True, "owner"
+
+        from contextlib import contextmanager
+
+        @contextmanager
+        def fake_chrome(*args, **kwargs):
+            yield mock.Mock(new_page=mock.Mock())
+
+        with (
+            mock.patch.object(search_douyin, "chrome", fake_chrome),
+            mock.patch.object(search_douyin, "_read_search", fake_read),
+            mock.patch.object(search_douyin, "window_ok", return_value=True),
+        ):
+            # Normal search: type=video&sort_type=0
+            res_normal = search_douyin.search({"id": "main", "username": "creator"}, "ACE68", sales=False)
+            self.assertIn("sort_type=0", opened_urls[-1])
+            self.assertNotIn("publish_time", opened_urls[-1])
+            self.assertIn("từ khóa tiếng Trung", res_normal["note"])
+
+            # Sales search: type=video&sort_type=1&publish_time=180
+            res_sales = search_douyin.search({"id": "main", "username": "creator"}, "ACE68", sales=True)
+            self.assertIn("sort_type=1", opened_urls[-1])
+            self.assertIn("publish_time=180", opened_urls[-1])
+            self.assertIn("bán hàng", res_sales["note"])
+
+    def test_douyin_detects_iframe_captcha_and_verify_check_as_wall(self):
+        from trendvn_agent.channels import Wall
+        from trendvn_agent.search_douyin import blocked, check
+
+        # Top frame has no captcha widget, but iframe has verifycenter
+        page = mock.Mock(title=mock.Mock(return_value="抖音搜索"))
+        page.locator.return_value.count.return_value = 0
+        frame1 = mock.Mock(url="https://rmc.bytedance.com/verifycenter/captcha/v2")
+        page.frames = [mock.Mock(), frame1]
+        self.assertTrue(blocked(page))
+        with self.assertRaises(Wall):
+            check(page)

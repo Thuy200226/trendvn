@@ -71,8 +71,28 @@ class TaskLogMixin:
         return current
 
     def tasks_running(self):
-        with self.connect() as db:
-            return [dict(r) for r in db.execute("SELECT id,kind,job_id,started FROM tasks WHERE state='running'")]
+        cutoff = time.time() - 900
+        try:
+            with self.connect() as db:
+                rows = db.execute("SELECT id,kind,job_id,started FROM tasks WHERE state='running'").fetchall()
+            stale = [r for r in rows if (r["started"] or 0) < cutoff]
+            if stale:
+                with self.transaction() as db:
+                    db.execute(
+                        "UPDATE tasks SET state='error',finished=?,error='Quá thời gian (hết hạn)' WHERE state='running' AND started<?",
+                        (time.time(), cutoff),
+                    )
+            return [dict(r) for r in rows if (r["started"] or 0) >= cutoff]
+        except Exception:
+            return []
+
+    def task_cancel_for_job(self, job_id):
+        """Cancel running task tied to this message/job ID so browser lock is freed immediately."""
+        with self.transaction() as db:
+            db.execute(
+                "UPDATE tasks SET state='done',finished=?,result='Đã hủy lượt này' WHERE state='running' AND job_id=?",
+                (time.time(), str(job_id)),
+            )
 
     def tasks_reap(self):
         """After a restart nothing is really running: mark leftovers as interrupted so the buttons become usable again."""

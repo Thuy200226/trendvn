@@ -26,6 +26,10 @@ def _no_real_worker(*args, **kwargs):
     raise RuntimeError("tests never call the real worker")
 
 
+from trendvn_agent.publisher import post as agent_post  # noqa: E402
+
+agent_post.worker = _no_real_worker
+
 agent_channels.worker = _no_real_worker  # the agent reports sign-in states to the worker: a test must never reach the live one
 
 # the agent log of the real installation (data/agent/agent.log) must not collect lines written by tests

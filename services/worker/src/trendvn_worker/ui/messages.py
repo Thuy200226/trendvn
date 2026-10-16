@@ -5,7 +5,7 @@ import re
 from .labels import TEXT_LIMIT, VIETNAMESE_LETTER, vi_error, vi_reason
 
 TECHNICAL = re.compile(
-    r"Locator\.|Call log:|Traceback|\b(?:TimeoutError|HTTPError|ConnectionError|Exception)\b|"
+    r"Locator\.|Page\.|net::ERR_|chrome-error:|Call log:|Traceback|\b(?:TimeoutError|HTTPError|ConnectionError|Exception)\b|"
     r"waiting for locator|\b(?:SELECT|INSERT|UPDATE)\b.{1,200}?\b(?:FROM|INTO|SET)\b|\{[\s\"']|/Users/|/data/|/tmp/",
     re.I | re.S,
 )

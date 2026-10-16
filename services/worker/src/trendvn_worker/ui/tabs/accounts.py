@@ -94,7 +94,10 @@ def _add_form(view):
         '<p class="small muted">Chọn các chủ đề tài khoản này nhận:</p>%s<div class="btns">%s</div></form>'
     ) % (
         hidden("csrf", view.csrf),
-        field("Tên người dùng TikTok", text_input("username", "", 'placeholder="ten_kenh" autocomplete="off" autocapitalize="off"')),
+        field(
+            "Tên người dùng TikTok",
+            text_input("username", "", 'placeholder="ten_kenh hoặc link TikTok" autocomplete="off" autocapitalize="off"'),
+        ),
         _toggles(()),
         button("Thêm tài khoản"),
     )

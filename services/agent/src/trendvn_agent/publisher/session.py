@@ -7,6 +7,7 @@ from ..log import log
 from ..worker_client import worker
 from .challenge import has_challenge
 from .constants import HEADED, LOGIN_URL, UPLOAD_URL
+from urllib.parse import urlsplit
 from .profile import account_flag, logged_in, profile_name, wrong_account
 
 
@@ -16,22 +17,29 @@ def _report(account, ok):
     report_login(account, ok)
 
 
-def login(minutes=10, account=None, expected=None):
+def login(minutes=10, account=None, expected=None, report_result=True):
     """Open a visible window and wait (default 10 minutes) for you to finish signing in yourself. With `expected` (the account's TikTok
     name) it only counts once the window is signed in as that account, so a wrong sign-in can be corrected before the window closes."""
     with chrome(profile_name(account), headless=False, locale="vi-VN", viewport=(1280, 900)) as ctx:
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
-        page.goto(LOGIN_URL, wait_until="domcontentloaded")
+        from ..channels import _navigate_login
+
+        _navigate_login(page, LOGIN_URL)
         log("Đăng nhập TikTok trong cửa sổ vừa mở. Hệ thống không nhập mật khẩu thay bạn.")
-        deadline = time.time() + 60 * minutes
+        deadline = None if minutes is None else time.time() + 60 * minutes
         told = False
-        while time.time() < deadline:
-            if logged_in(ctx):
+        while deadline is None or time.time() < deadline:
+            if not ctx.pages or all(p.is_closed() for p in ctx.pages):
+                return False
+            location = urlsplit(page.url)
+            on_tiktok = location.scheme == "https" and (location.hostname or "").lower() in ("www.tiktok.com", "tiktok.com")
+            if on_tiktok and logged_in(ctx) and not has_challenge(page):
                 page.wait_for_timeout(4000)
                 mismatch = wrong_account(ctx, expected) if expected else None
                 if not mismatch:
                     log("Đã có phiên đăng nhập; phiên chỉ lưu trong hồ sơ trình duyệt riêng.")
-                    _report(account, True)
+                    if report_result:
+                        _report(account, True)
                     return True
                 if not told:
                     log(mismatch + " Hãy đăng xuất và đăng nhập lại đúng tài khoản trong cửa sổ này.")

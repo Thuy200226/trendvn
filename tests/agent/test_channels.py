@@ -98,6 +98,10 @@ def fake_chrome(cookies=(), pages=1, closed=False):
     ctx = mock.Mock()
     ctx.cookies.side_effect = cookies if callable(cookies) else (lambda: list(cookies))
     ctx.pages = [mock.Mock(is_closed=mock.Mock(return_value=closed)) for _ in range(pages)]
+    for page in ctx.pages:
+        page.locator.return_value.count.return_value = 0
+        page.get_by_text.return_value.count.return_value = 0
+        page.url = "https://www.douyin.com/"
     ctx.new_page.return_value = ctx.pages[0]
     yield ctx
 
@@ -111,22 +115,25 @@ class CheckTests(StoreCase):
             result = channels.check(ACCOUNT, channel)
         return result, launched, report
 
-    def test_checking_reads_cookies_in_a_hidden_browser_opens_no_page_and_reports_once(self):
-        result, launched, report = self.check("douyin", [cookie("sessionid")])
-        self.assertEqual(result, {"logged_in": True, "channel": "douyin"})
+    def test_douyin_checks_owner_page_in_the_same_region_and_profile(self):
+        with mock.patch("trendvn_agent.douyin_session.probe", return_value=("out", "")) as probe:
+            result, launched, report = self.check("douyin", [cookie("sessionid")])
+        self.assertFalse(result["logged_in"])
+        self.assertEqual(result["state"], "out")
         self.assertEqual(launched.call_args.args[0], "search-cn-main")
-        self.assertTrue(launched.call_args.kwargs["headless"])
-        report.assert_called_once_with("main", "douyin", "ok")
+        self.assertEqual(launched.call_args.kwargs["region"], "CN")
+        probe.assert_called_once()
+        report.assert_called_once_with("main", "douyin", "out", expected_username="creator")
 
     def test_a_cookie_check_never_claims_whose_session_it_is(self):
         result, _, report = self.check("tiktok", [cookie("sessionid", ".tiktok.com")])
         self.assertTrue(result["logged_in"])
-        report.assert_called_once_with("main", "tiktok", "ok")  # no handle: only the sign-in itself reads that
+        report.assert_called_once_with("main", "tiktok", "ok", expected_username="creator")  # no handle: only the sign-in itself reads that
 
     def test_a_signed_out_profile_is_reported_as_out(self):
         result, _, report = self.check("tiktok", [])
         self.assertFalse(result["logged_in"])
-        report.assert_called_once_with("main", "tiktok", "out")
+        report.assert_called_once_with("main", "tiktok", "out", expected_username="creator")
 
 
 class LoginTests(StoreCase):
@@ -134,9 +141,12 @@ class LoginTests(StoreCase):
         """login() with the owner's window, the TikTok sign-in and the final read of the profile replaced."""
         with (
             mock.patch.object(channels, "window_ok", return_value=True),
-            mock.patch.object(channels, "_douyin_window", **(window or {"return_value": None})) as douyin_window,
+            mock.patch.object(channels, "_douyin_window", **(window or {"return_value": True})) as douyin_window,
             mock.patch("trendvn_agent.publisher.session.login", **(tiktok or {"return_value": True})) as tiktok_login,
             mock.patch.object(channels, "read", return_value=profile_signed_in) as read,
+            mock.patch.object(
+                channels, "check", return_value={"logged_in": profile_signed_in, "state": "ok" if profile_signed_in else "out", "who": ""}
+            ),
             mock.patch.object(channels, "report") as report,
         ):
             result = channels.login(kwargs.pop("account", ACCOUNT), channel, **kwargs)
@@ -150,24 +160,24 @@ class LoginTests(StoreCase):
 
     def test_tiktok_uses_the_publishers_own_sign_in_expecting_this_very_account_and_then_reads_the_profile_back(self):
         result, _, login, read, report = self.run_login("tiktok", account={"id": "pets", "username": "pets_shop"}, minutes=3)
-        login.assert_called_once_with(minutes=3, account="pets", expected="pets_shop")
+        login.assert_called_once_with(minutes=3, account="pets", expected="pets_shop", report_result=True)
         read.assert_called_once_with({"id": "pets", "username": "pets_shop"}, "tiktok")
         self.assertEqual((result["ok"], result["who"]), (True, "pets_shop"))
-        report.assert_called_once_with("pets", "tiktok", "ok", "pets_shop")
+        report.assert_called_once_with("pets", "tiktok", "ok", "pets_shop", expected_username="pets_shop")
 
     def test_a_tiktok_window_that_never_showed_the_right_account_says_which_account_it_wanted(self):
         result, _, _, read, report = self.run_login("tiktok", tiktok={"return_value": False})
         self.assertFalse(result["ok"])
         self.assertIn("@creator", result["reason"])
         read.assert_not_called()
-        report.assert_called_once_with("main", "tiktok", "out", "")
+        report.assert_called_once_with("main", "tiktok", "out", "", expected_username="creator")
 
     def test_the_douyin_window_runs_and_the_answer_is_what_the_profile_holds_afterwards(self):
         result, window, _, read, report = self.run_login("douyin")
         window.assert_called_once_with(ACCOUNT, channels.LOGIN_MINUTES)
-        read.assert_called_once_with(ACCOUNT, "douyin")
+        read.assert_not_called()
         self.assertTrue(result["ok"])
-        report.assert_called_once_with("main", "douyin", "ok", "")
+        report.assert_called_once_with("main", "douyin", "ok", "", expected_username="creator")
 
     def test_a_session_that_did_not_survive_the_window_closing_is_not_a_sign_in(self):
         for channel in ("douyin", "tiktok"):
@@ -185,7 +195,7 @@ class LoginTests(StoreCase):
             self.assertFalse(result["ok"], channel)
             self.assertIn("đã bị đóng hoặc không mở được trang", result["reason"])
             self.assertNotIn("Playwright", result["reason"])
-            report.assert_called_once_with("main", channel, "out", "")
+            report.assert_called_once_with("main", channel, "out", "", expected_username="creator")
 
     def window(self, cookies, pages=1, closed=False, minutes=1):
         with (
@@ -195,13 +205,15 @@ class LoginTests(StoreCase):
             channels._douyin_window(ACCOUNT, minutes)
         return launched
 
-    def test_the_douyin_window_waits_until_the_session_cookie_appears_then_stops(self):
-        polls = iter([[], [], [cookie("sessionid")]])
+    def test_the_douyin_window_waits_for_owner_proof_even_with_a_stale_cookie(self):
         self.clock = iter(range(0, 1000))
-        launched = self.window(lambda: next(polls))
+        session = mock.Mock()
+        session.state.side_effect = ["out"] * 401 + ["ok", "ok"]
+        with mock.patch("trendvn_agent.douyin_session.Session", return_value=session):
+            launched = self.window([cookie("sessionid")], minutes=None)
+        self.assertGreaterEqual(session.state.call_count, 403)
         self.assertFalse(launched.call_args.kwargs["headless"])
         self.assertEqual(launched.call_args.args[0], "search-cn-main")
-        self.assertEqual(next(polls, "spent"), "spent")  # it did not keep polling after the sign-in
 
     def test_a_window_the_owner_closed_ends_the_wait(self):
         self.clock = iter(range(0, 1000))
@@ -219,6 +231,9 @@ class LoginTests(StoreCase):
         first, second = mock.Mock(), mock.Mock()
         first.is_closed.return_value, second.is_closed.return_value = True, False
         ctx.pages = [first, second]
+        second.locator.return_value.count.return_value = 0
+        second.get_by_text.return_value.count.return_value = 0
+        second.url = "https://www.douyin.com/"
         ctx.new_page.return_value = first
         jar = iter([[], [cookie("sessionid")]])
         ctx.cookies.side_effect = lambda: next(jar)

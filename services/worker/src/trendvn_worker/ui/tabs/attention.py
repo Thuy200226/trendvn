@@ -3,7 +3,8 @@
 import re
 
 from ..cards import review_card
-from ..controls import hidden, button
+from ..controls import hidden, button, checkbox, input_control
+from ...jsonsafe import loads
 from ..format import ago, escape as E, shown_of
 from ...domain.channels import NAMES
 from .posted import _delete_action
@@ -30,20 +31,42 @@ def _unresolved(view, job):
     """A post that may or may not be on TikTok: which account it was meant for, what it said and since when, so the owner knows where to look."""
     caption = re.sub(r"\s+", " ", re.sub(r"#\w+", "", job.get("caption") or "")).strip() or (job.get("title") or "")
     who = "@" + job["target"] if job.get("target") else "tài khoản mặc định"
+    binding = job.get("product_binding")
+    if isinstance(binding, str):
+        binding = loads(binding, None)
+    cart = ""
+    if isinstance(binding, dict):
+        pid = str(binding.get("product_id") or "")
+        cart = hidden("cart_product_id", pid) + checkbox("confirm_cart", "Tôi đã xem đúng bài và giỏ hàng, cùng sản phẩm mã " + pid)
+        if not job.get("publish_url"):
+            cart = (
+                "<label>Đường dẫn đúng bài đã đăng"
+                + input_control(
+                    "url", type="url", placeholder="https://www.tiktok.com/@.../video/...", aria_label="Đường dẫn đúng bài đã đăng"
+                )
+                + "</label>"
+                + cart
+            )
+        if job.get("publish_url"):
+            cart = '<a href="%s" target="_blank" rel="noopener">Mở đúng bài để kiểm video và giỏ hàng ↗</a>' % E(job["publish_url"]) + cart
+    missing = bool(job.get("commerce_required") and not isinstance(binding, dict))
+    if missing:
+        cart = '<p class="note warn">Bài bán hàng thiếu thông tin sản phẩm. Cần đối chiếu lại giỏ; chưa thể xác nhận đã đăng đúng.</p>'
     return (
         '<form method="post" action="/resolve" class="card alert stack">%s'
         "<h3>🚨 Chưa xác nhận đã đăng: %s</h3>"
         '<p class="small"><b>%s</b> · bấm Đăng %s</p>'
         '<p>Hệ thống đã dừng đăng để không đăng trùng. Mở TikTok của %s kiểm tra rồi chọn:</p><div class="btns">'
-        "%s%s</div></form>"
+        "%s%s</div>%s</form>"
     ) % (
         hidden("csrf", view.csrf) + hidden("id", job["id"]),
         E(caption[:100]),
         E(who),
         E(ago(job.get("updated"), view.now)),
         E(who),
-        button("Bài đã lên TikTok", name="outcome", value="published"),
+        button("Bài đã lên TikTok", name="outcome", value="published", disabled=missing),
         button("Chưa có, cho phép đăng lại", "ghost", name="outcome", value="failed"),
+        cart,
     )
 
 

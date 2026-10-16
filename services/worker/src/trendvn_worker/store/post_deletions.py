@@ -5,7 +5,7 @@ import time
 import uuid
 
 PENDING_SECONDS = 300  # a grant nobody claimed in this time is void (the claim itself enforces the same limit)
-DELETING_SECONDS = 600  # longer than the worker waits for the agent, plus a margin
+DELETING_SECONDS = 600  # an unanswered claim expires; live owner waits refresh this timestamp
 RUNNING_TASK_SECONDS = 900  # a delete task still marked running after this long is taken for dead, so it no longer holds the cleanup back
 POST = re.compile(r"https://www\.tiktok\.com/@([A-Za-z0-9._-]{1,50})/video/([0-9]{6,25})")
 
@@ -70,6 +70,37 @@ class PostDeletionsMixin:
             if changed != 1:
                 raise ValueError("Yêu cầu xóa không còn hiệu lực")
             self.event(db, jid, "post_" + outcome, reason)
+            if outcome == "deleted":
+                db.execute("UPDATE jobs SET state='post_deleted',updated=? WHERE id=?", (time.time(), jid))
+        if outcome == "deleted":
+            try:
+                self.purge_job(jid, target_state="post_deleted")
+            except Exception:
+                pass
+
+    def delete_post_authorize(self, jid, grant):
+        """Refresh a live owner wait and revalidate the one-use grant immediately before each irreversible click."""
+        with self.transaction() as db:
+            row = db.execute(
+                "SELECT d.*,j.state job_state,j.account job_account,j.publish_url,j.target,a.username current_username "
+                "FROM post_deletions d JOIN jobs j ON j.id=d.job_id JOIN accounts a ON a.id=d.account "
+                "WHERE d.job_id=? AND d.grant_token=? AND d.state='deleting'",
+                (jid, grant),
+            ).fetchone()
+            if (
+                not row
+                or time.time() - row["updated"] > DELETING_SECONDS
+                or (
+                    row["job_state"] != "published"
+                    or (row["job_account"] or "main") != row["account"]
+                    or row["url"] != row["publish_url"]
+                    or row["username"] != row["current_username"]
+                    or row["username"].casefold() != (row["target"] or "").casefold()
+                )
+            ):
+                raise ValueError("Quyền xóa hoặc tài khoản đã thay đổi; dừng thao tác")
+            db.execute("UPDATE post_deletions SET updated=? WHERE job_id=?", (time.time(), jid))
+        return {"ok": True}
 
     def delete_post_abort(self, jid, grant, reason=""):
         """The worker could not get an answer from the agent. What that means depends on how far the agent got: still waiting to be
@@ -130,9 +161,15 @@ class PostDeletionsMixin:
                 ("deleted" if outcome == "deleted" else "failed", reason, time.time(), jid),
             )
             if outcome == "deleted":
+                db.execute("UPDATE jobs SET state='post_deleted',updated=? WHERE id=?", (time.time(), jid))
                 self.event(db, jid, "delete_checked_deleted", url)
             else:
                 self.event(db, jid, "delete_checked_present", url)
+        if outcome == "deleted":
+            try:
+                self.purge_job(jid, target_state="post_deleted")
+            except Exception:
+                pass
 
     def delete_post_recover(self):
         """After a restart nothing is running: what never started can be tried again, what may have run is for the owner to check."""

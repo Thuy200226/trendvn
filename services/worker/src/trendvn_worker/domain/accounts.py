@@ -18,9 +18,13 @@ def account_flag(account_id):
 
 
 def clean_username(value):
-    name = str(value or "").strip().lstrip("@")
+    raw = str(value or "").strip()
+    match_url = re.search(r"@([A-Za-z0-9._]{2,40})", raw)
+    if match_url:
+        return match_url.group(1)
+    name = raw.lstrip("@").strip()
     if not USERNAME_RX.fullmatch(name):
-        raise ValueError("Tên tài khoản TikTok không hợp lệ")
+        raise ValueError("Tên tài khoản TikTok không hợp lệ (nhập tên kênh hoặc link TikTok)")
     return name
 
 

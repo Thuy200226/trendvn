@@ -6,12 +6,14 @@ import time
 from ..browser import chrome
 from ..config import RUNTIME
 from ..log import log
+from ..worker_client import worker
 from .challenge import Challenge, wait_for_upload_ui
 from .constants import HEADED, POST_LABELS, UPLOAD_URL
 from .profile import account_flag, logged_in, own_descriptions, profile_name, wrong_account, signed_in_as
 from .screenshots import export_shot, shot
 from .studio import dismiss_popups, set_caption, set_visibility, studio_shows, wait_uploaded
 from .text import norm, sha256
+from .product_anchor import attached_id, validate_proof
 
 POST_BUTTON_WAIT = 300  # seconds the Post button may stay disabled while TikTok processes the upload
 CONFIRM_LABELS = ("Post now", "Đăng ngay")
@@ -32,6 +34,7 @@ def publish_one(job, dry_run=True):
 
 
 def _publish_one(job, dry_run, state):
+    validate_proof(job)
     video = RUNTIME / "jobs" / job["id"] / "final.mp4"
     if not video.is_file():
         return "failed", "", "Không thấy file video đã dựng"
@@ -77,6 +80,21 @@ def _post_in_studio(ctx, job, video, dry_run, state):
             return failure
         if dry_run:
             return "dry_run", export_shot(page, "dry_run"), "Chạy thử: đã tải video, điền mô tả, dừng trước nút Đăng"
+        validate_proof(job)
+        if job.get("product_binding"):
+            who = signed_in_as(ctx)
+            if not who or who.casefold() != job["target"].casefold():
+                return "signed_out", "", "Tài khoản thay đổi trong lúc tải; chưa đăng bài"
+        if sha256(video) != job["output_hash"]:
+            return "failed", "", "Thành phẩm thay đổi trong lúc tải; chưa đăng bài"
+        if job.get("product_binding"):
+            worker(
+                "/api/publish/product-check",
+                {"job_id": job["id"], "lease": job.get("lease"), "binding": job["product_binding"], "output_hash": job["output_hash"]},
+                timeout=20,
+            )
+            if not attached_id(target, job["product_binding"]["product_id"]):
+                return "failed", "", "Không xác nhận được đúng mã giỏ hàng ngay trước Đăng; chưa đăng bài"
         state["clicked"] = True
         post_button.click()
         _confirm_post(page)
@@ -115,17 +133,40 @@ def _upload_and_fill(page, job, video):
     if not wait_uploaded(page):
         return _failed(page, "upload_slow", "TikTok chưa nhận xong video sau 4 phút"), None, None
     dismiss_popups(page)
-    if not set_caption(page, editor, job["caption"]):
+    caption = job["caption"]
+    binding = job.get("product_binding")
+
+    if not set_caption(page, editor, caption):
         dismiss_popups(page)
-        if not set_caption(page, editor, job["caption"]):
+        if not set_caption(page, editor, caption):
             return _failed(page, "caption", "Không điền được mô tả vào ô nhập của TikTok"), None, None
     if not set_visibility(page, job.get("visibility", "public")):
         return _failed(page, "visibility", "Không chọn được chế độ hiển thị; dừng để không đăng sai đối tượng"), None, None
+    if binding:
+        attached = _try_attach_product_anchor(page, target, binding)
+        if not attached:
+            prod_name = binding.get("title") or binding.get("product_id") or "sản phẩm"
+            return (
+                _failed(
+                    page,
+                    "anchor_missing",
+                    "Chưa gắn được giỏ hàng cho '%s' (sản phẩm chưa có trong Showcase của @%s). Dừng đăng để bảo vệ hoa hồng!"
+                    % (prod_name, job.get("target", "?")),
+                ),
+                None,
+                None,
+            )
     dismiss_popups(page)
     post_button = _wait_for_post_button(page, target)
     if post_button is None:
         return _failed(page, "post_disabled", "Nút Đăng chưa sẵn sàng (video chưa tải xong hoặc bị chặn)"), None, None
     return None, target, post_button
+
+
+def _try_attach_product_anchor(page, target, binding):
+    from .product_anchor import attach
+
+    return attach(page, target, binding)
 
 
 def _wait_for_post_button(page, target):
@@ -159,9 +200,17 @@ def _confirm_on_profile(ctx, job, before_ids):
     for _ in range(PROFILE_CHECKS):
         after = own_descriptions(ctx, job["target"])
         fresh = [e for e in after if e["id"] not in before_ids and norm(e["desc"]) == key]
+        if len(fresh) > 1:
+            return "unknown", "", "Có nhiều bài mới cùng mô tả; chưa xác nhận được đúng bài, không đăng lại"
         if fresh:
-            return "published", "https://www.tiktok.com/@%s/video/%s" % (job["target"], fresh[0]["id"]), "Đã xác nhận trên hồ sơ"
-        if job.get("visibility", "public") != "public" and studio_shows(ctx, job["caption"]):
+            url = "https://www.tiktok.com/@%s/video/%s" % (job["target"], fresh[0]["id"])
+            if job.get("product_binding"):
+                from .product_anchor import published_cart
+
+                if not published_cart(ctx, url, fresh[0]["id"], job["product_binding"]["product_id"]):
+                    return "unknown", url, "Bài đã xuất hiện nhưng chưa xác minh được mã giỏ hàng trên chính bài; không đăng lại"
+            return "published", url, "Đã xác nhận bài và sản phẩm trên hồ sơ"
+        if not job.get("product_binding") and job.get("visibility", "public") != "public" and studio_shows(ctx, job["caption"]):
             return "published", "", "Đã xác nhận trong trang nội dung của TikTok Studio (bài không công khai nên chưa có trên hồ sơ)"
         time.sleep(45)
     return "unknown", "", "Đã bấm Đăng nhưng chưa thấy bài trên hồ sơ công khai (có thể đang chờ duyệt)"

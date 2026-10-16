@@ -6,6 +6,9 @@ import threading
 from pathlib import Path
 
 from .ai.analyzer import analyze
+from .ai.product_verify import verify_rendered
+from .domain.product_binding import validate_binding
+from .jsonsafe import loads
 from .ai.condense import CONDENSE_ABOVE, condense
 from .ai.errors import KeyRejected, RateLimited, Transient
 from .ai.prompts import PROMPT_VERSION
@@ -121,7 +124,14 @@ def _process(store, cfg, job, progress_fn=None):
     folder.mkdir(exist_ok=True)
     if progress_fn:
         progress_fn("Kiểm tra tệp nguồn và độ dài video...")
-    path, duration = _source(job, cfg)
+    metadata = loads(job.get("meta"), {})
+    binding = loads(job.get("product_binding"), None) or metadata.get("product_binding")
+    if binding:
+        receiver = store.account(job.get("search_account") or job.get("account"))
+        if not receiver:
+            raise ValueError("Video giỏ hàng thiếu tài khoản nhận hợp lệ")
+        validate_binding(binding, store.commission_list(receiver["id"]), receiver["id"], receiver["username"])
+    path, duration = _source(job, cfg, approved=approved)
     fp = fingerprint(path, duration)
     # the owner's approval overrides the look-alike warning; the fingerprint is recorded in the same step so a look-alike processed at the
     # same moment (several videos run at once) cannot slip past
@@ -165,12 +175,20 @@ def _process(store, cfg, job, progress_fn=None):
             info["warning"] = info.get("warning") or "Phụ đề hơi nhanh (%.0f ký tự/giây)" % fastest
     digest = file_hash(out)
     _write_manifest(folder, job, cfg, a, route, digest, info)
-    approval = bool(job.get("search_account")) or (cfg["require_approval"] and not approved)
-    state = "awaiting_approval" if approval else "ready"
+    product_unknown = False
+    if binding:
+        if progress_fn:
+            progress_fn("Đối chiếu sản phẩm xuất hiện trong thành phẩm với giỏ hàng...")
+        proof = verify_rendered(store, out, folder, binding, digest, duration, cfg)
+        metadata["product_verification"] = proof
+        product_unknown = proof["status"] != "same"
+    approval = not approved and bool(cfg.get("require_approval", False))
+    state = "needs_review" if product_unknown else ("awaiting_approval" if approval else "ready")
     store.finish(
         jid,
         lease,
         state,
+        **({"meta": json.dumps(metadata, ensure_ascii=False)} if binding else {}),
         analysis=json.dumps(a, ensure_ascii=False),
         topic=a.get("topic"),
         route=route,
@@ -179,7 +197,12 @@ def _process(store, cfg, job, progress_fn=None):
         fingerprint=json.dumps(fp),
         duration=duration,
         output_info=json.dumps(info),
-        reason=("Đã dựng, chờ bạn duyệt" if approval else "Đã dựng, sẵn sàng đăng") + note,
+        reason=(
+            "Chưa chứng minh sản phẩm trong thành phẩm đúng giỏ hàng; dừng đăng"
+            if product_unknown
+            else ("Đã dựng, chờ bạn duyệt" if approval else "Đã dựng, sẵn sàng đăng")
+        )
+        + note,
     )
     return {"id": jid, "status": state, "route": route}
 
@@ -193,13 +216,13 @@ def _note_hard_subtitles(info, a, route, geo, mask):
         info["hard_subs_blurred"] = True
 
 
-def _source(job, cfg):
+def _source(job, cfg, approved=False):
     """The downloaded file after sanity checks. Returns (path, duration)."""
     path = Path(job["source_file"])
     if file_hash(path) != job["content_hash"]:
         raise ValueError("Source file changed after attachment")
     duration, meta = probe(path)
-    if not 1 <= duration <= cfg["max_duration"]:
+    if not approved and not (1 <= duration <= cfg["max_duration"]):
         raise ValueError("Video duration outside configured limits")
     video = next(s for s in meta["streams"] if s["codec_type"] == "video")
     if min(video.get("width") or 0, video.get("height") or 0) < MIN_SIDE:

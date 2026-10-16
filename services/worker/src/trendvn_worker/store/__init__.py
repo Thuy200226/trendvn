@@ -5,6 +5,7 @@ from .base import StoreBase
 from .captions import CaptionMixin
 from .channels import ChannelsMixin
 from .chat import ChatMixin
+from .chat_search import ChatSearchMixin
 from .commission import CommissionMixin
 from .feedback import FeedbackMixin
 from .health import HealthMixin
@@ -32,6 +33,7 @@ class Store(
     ReportingMixin,
     RetentionMixin,
     ChatMixin,
+    ChatSearchMixin,
     ChannelsMixin,
     VideosMixin,
     CommissionMixin,

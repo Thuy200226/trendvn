@@ -286,6 +286,22 @@ class AccountWebTests(unittest.TestCase):
         self.assertIn("err=", self.post_pairs("/account-delete", [("id", "main")])[1]["location"])  # the last account stays
         self.assertEqual(self.srv.req("GET", "/health")[0], 200)
 
+    def test_account_add_with_url_and_anchor_preserved(self):
+        store = Store(self.srv.tmp.name)
+        # Adding via full TikTok profile link
+        status, headers, _ = self.post_pairs(
+            "/account-add", [("username", "https://www.tiktok.com/@kenh_link_test?lang=vi"), ("topic", "news")]
+        )
+        self.assertEqual((status, "ok=account_added" in headers["location"]), (303, True))
+        self.assertIn("#accounts", headers["location"])
+        self.assertIsNotNone(store.account("kenh_link_test"))
+
+        # Error redirect keeps #accounts anchor so user is not kicked to home tab
+        status, headers, _ = self.post_pairs("/account-add", [("username", "bad!name"), ("topic", "news")])
+        self.assertEqual(status, 303)
+        self.assertIn("err=", headers["location"])
+        self.assertIn("#accounts", headers["location"])
+
     def test_accounts_api_needs_the_token_and_checks_input(self):
         auth = {"Authorization": "Bearer " + "t" * 40}
         listing = self.srv.req("POST", "/api/accounts", "{}", auth)

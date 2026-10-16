@@ -1,6 +1,8 @@
 """Read models for the dashboard, the API and the daily summary."""
 
 import shutil
+import sqlite3
+import time
 
 from ..domain import schedule
 from ..domain.accounts import effective
@@ -60,22 +62,31 @@ class ReportingMixin:
         status = self.status()
         cfg = self.settings()
         in_window, next_window = self.window_state(cfg)
-        with self.connect() as db:
-            deletions = [
-                dict(row)
-                for row in db.execute("""SELECT j.id,j.title,j.account,j.target,j.publish_url,d.state delete_state,d.reason delete_reason
-                FROM post_deletions d JOIN jobs j ON j.id=d.job_id WHERE d.state='unknown' ORDER BY d.updated""")
-            ]
-            data = dict(
-                status,
-                uncertain_deletions=deletions,
-                review=self._jobs_in(db, ("needs_review",)),
-                approval=self._jobs_in(db, ("awaiting_approval",)),
-                queue=self._queue(db),
-                candidates=self._candidates(db),
-                pipeline=self._jobs_in(db, ("candidate", "queued", "processing", "ready", "publishing")),
-                by_platform=self._counts_by_platform(db),
-            )
+        for attempt in range(4):
+            try:
+                with self.connect() as db:
+                    deletions = [
+                        dict(row)
+                        for row in db.execute(
+                            """SELECT j.id,j.title,j.account,j.target,j.publish_url,d.state delete_state,d.reason delete_reason
+                        FROM post_deletions d JOIN jobs j ON j.id=d.job_id WHERE d.state='unknown' ORDER BY d.updated"""
+                        )
+                    ]
+                    data = dict(
+                        status,
+                        uncertain_deletions=deletions,
+                        review=self._jobs_in(db, ("needs_review",)),
+                        approval=self._jobs_in(db, ("awaiting_approval",)),
+                        queue=self._queue(db),
+                        candidates=self._candidates(db),
+                        pipeline=self._jobs_in(db, ("candidate", "queued", "processing", "ready", "publishing")),
+                        by_platform=self._counts_by_platform(db),
+                    )
+                break
+            except sqlite3.OperationalError:
+                if attempt == 3:
+                    raise
+                time.sleep(0.15 * (attempt + 1))
         data.update(
             performance=self.performance(30),
             unresolved=self.unresolved(),
@@ -120,15 +131,22 @@ class ReportingMixin:
 
     def status(self):
         """The compact state used by the API, n8n, the agent and `./trendvn doctor`."""
-        with self.connect() as db:
-            counts = {row["state"]: row["n"] for row in db.execute("SELECT state,count(*) n FROM jobs GROUP BY state")}
-            jobs = [
-                dict(row)
-                for row in db.execute(
-                    "SELECT id,platform,title,state,reason,route,publish_url,updated FROM jobs ORDER BY updated DESC LIMIT 100"
-                )
-            ]
-            streams = [dict(row) for row in db.execute("SELECT * FROM streams")]
+        for attempt in range(4):
+            try:
+                with self.connect() as db:
+                    counts = {row["state"]: row["n"] for row in db.execute("SELECT state,count(*) n FROM jobs GROUP BY state")}
+                    jobs = [
+                        dict(row)
+                        for row in db.execute(
+                            "SELECT id,platform,title,state,reason,route,publish_url,updated FROM jobs ORDER BY updated DESC LIMIT 100"
+                        )
+                    ]
+                    streams = [dict(row) for row in db.execute("SELECT * FROM streams")]
+                break
+            except sqlite3.OperationalError:
+                if attempt == 3:
+                    raise
+                time.sleep(0.15 * (attempt + 1))
         cfg = self.settings()
         discovery_beat = cfg.get("hb_discovery") or {}
         publisher_beat = cfg.get("hb_publisher") or {}

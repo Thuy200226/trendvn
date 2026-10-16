@@ -127,7 +127,8 @@ def identify(store, reference):
     if links and not pages and not files and not words:
         raise ValueError("Không đọc được đường dẫn; hãy nhập thêm tên/model hoặc dùng đường dẫn video đầy đủ")
     primary = explicit(words)
-    if not files and not links and len(text) <= 160:  # a short plain request needs no model: the words are the product
+    needs_identity = bool(reference.get("sales") and not (primary and primary.get("brand") and primary.get("model")))
+    if not files and not links and len(text) <= 160 and not needs_identity:
         plain = primary or {
             "name": text,
             "query": text,

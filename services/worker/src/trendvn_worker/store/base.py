@@ -44,21 +44,42 @@ class StoreBase:
     def connect(self):
         db = sqlite3.connect(self.db, timeout=30)
         db.row_factory = sqlite3.Row
+        try:
+            db.execute("PRAGMA busy_timeout = 30000")
+            db.execute("PRAGMA synchronous = NORMAL")
+        except Exception:
+            pass
         return db
 
     @contextmanager
     def transaction(self):
         """One writer at a time (BEGIN IMMEDIATE); commits on success, rolls back on any error."""
-        db = self.connect()
+        db = None
+        for attempt in range(4):
+            db = self.connect()
+            try:
+                db.execute("BEGIN IMMEDIATE")
+                break
+            except sqlite3.OperationalError as error:
+                db.close()
+                if any(w in str(error) for w in ("locked", "busy", "disk I/O")) and attempt < 3:
+                    time.sleep(0.15 * (attempt + 1))
+                    continue
+                raise
         try:
-            db.execute("BEGIN IMMEDIATE")
             yield db
             db.commit()
-        except Exception:
-            db.rollback()
+        except BaseException:
+            try:
+                db.rollback()
+            except Exception:
+                pass
             raise
         finally:
-            db.close()
+            try:
+                db.close()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------ settings
     def settings(self):
@@ -118,3 +139,8 @@ class StoreBase:
         """(inside_window, human text of the next opening). No windows configured means any time."""
         cfg = cfg or self.settings()
         return schedule.window_state(cfg.get("post_windows") or [], cfg["timezone"], now)
+
+    def job(self, jid):
+        with self.connect() as db:
+            row = db.execute("SELECT * FROM jobs WHERE id=?", (jid,)).fetchone()
+            return dict(row) if row else None

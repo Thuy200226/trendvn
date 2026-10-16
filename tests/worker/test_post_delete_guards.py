@@ -426,7 +426,8 @@ class EventsAndTimes(DeletionCase):
         self.assertEqual(self.state(), "deleting")
 
     def test_the_cleanup_waits_longer_than_the_worker_waits_for_the_agent(self):
-        self.assertGreaterEqual(DELETING_SECONDS, tasks_mod.DELETE_TIMEOUT + 120)
+        self.assertIsNone(tasks_mod.DELETE_TIMEOUT)
+        self.assertGreaterEqual(DELETING_SECONDS, 120)  # far longer than the 30-second heartbeat
 
 
 class RunningTaskGuard(DeletionCase):
@@ -452,7 +453,7 @@ class RunningTaskGuard(DeletionCase):
         self.assertEqual(self.state(), "unknown")
 
     def test_the_time_after_which_a_running_task_is_taken_for_dead_is_sensible(self):
-        self.assertGreater(RUNNING_TASK_SECONDS, tasks_mod.DELETE_TIMEOUT + 60)  # a slow but live deletion is never given up on
+        self.assertGreater(RUNNING_TASK_SECONDS, DELETING_SECONDS)  # recent grant heartbeats protect long owner waits
         self.deleting()
         self.stuck("delete_post", 3600)  # an hour: dead whatever the exact limit
         self.assertEqual(self.s.delete_post_expire(time.time()), 1)
@@ -474,3 +475,51 @@ class RecoverGuards(DeletionCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OwnerWaitGrantGuards(DeletionCase):
+    def test_live_heartbeats_keep_an_hour_long_owner_wait_valid(self):
+        token = self.grant()
+        self.s.delete_post_claim(self.jid, token)
+        from unittest.mock import patch
+
+        now = time.time()
+        for tick in range(1, 121):
+            with patch("trendvn_worker.store.post_deletions.time.time", return_value=now + 30 * tick):
+                self.assertEqual(self.s.delete_post_authorize(self.jid, token), {"ok": True})
+                self.assertEqual(self.s.delete_post_expire(now + 30 * tick), 0)
+        self.assertEqual(self.state(), "deleting")
+
+    def test_a_lost_heartbeat_cannot_revive_expired_authority(self):
+        token = self.grant()
+        self.s.delete_post_claim(self.jid, token)
+        self.age(DELETING_SECONDS + 1)
+        with self.assertRaises(ValueError):
+            self.s.delete_post_authorize(self.jid, token)
+
+    def test_unknown_grant_cannot_be_revived_by_a_late_browser(self):
+        token = self.grant()
+        self.s.delete_post_claim(self.jid, token)
+        self.s.delete_post_abort(self.jid, token)
+        with self.assertRaises(ValueError):
+            self.s.delete_post_authorize(self.jid, token)
+        self.assertEqual(self.state(), "unknown")
+
+    def test_changed_identity_or_post_cannot_renew_or_authorize_clicks(self):
+        token = self.grant()
+        self.s.delete_post_claim(self.jid, token)
+        for field, value in (
+            ("state", "ready"),
+            ("account", "other"),
+            ("target", "other"),
+            ("publish_url", "https://www.tiktok.com/@other/video/9999999999"),
+        ):
+            with self.s.transaction() as db:
+                old = db.execute("SELECT %s FROM jobs WHERE id=?" % field, (self.jid,)).fetchone()[0]
+                db.execute("UPDATE jobs SET %s=? WHERE id=?" % field, (value, self.jid))
+            with self.assertRaises(ValueError):
+                self.s.delete_post_authorize(self.jid, token)
+            with self.s.transaction() as db:
+                db.execute("UPDATE jobs SET %s=? WHERE id=?" % field, (old, self.jid))
+        with self.assertRaises(ValueError):
+            self.s.delete_post_authorize(self.jid, "f" * 32)

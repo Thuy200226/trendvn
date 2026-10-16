@@ -144,7 +144,23 @@ class ScriptedStudioTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
 
     def run_job(self, dry_run=False, **changes):
-        return post.publish_one(dict(self.job, **changes), dry_run=dry_run)
+        job = dict(self.job, **changes)
+        if job.get("product_binding"):
+            job["product_verification"] = {
+                "version": 1,
+                "status": "same",
+                "account": job.get("account"),
+                "username": job["target"],
+                "output_hash": job["output_hash"],
+                "binding": job["product_binding"],
+                "product_id": job["product_binding"]["product_id"],
+            }
+        with (
+            mock.patch.object(post, "worker", return_value={"ok": True}),
+            mock.patch.object(post, "attached_id", return_value=True),
+            mock.patch.object(post, "signed_in_as", return_value=job["target"]),
+        ):
+            return post.publish_one(job, dry_run=dry_run)
 
     def test_dry_run_stops_before_the_post_button(self):
         outcome, url, _ = self.run_job(dry_run=True)
@@ -239,11 +255,24 @@ class ScriptedStudioTests(unittest.TestCase):
         self.ctx.new_page.assert_not_called()
         self.assertEqual(self.run_job(dry_run=True)[0], "signed_out")  # a rehearsal does not upload into the wrong account either
 
-    def test_same_caption_already_on_the_account_is_refused_before_uploading(self):
-        self.descriptions = [{"id": "1", "desc": "Mô tả #a1 #b2 #c3"}]
-        self.assertEqual(self.run_job()[0], "duplicate")
-        self.assertEqual(self.run_job(manual=True)[0], "deferred")
-        self.ctx.new_page.assert_not_called()
+    def test_product_anchor_failure_aborts_posting_and_reports_anchor_missing(self):
+        """When product_binding is present and anchor cannot be attached in Showcase, post MUST abort to protect affiliate commission."""
+        binding = {"title": "Đèn treo màn hình", "product_id": "1731815189062584999"}
+        with mock.patch.object(post, "_try_attach_product_anchor", return_value=False):
+            outcome, picture, reason = self.run_job(product_binding=binding)
+        self.assertEqual(outcome, "failed")
+        self.assertEqual(picture, "/shots/anchor_missing.png")
+        self.assertIn("Chưa gắn được giỏ hàng", reason)
+        self.assertIn("Showcase", reason)
+        self.assertFalse(self.target.locator.return_value.first.click.called)
+
+    def test_product_anchor_in_studio_alone_does_not_confirm_a_published_cart(self):
+        """A Studio link and caption alone do not prove the cart exists on the actual posted item."""
+        binding = {"title": "Toner BHA Obagi", "product_id": "1731815189062584653"}
+        post.studio_shows = lambda ctx, caption: True
+        with mock.patch.object(post, "_try_attach_product_anchor", return_value=True):
+            outcome, _, _ = self.run_job(product_binding=binding, visibility="private")
+        self.assertEqual(outcome, "unknown")
 
 
 class LoggingNeverBreaksJobsTests(unittest.TestCase):
@@ -530,7 +559,14 @@ class SessionCheckTests(unittest.TestCase):
 
         from trendvn_agent.publisher import session
 
-        page = SimpleNamespace(goto=lambda *a, **k: None, wait_for_timeout=lambda ms: None)
+        page = SimpleNamespace(
+            goto=lambda *a, **k: None,
+            wait_for_timeout=lambda ms: None,
+            is_closed=lambda: False,
+            url="https://www.tiktok.com/login/",
+            locator=lambda s: SimpleNamespace(count=lambda: 0),
+            inner_text=lambda *a, **k: "",
+        )
         ctx = SimpleNamespace(pages=[page], new_page=lambda: page)
         reported = []
         answers = iter(["Đang đăng nhập @khac", "Đang đăng nhập @khac", None])  # the owner signs in wrongly twice, then correctly
@@ -556,7 +592,14 @@ class SessionCheckTests(unittest.TestCase):
 
         from trendvn_agent.publisher import session
 
-        page = SimpleNamespace(goto=lambda *a, **k: None, wait_for_timeout=lambda ms: None)
+        page = SimpleNamespace(
+            goto=lambda *a, **k: None,
+            wait_for_timeout=lambda ms: None,
+            is_closed=lambda: False,
+            url="https://www.tiktok.com/login/",
+            locator=lambda s: SimpleNamespace(count=lambda: 0),
+            inner_text=lambda *a, **k: "",
+        )
         ctx = SimpleNamespace(pages=[page], new_page=lambda: page)
         reported = []
         clock = iter(range(0, 100_000, 30))

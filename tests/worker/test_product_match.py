@@ -122,5 +122,44 @@ class TokenTests(unittest.TestCase):
         self.assertIn("mchose", tokens("迈从 ACE68"))
 
 
+class CommercialIntentAndSalesRankingTests(unittest.TestCase):
+    def test_commercial_intent_detects_chinese_and_vietnamese_commercial_signals(self):
+        from trendvn_worker.domain.product_match import commercial_intent
+
+        for title in (
+            "迈从ACE68开箱测评，这把磁轴键盘到底值不值得买？",
+            "好物推荐！日常数码桌面分享",
+            "沉浸式开箱 迈从 ACE68 键盘 上手体验",
+            "Review chi tiết bàn phím cơ không dây sau 1 tháng sử dụng",
+            "Trên tay mở hộp unboxing siêu phẩm tai nghe chống ồn",
+            "Săn sale giỏ hàng chính hãng giá rẻ hôm nay",
+        ):
+            is_comm, score = commercial_intent(title)
+            self.assertTrue(is_comm, title)
+            self.assertGreater(score, 0, title)
+
+        for non_commercial in (
+            "Hôm nay trời mưa to quá cả nhà ơi",
+            "Nhạc chill thư giãn cuối tuần",
+            "Mèo con đáng yêu chơi đùa ngoài sân",
+            "今天天气真好 出门散步",
+        ):
+            is_comm, score = commercial_intent(non_commercial)
+            self.assertFalse(is_comm, non_commercial)
+            self.assertEqual(score, 0, non_commercial)
+
+    def test_match_identity_attaches_commercial_metadata(self):
+        identity = {"name": "MCHOSE ACE68", "brand": "MCHOSE", "model": "ACE68"}
+        matched = match_identity(identity, "迈从ACE68上手测评 好物推荐")
+        self.assertEqual(matched["level"], "candidate")
+        self.assertTrue(matched["commercial"])
+        self.assertIn("Video bán hàng/review", matched["reason"])
+
+        # Different product should not get commercial boost
+        diff = match_identity(identity, "迈从ACE75上手测评 好物推荐")
+        self.assertEqual(diff["level"], "different")
+        self.assertFalse(diff["commercial"])
+
+
 if __name__ == "__main__":
     unittest.main()

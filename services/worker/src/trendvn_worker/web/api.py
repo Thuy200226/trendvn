@@ -91,7 +91,13 @@ def media_failed(app, payload):
 @route("/api/channel/report")
 def channel_report(app, payload):
     """The browser agent says what it found out about an account's session on a search channel (signed in, signed out, a wall)."""
-    app.store.channel_report(_text(payload, "account"), _text(payload, "channel"), _text(payload, "state"), _text(payload, "who", ""))
+    app.store.channel_report(
+        _text(payload, "account"),
+        _text(payload, "channel"),
+        _text(payload, "state"),
+        _text(payload, "who", ""),
+        _text(payload, "expected_username") if "expected_username" in payload else None,
+    )
     return OK
 
 
@@ -99,6 +105,11 @@ def channel_report(app, payload):
 def heartbeat(app, payload):
     app.store.heartbeat(payload["component"], payload["ok"], payload.get("detail"))
     return OK
+
+
+@route("/api/post-delete/authorize")
+def post_delete_authorize(app, payload):
+    return app.store.delete_post_authorize(_text(payload, "job_id"), _text(payload, "grant"))
 
 
 # ------------------------------------------------------------------ processing
@@ -168,7 +179,7 @@ def publish_unresolved(app, payload):
 
 @route("/api/publish/resolve")
 def publish_resolve(app, payload):
-    app.store.resolve_unknown(_text(payload, "id"), _text(payload, "outcome"), _text(payload, "url", ""))
+    app.store.resolve_unknown(_text(payload, "id"), _text(payload, "outcome"), _text(payload, "url", ""), payload.get("cart_product_id"))
     return OK
 
 
@@ -227,3 +238,25 @@ def send_notification(app, payload):
     config = notify.load_config(app.store.root)
     channels = notify.channels(config)
     return {"channels": channels, "sent": notify.send(config, text) if channels else {}}
+
+
+@route("/api/product/check-row")
+def product_row(app, payload):
+    """Read-only validation of the live Studio catalog row against this receiver's frozen Shop identity."""
+    from ..domain.product_binding import validate_binding, strict_title
+
+    account = app.store.account(payload.get("account"))
+    title = payload.get("title")
+    if not account or account["username"] != payload.get("username") or not isinstance(title, str) or len(title) > 3000:
+        raise ValueError("Tài khoản hoặc thông tin sản phẩm đã thay đổi")
+    binding = validate_binding(payload.get("binding"), app.store.commission_list(account["id"]), account["id"], account["username"])
+    if payload.get("product_id") != binding["product_id"] or not strict_title(binding["identity"], title):
+        raise ValueError("Sản phẩm trong Showcase không khớp chính xác hãng/model/biến thể; không chọn")
+    return OK
+
+
+@route("/api/publish/product-check")
+def authorize_product_publish(app, payload):
+    return app.store.product_publish_authorize(
+        _job_id(payload.get("job_id")), _text(payload, "lease"), payload.get("binding"), _text(payload, "output_hash")
+    )

@@ -181,6 +181,14 @@ def _ready_controls(view, job, disabled):
             value="reject",
             data_confirm="Bỏ video này khỏi danh sách đăng?",
         ),
+        "purge_button": button(
+            "🗑 Xóa sạch tệp",
+            "ghost danger",
+            formaction="/purge",
+            name="confirmed",
+            value="true",
+            data_confirm="Xóa vĩnh viễn video này và toàn bộ tệp liên quan trên máy chủ? Thao tác này giải phóng bộ nhớ và không thể hoàn tác.",
+        ),
     }
 
 
@@ -225,7 +233,7 @@ def ready_card(job, view, blocked):
         '<div class="row small"><span class="muted"><span data-len>%(length)d</span> ký tự · <span data-tags>%(ntags)d</span> hashtag%(edited)s</span></div>'
         '<div class="tags">%(chips)s</div>%(lint)s%(reason)s'
         '<div class="btns">'
-        "%(approve)s%(post_button)s%(preview_button)s%(save_button)s%(reset)s%(reject_button)s"
+        "%(approve)s%(post_button)s%(preview_button)s%(save_button)s%(reset)s%(reject_button)s%(purge_button)s"
         "</div></div></form>"
     ) % {
         "id": E(job["id"]),
@@ -264,7 +272,7 @@ def review_card(job, csrf):
         '<div class="media"><video controls preload="none" playsinline src="/media/%s/source"></video></div>'
         '<div class="body stack"><div class="row">%s%s</div><div class="ttl">%s</div><div class="muted small">%s</div>'
         '<div class="note warn">Lý do giữ lại: <b>%s</b></div>'
-        '<div class="btns">%s%s%s</div></div></form>'
+        '<div class="btns">%s%s%s%s</div></div></form>'
     ) % (
         hidden("csrf", csrf) + hidden("id", job["id"]),
         E(job["id"]),
@@ -276,4 +284,12 @@ def review_card(job, csrf):
         retry,
         button("Duyệt lại, bỏ qua kiểm tra", "go", name="action", value="approve", title="Chạy lại và bỏ qua kiểm tra chủ đề/độ chắc chắn"),
         button("Bỏ", "ghost danger", name="action", value="reject"),
+        button(
+            "🗑 Xóa sạch tệp",
+            "ghost danger",
+            formaction="/purge",
+            name="confirmed",
+            value="true",
+            data_confirm="Xóa hoàn toàn video này và toàn bộ tệp liên quan trên máy chủ? Thao tác này giải phóng bộ nhớ và không thể hoàn tác.",
+        ),
     )

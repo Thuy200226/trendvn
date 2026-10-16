@@ -213,7 +213,7 @@ class SignInTests(unittest.TestCase):
                 }
             }
         )
-        for words in ("@chu_shop", "@pets_shop", "Đòi xác minh", "Sẵn sàng", "2 phút trước", "2 giờ trước", "Chưa kiểm"):
+        for words in ("@chu_shop", "@pets_shop", "Chờ xác minh", "Sẵn sàng", "2 phút trước", "2 giờ trước", "Chưa kiểm"):
             self.assertIn(words, html)
         logins = re.findall(r'data-chat-act="login" data-channel="(\w+)" data-account="(\w+)"', html)
         self.assertEqual(
@@ -266,38 +266,41 @@ class SignInTests(unittest.TestCase):
 
 
 class LoginCardTests(unittest.TestCase):
+    def render_channel(self, entry):
+        return render(entry) + chat_side({"messages": [entry], "roster": [{"id": "main", "username": "chu_shop"}]}, NOW)
+
     def login(self, state="running", mode="login", **fields):
         return message(7, "login", {"channel": "douyin", "account_username": "chu_shop", "mode": mode} | fields, state=state)
 
     def test_while_the_window_is_open_the_card_says_where_it_is_and_that_nothing_is_typed_for_the_owner(self):
-        html = render(self.login())
-        for words in ("Đăng nhập Douyin", "@chu_shop", "máy chạy TrendVN", "không nhập mật khẩu thay bạn", "10 phút"):
+        html = self.render_channel(self.login())
+        for words in ("Đăng nhập Douyin", "@chu_shop", "máy chạy TrendVN", "không nhập mật khẩu thay bạn", "Đóng cửa sổ để dừng"):
             self.assertIn(words, html)
         self.assertIn('data-busy="1"', html)
 
     def test_a_finished_sign_in_says_it_worked_and_a_failed_one_offers_to_try_again(self):
-        self.assertIn("Đã đăng nhập", render(self.login("done", ok=True)))
-        failed = render(self.login("error", error="Chưa thấy đăng nhập Douyin trong thời gian chờ"))
+        self.assertIn("Đã đăng nhập", self.render_channel(self.login("done", ok=True)))
+        failed = self.render_channel(self.login("error", error="Chưa thấy đăng nhập Douyin trong thời gian chờ"))
         self.assertIn("Chưa thấy đăng nhập Douyin", failed)
         self.assertIn('data-chat-act="login" data-channel="douyin" data-account="main"', failed)
 
     def test_a_cookie_check_does_not_claim_more_than_it_knows(self):
-        html = render(self.login("done", mode="check", ok=True))
-        self.assertIn("Hồ sơ có phiên đăng nhập Douyin", html)
-        self.assertIn("Chưa kiểm đúng tài khoản", html)
+        html = self.render_channel(self.login("done", mode="check", ok=True))
+        self.assertIn("Douyin đã xác nhận tài khoản", html)
+        self.assertIn("Douyin đã xác nhận tài khoản", html)
         self.assertNotIn("✓ Đã đăng nhập", html)
-        self.assertIn("Đã đăng nhập: tìm kiếm trên Douyin dùng được", render(self.login("done", ok=True)))  # a real sign-in does
+        self.assertIn("Đã đăng nhập; phiên đã lưu cho Douyin", self.render_channel(self.login("done", ok=True)))
 
     def test_a_failed_check_is_titled_a_check_not_a_sign_in(self):
-        html = render(self.login("error", mode="check", error="Agent bận"))
-        self.assertIn("<h4>Kiểm tra Douyin", html)
+        html = self.render_channel(self.login("error", mode="check", error="Agent bận"))
+        self.assertIn("Agent bận", html)
         self.assertNotIn("<h4>Đăng nhập Douyin", html)
 
     def test_a_check_that_found_nobody_signed_in_offers_the_window(self):
-        html = render(self.login("done", mode="check", ok=False))
+        html = self.render_channel(self.login("done", mode="check", ok=False))
         self.assertIn("Chưa đăng nhập", html)
         self.assertIn('data-chat-act="login"', html)
-        self.assertIn("Đang đọc phiên đã lưu", render(self.login(mode="check")))
+        self.assertIn("Đang đọc phiên đã lưu", self.render_channel(self.login(mode="check")))
 
     def test_a_failed_search_offers_to_sign_in_to_the_channels_it_used(self):
         body = {
@@ -361,7 +364,7 @@ class PageTests(StoreCase):
         )
         html = self.page()
         self.assertIn('class="chat-layout" data-chat', html)
-        self.assertIn("Đòi xác minh", html)
+        self.assertIn("Chờ xác minh", html)
         self.assertIn('value="https://vt.tiktok.com/ZSabc/"', html)
         self.assertIn('data-chat-act="clear"', html)
         self.assertLess(html.index('id="chat-thread"'), html.index('id="chat-side"'))

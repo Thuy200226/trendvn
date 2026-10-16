@@ -19,6 +19,8 @@ STATE_LABELS = {
     "duplicate": "Trùng",
     "failed": "Lỗi",
     "rejected": "Đã bỏ",
+    "purged": "Đã xóa sạch",
+    "post_deleted": "Đã xóa bài TikTok",
 }
 STATE_TONE = {
     "search_selected": "warn",
@@ -35,6 +37,8 @@ STATE_TONE = {
     "baseline": "mute",
     "duplicate": "mute",
     "rejected": "mute",
+    "purged": "mute",
+    "post_deleted": "mute",
 }
 PLATFORM = {p.id: (p.name, p.country) for p in REGISTRY}
 COMPONENT = {
@@ -47,6 +51,7 @@ ROUTE_LABEL = {"vietsub": "Vietsub", "voiceover": "Lồng tiếng + Vietsub", "o
 VISIBILITY_LABEL = {"public": "Công khai", "friends": "Bạn bè", "self": "Chỉ mình tôi"}
 
 EVENT_LABELS = {
+    "purged": "Đã xóa sạch video",
     "delete_requested": "Bạn yêu cầu xóa bài TikTok",
     "delete_checked_present": "Bạn đã kiểm tra bài TikTok vẫn còn",
     "delete_checked_deleted": "Bạn đã kiểm tra bài TikTok đã xóa",

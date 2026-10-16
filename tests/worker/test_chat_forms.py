@@ -143,8 +143,9 @@ class HistoryActionTests(FormCase):
         self.say("Samsung S24")
         keep = self.s.chat_add("bot", "login", {"channel": "douyin"}, state="running", account="main")
         self.s.chat_set(self.s.chat_thread()[1]["id"], "done")
-        self.assertEqual(chat_forms.act(self.app, {"action": "clear"}), {"removed": 2})
-        self.assertEqual([m["id"] for m in self.s.chat_thread()], [keep])
+        self.assertEqual(chat_forms.act(self.app, {"action": "clear"}), {"removed": 3})
+        self.assertEqual(self.s.chat_thread(), [])
+        self.assertEqual([m["id"] for m in self.s.chat_waiting()], [keep])
 
     def test_a_saved_link_can_be_forgotten_once_and_only_for_the_account_it_belongs_to(self):
         found = {"input": SHARE, "product_id": "1729384756102938475", "title": "t", "markers": {}, "tracked": False}
@@ -215,3 +216,26 @@ class PickAndConfirmTests(FormCase):
         for payload in ({"action": "nope"}, {"action": "find", "id": "1"}, {"action": "find", "id": True}, {"action": "find", "id": 0}, {}):
             with self.subTest(payload=payload), self.assertRaises(ValueError):
                 chat_forms.act(self.app, payload)
+
+
+class ContinueTests(FormCase):
+    def test_continue_preserves_saved_discovery_and_is_idempotent(self):
+        chosen = {"source": "tiktok", "topic": "beauty", "sales": False, "category": ""}
+        mid = self.s.chat_add(
+            "bot",
+            "duplicate_confirm",
+            {"query": "Torriden Dive In 50ml", "discovery": chosen, "account_username": self.s.account("main")["username"]},
+            account="main",
+        )
+        payload = {"action": "confirm_duplicate", "id": mid, "account": "main", "sales": True, "category": "fashion"}
+        result = chat_forms.act(self.app, payload)
+        self.assertEqual(self.s.chat_get(result["id"])["body"]["discovery"], chosen)
+        self.assertEqual(self.tasks.start.call_args.args[2]["text"], "Torriden Dive In 50ml")
+        self.assertEqual(chat_forms.act(self.app, payload), result)
+        self.assertEqual(self.tasks.start.call_count, 1)
+
+    def test_continue_rejects_hidden_wrong_kind_or_changed_account(self):
+        mid = self.s.chat_add("bot", "duplicate_confirm", {"query": "S24", "account_username": "old"}, account="main")
+        with self.assertRaises(ValueError):
+            chat_forms.act(self.app, {"action": "confirm_duplicate", "id": mid})
+        self.tasks.start.assert_not_called()

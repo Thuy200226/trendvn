@@ -5,6 +5,8 @@ from ..components import task_panel
 from ..format import escape as E
 from ..format import meta_of
 from ..labels import VISIBILITY_LABEL
+from ...jsonsafe import loads
+from ...domain.product_binding import verify_evidence, commerce_required
 
 
 def blocked_reason(view, job=None):
@@ -16,6 +18,17 @@ def blocked_reason(view, job=None):
         account = view.destination(None, job["search_account"])
         if account and meta_of(job).get("search_username") != account["username"]:
             return "Tài khoản thực đã thay đổi từ lúc tìm; cần tìm lại để chọn đúng tài khoản."
+    if job:
+        metadata = meta_of(job)
+        binding = loads(job.get("product_binding"), None) or metadata.get("product_binding")
+        if commerce_required(binding, metadata):
+            account = view.destination(None, job.get("search_account") or job.get("account"))
+            if not account:
+                return "Giỏ hàng thiếu tài khoản nhận hợp lệ."
+            try:
+                verify_evidence(metadata.get("product_verification"), binding, job.get("output_hash"), account["id"], account["username"])
+            except (ValueError, KeyError, TypeError):
+                return "Chưa xác minh video đúng sản phẩm Shop; cần chọn đúng sản phẩm và kiểm lại, chưa đăng bài."
     if view.challenge_on:
         return "TikTok đang đòi xác minh%s: giải một lần bằng %s (xem mục Cần xem)." % (view.challenge_who, view.challenge_command)
     if view.d["unresolved_publishes"]:

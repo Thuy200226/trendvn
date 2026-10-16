@@ -115,3 +115,11 @@ class AddressErrorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NavigationMessages(unittest.TestCase):
+    def test_browser_errors_are_kept_out_of_post_cards(self):
+        for detail in ("Page.goto: Navigation interrupted", "net::ERR_HTTP_RESPONSE_CODE_FAILURE", "chrome-error://chromewebdata/"):
+            self.assertEqual(user_message("Chưa xóa bài. " + detail, True), "Chưa xóa bài")
+        text = "Đã mở thao tác xóa nhưng chưa biết TikTok xóa thành công; hãy kiểm tra bài, không tự thử lại. Page.goto: Timeout"
+        self.assertIn("không tự thử lại", user_message(text, True, retry_ok=False))

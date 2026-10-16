@@ -25,13 +25,66 @@ ORPHAN_GRACE_HOURS = 24  # a file no job knows about is only removed after this,
 BATCH = 200  # most jobs whose files are removed per call; the rest wait for the next call
 RETRY_AFTER_FAILURE_HOURS = 24  # a job whose files could not be removed (read-only folder, odd path) is tried again after this long
 INBOX_NAME = re.compile(r"[A-Za-z0-9_.-]{1,150}")  # what attach() accepts as a file name: anything else is never turned into a path
-FINISHED = ("published", "rejected", "duplicate", "failed")
+FINISHED = ("published", "rejected", "duplicate", "failed", "purged", "post_deleted")
 KEEP_IN_JOB_FOLDER = ("manifest.json", "poster.jpg")  # a few KB: the record of how a video was made, and its thumbnail
 DAY = 86400
 
 
 class RetentionMixin:
     """Called by housekeeping (n8n runs it on a schedule): `prune()` is safe to run any time and as often as you like."""
+
+    def purge_job(self, jid, target_state="purged"):
+        """Deep clean: physically delete all files associated with a job (inbox source file, render output, entire job directory)
+        and mark its state as target_state, retaining row identifiers and fingerprint to uphold the duplicate prevention invariant."""
+        with self.connect() as db:
+            row = db.execute("SELECT id, source_file, output_file, state FROM jobs WHERE id=?", (jid,)).fetchone()
+            if not row:
+                raise ValueError("Không tìm thấy video")
+            live = {
+                name
+                for (path,) in db.execute(
+                    "SELECT source_file FROM jobs WHERE source_file IS NOT NULL AND id<>? AND state NOT IN (%s)"
+                    % ",".join("?" * len(FINISHED)),
+                    (jid, *FINISHED),
+                )
+                if (name := self._inbox_name(path))
+            }
+
+        count = size = 0
+        targets = []
+        name = self._inbox_name(row["source_file"])
+        if name and name not in live:
+            targets.append(self.root / "inbox" / name)
+
+        folder = self.root / "jobs" / jid
+        if folder.is_dir() and not folder.is_symlink():
+            targets.append(folder)
+
+        if row["output_file"]:
+            try:
+                from pathlib import Path
+
+                out_path = Path(row["output_file"])
+                if out_path.exists() and folder not in out_path.parents and out_path != folder:
+                    targets.append(out_path)
+            except Exception:
+                pass
+
+        for target in targets:
+            freed = self._delete_inside_root(target)
+            if freed is not None and freed is not False:
+                size += freed
+                count += 1
+
+        now = time.time()
+        with self.transaction() as db:
+            db.execute(
+                "UPDATE jobs SET state=?, source_file=NULL, output_file=NULL, pruned_at=?, reason='Đã xóa video và toàn bộ tệp liên quan', updated=? WHERE id=?",
+                (target_state, now, now, jid),
+            )
+            self.event(db, jid, target_state, "Đã xóa video và giải phóng %.1f MB" % (size / 1048576))
+
+        return {"files_removed": count, "freed_bytes": size}
 
     def prune(self, now=None):
         """Apply every retention rule. Returns what was done; a rule that fails is skipped, never fatal."""

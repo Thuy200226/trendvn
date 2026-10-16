@@ -112,7 +112,18 @@ class QueueTests(unittest.TestCase):
             db.execute("UPDATE jobs SET state='publishing',updated=? WHERE id=?", (time.time() - 3000, jid))
         self.s.housekeeping()
         self.assertEqual(self.s.status()["jobs"][0]["state"], "publish_unknown")
-        self.assertIsNone(self.s.claim())
+
+    def test_reserve_fingerprint_handles_null_duration_without_type_error(self):
+        jid = self.candidate()[0]
+        (Path(self.tmp.name) / "inbox" / "x.mp4").write_bytes(b"fixture")
+        self.s.attach(jid, "x.mp4")
+        claimed = self.s.claim()
+        with self.s.transaction() as db:
+            db.execute(
+                "INSERT INTO jobs(id,platform,source_id,url,state,fingerprint,duration) VALUES('old','douyin','111','https://douyin.com/video/111','ready','[1,2,3]',NULL)"
+            )
+        twin = self.s.reserve_fingerprint(jid, claimed["lease"], [1, 2, 3], 60.0, lambda a, b: True, check=True)
+        self.assertIsNone(twin)
 
 
 if __name__ == "__main__":

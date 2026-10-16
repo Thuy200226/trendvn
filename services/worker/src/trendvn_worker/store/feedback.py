@@ -43,7 +43,7 @@ class FeedbackMixin:
                 CASE WHEN json_valid(j.analysis) THEN json_extract(j.analysis,'$.caption_vi') END caption_vi,
                 (SELECT views FROM post_stats s WHERE s.job_id=j.id ORDER BY at DESC LIMIT 1) views,
                 (SELECT likes FROM post_stats s WHERE s.job_id=j.id ORDER BY at DESC LIMIT 1) likes
-                FROM jobs j LEFT JOIN post_deletions d ON d.job_id=j.id WHERE j.state='published' ORDER BY j.published_at DESC LIMIT ?""",
+                FROM jobs j LEFT JOIN post_deletions d ON d.job_id=j.id WHERE j.state IN ('published', 'post_deleted') ORDER BY j.published_at DESC LIMIT ?""",
                 (limit,),
             ).fetchall()
         return [dict(r) for r in rows]

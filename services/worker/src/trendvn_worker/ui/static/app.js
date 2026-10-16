@@ -86,23 +86,34 @@
     var say=function(text){if(status)status.textContent=text||'';};
     var toBottom=function(){var t=thread();t.scrollTop=t.scrollHeight;};
     var post=async function(url,body){
+      if(body&&typeof body==='object'&&'csrf' in body)body.csrf=csrf;
       var response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       var data=await response.json().catch(function(){return {};});
+      if(response.status===403&&data.error&&data.error.indexOf('Trang đã cũ')>=0){
+        await refresh(false);
+        if(body&&typeof body==='object'&&'csrf' in body)body.csrf=csrf;
+        response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        data=await response.json().catch(function(){return {};});
+      }
       if(!response.ok)throw Error(data.error||'Không thực hiện được');
       return data;
     };
     var tickKey=function(box){var b=box.closest('article').querySelector('[data-chat-act="pick"]');return b?b.dataset.id+'|'+b.dataset.sourceId+'|'+b.dataset.platform:'';};
     var refreshing=null,queueNeedsUpdate=false;
     var refreshQueue=function(){document.dispatchEvent(new Event('trendvn:queue'));return Promise.resolve();};
-    var refresh=function(afterMutation){
-      if(refreshing)return afterMutation?refreshing.then(function(){return refresh(true);}):refreshing;
-      refreshing=fetch('/fragment/chat',{cache:'no-store'}).then(function(r){return r.ok?r.text():null;}).then(function(html){
+    var refresh=function(afterMutation,removeHistory){
+      if(refreshing)return afterMutation?refreshing.then(function(){return refresh(true,removeHistory);}):refreshing;
+      refreshing=fetch('/fragment/chat',{cache:'no-store'}).then(function(r){
+        var token=r.headers.get('x-csrf-token');
+        if(token){csrf=token;if(chat)chat.dataset.csrf=token;}
+        return r.ok?r.text():null;
+      }).then(function(html){
         if(!html)return;
         var t=thread(),side=document.getElementById('chat-side'),near=t.scrollHeight-t.scrollTop-t.clientHeight<80,oldTop=t.scrollTop,tmp=document.createElement('div');
         var anchor=Array.from(t.querySelectorAll('[data-message-id]')).find(function(el){return el.offsetTop+el.offsetHeight>t.offsetTop+t.scrollTop;}),anchorId=anchor&&anchor.dataset.messageId,anchorOffset=anchor&&anchor.offsetTop-t.scrollTop;
         tmp.innerHTML=html;var fresh=tmp.querySelector('#chat-thread'),freshSide=tmp.querySelector('#chat-side');
         var playing=Array.from(t.querySelectorAll('video,audio')).some(function(v){return !v.paused;});
-        if(fresh.innerHTML!==t.innerHTML&&!playing&&!document.querySelector('dialog[open]')){
+        if(fresh.innerHTML!==t.innerHTML&&(!playing||removeHistory)&&!document.querySelector('dialog[open]')){
           var ticked=Array.from(t.querySelectorAll('[data-chat-confirm]:checked')).map(tickKey);
           t.innerHTML=fresh.innerHTML;
           t.querySelectorAll('[data-chat-confirm]').forEach(function(box){if(ticked.indexOf(tickKey(box))>=0)box.checked=true;});
@@ -110,7 +121,7 @@
           else{var same=anchorId&&t.querySelector('[data-message-id="'+anchorId+'"]');t.scrollTop=same?same.offsetTop-anchorOffset:oldTop;}
         }
         var wasBusy=t.dataset.busy==='1';t.dataset.busy=fresh.dataset.busy;
-        if(side&&freshSide&&freshSide.innerHTML!==side.innerHTML&&!side.contains(document.activeElement))side.innerHTML=freshSide.innerHTML;  // never under a focused button
+        if(side&&freshSide&&freshSide.innerHTML!==side.innerHTML&&!document.querySelector('dialog[open]')&&(afterMutation||!side.contains(document.activeElement))){side.innerHTML=freshSide.innerHTML;accountChannels();}
         if(t.dataset.busy==='0'&&(wasBusy||queueNeedsUpdate)){queueNeedsUpdate=false;return refreshQueue();}
       }).catch(function(){}).finally(function(){refreshing=null;});
       return refreshing;
@@ -132,13 +143,53 @@
       if(!b)return;
       var act=b.dataset.chatAct,payload={csrf:csrf,action:act};  // the account is the one the message was sent for, decided by the server
       if(act==='fill'){if(form){form.elements.text.value=b.dataset.text||'';markDraftChanged();form.elements.text.focus();}return;}
+      if(act==='quick_find'){
+        var q=b.dataset.query||'',cat=b.dataset.category||'',src=b.dataset.source||'douyin',acct=b.dataset.account||form.elements.account.value;
+        if(form){
+          form.elements.text.value=q;form.elements.sales.checked=true;
+          form.querySelector('[data-sales-category]').hidden=false;form.elements.category.value=cat;
+          form.elements.source.value=src;if(acct)form.elements.account.value=acct;
+          markDraftChanged();form.requestSubmit();
+        }
+        return;
+      }
+      if(act==='refresh_check'){
+        b.disabled=true;say('Đang kiểm tra tiến độ tìm kiếm và giải CAPTCHA…');
+        refresh(true).then(function(){say('Đã cập nhật trạng thái');}).catch(function(){}).finally(function(){b.disabled=false;});
+        return;
+      }
+      if(act==='toggle_batch_all'){
+        var cont=b.closest('.top-products-container')||b.closest('.bubble');
+        if(cont){
+          var checks=cont.querySelectorAll('input.batch-product-check');
+          var allChecked=Array.from(checks).every(function(c){return c.checked;});
+          checks.forEach(function(c){c.checked=!allChecked;});
+          var countSpans=cont.querySelectorAll('[data-batch-count]');
+          countSpans.forEach(function(s){s.textContent=allChecked?'0':checks.length;});
+          b.textContent=allChecked?'Chọn tất cả':'Bỏ chọn tất cả';
+        }
+        return;
+      }
+      if(act==='batch_find'){
+        var cont=b.closest('.top-products-container')||b.closest('.bubble');
+        var checks=cont?Array.from(cont.querySelectorAll('input.batch-product-check:checked')):[],items=[];
+        checks.forEach(function(c){
+          try{items.push(JSON.parse(c.dataset.product));}catch(e){}
+        });
+        if(!items.length){say('Hãy chọn ít nhất 1 sản phẩm để tìm kiếm hàng loạt.');return;}
+        payload.products=items;
+      }
       if(b.dataset.ask&&!await askConfirmation(b.dataset.ask))return;
       if(b.dataset.id)payload.id=+b.dataset.id;
       if(b.dataset.channel)payload.channel=b.dataset.channel;
       if(b.dataset.account)payload.account=b.dataset.account;
       if(b.dataset.productId)payload.product_id=b.dataset.productId;
       if(b.dataset.source)payload.source=b.dataset.source;
+      if(b.dataset.query)payload.query=b.dataset.query;
+      if(b.dataset.category)payload.category=b.dataset.category;
+      if(b.dataset.sales)payload.sales=true;
       if(b.dataset.human)payload.human=true;
+      if(b.dataset.itemKey)payload.item_key=b.dataset.itemKey;
       if(act==='dismiss'){payload.source_id=b.dataset.sourceId;payload.platform=b.dataset.platform;}
       if(act==='pick'){
         var tick=b.closest('article').querySelector('[data-chat-confirm]');
@@ -149,7 +200,17 @@
       var bubble=b.closest('.bubble')||b.parentNode,feedback=bubble.querySelector('[data-action-feedback]');
       if(!feedback){feedback=document.createElement('p');feedback.dataset.actionFeedback='1';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');bubble.appendChild(feedback);}
       b.disabled=true;feedback.textContent='Đang thực hiện…';say('Đang gửi…');
-      post('/chat/act',payload).then(function(){feedback.textContent='Đã thực hiện';say('');return refresh(true);}).catch(function(error){feedback.textContent=error.message;say(error.message);}).then(function(){b.disabled=false;});
+      post('/chat/act',payload).then(function(){feedback.textContent='Đã thực hiện';say('');return refresh(true,act==='clear'||act==='delete_history');}).catch(function(error){feedback.textContent=error.message;say(error.message);}).then(function(){b.disabled=false;});
+    });
+    chat.addEventListener('change',function(e){
+      if(e.target.matches('input.batch-product-check')){
+        var cont=e.target.closest('.top-products-container')||e.target.closest('.bubble');
+        if(cont){
+          var checked=cont.querySelectorAll('input.batch-product-check:checked').length;
+          var countSpans=cont.querySelectorAll('[data-batch-count]');
+          countSpans.forEach(function(s){s.textContent=checked;});
+        }
+      }
     });
   }
   if(chat&&form){
@@ -190,7 +251,11 @@
     document.addEventListener('click',function(e){var a=e.target.closest('[data-search-account]');if(a){form.elements.account.value=a.dataset.searchAccount;accountTopic();markDraftChanged();}});
     try{var saved=sessionStorage.getItem('trendvn.chat.account');if(saved&&Array.from(form.elements.account.options).some(function(o){return o.value===saved;}))form.elements.account.value=saved;}catch(e){}
     var accountTopics=JSON.parse(form.querySelector('[data-account-topics]').dataset.accountTopics);
-    function accountTopic(){form.elements.topic.value=accountTopics[form.elements.account.value]||'';}
+    function accountChannels(){
+      if(!form)return;
+      document.querySelectorAll('[data-channel-account]').forEach(function(row){row.hidden=row.dataset.channelAccount!==form.elements.account.value;});
+    }
+    function accountTopic(){form.elements.topic.value=accountTopics[form.elements.account.value]||'';accountChannels();}
     accountTopic();
     form.elements.account.addEventListener('change',function(){accountTopic();try{sessionStorage.setItem('trendvn.chat.account',form.elements.account.value);}catch(e){}});
     // crypto.randomUUID exists only on a secure page (https or localhost); the dashboard is also opened as http://<vpn address>
@@ -206,7 +271,8 @@
       if(form.dataset.sent)return;
       if(!text&&!chatFiles.length&&!form.elements.topic.value&&!form.elements.sales.checked){say('Hãy nhập từ khóa, chọn thể loại/ngành hàng hoặc thêm tệp.');return;}
       var revision=draftRevision,requestKey=form.dataset.requestKey||(form.dataset.requestKey=newKey());
-      var payload={csrf:csrf,request_key:requestKey,account:form.elements.account.value,source:form.elements.source.value,topic:form.elements.topic.value,sales:form.elements.sales.checked,category:form.elements.category.value,text:text};
+      var allowDup=form.dataset.allowDuplicate==='1';delete form.dataset.allowDuplicate;
+      var payload={csrf:csrf,request_key:requestKey,account:form.elements.account.value,source:form.elements.source.value,topic:form.elements.topic.value,sales:form.elements.sales.checked,category:form.elements.category.value,text:text,allow_duplicate:allowDup};
       form.dataset.sent='1';var send=form.querySelector('button.send');send.disabled=true;say('Đang gửi…');
       try{
         var encoded=await Promise.all(chatFiles.map(readFile));

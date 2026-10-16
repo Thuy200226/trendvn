@@ -84,7 +84,7 @@ class TaskStepTests(DeletionCase):
         self.assertEqual(self.state(), "unknown")
 
     def test_the_wait_for_the_agent_is_longer_than_the_agents_own_slowest_path(self):
-        self.assertGreaterEqual(tasks_mod.DELETE_TIMEOUT, 300)
+        self.assertIsNone(tasks_mod.DELETE_TIMEOUT)  # a live grant is renewed while the owner signs in
 
     def test_any_kind_of_failure_of_the_call_is_told_apart_the_same_way(self):
         import json

@@ -61,7 +61,7 @@ class AccountsMixin:
                 raise ValueError("Tối đa %d tài khoản" % MAX_ACCOUNTS)
             if db.execute("SELECT 1 FROM accounts WHERE id=?", (account_id,)).fetchone():
                 raise ValueError("Mã tài khoản đã có: " + account_id)
-            if db.execute("SELECT 1 FROM accounts WHERE username=?", (clean["username"],)).fetchone():
+            if db.execute("SELECT 1 FROM accounts WHERE LOWER(username)=LOWER(?)", (clean["username"],)).fetchone():
                 raise ValueError("Tài khoản @%s đã có" % clean["username"])
             db.execute(
                 "INSERT INTO accounts(id,username,label,topics,enabled,created) VALUES (?,?,?,?,?,?)",

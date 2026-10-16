@@ -4,6 +4,8 @@ that only the owner may solve. Nothing is ever guessed from page text."""
 import json
 from urllib.parse import urlsplit
 
+from .browser_errors import navigation_error
+
 MAX_RESPONSE = 4 << 20
 
 
@@ -26,26 +28,53 @@ class Capture:
         try:
             raw = response.body()
             if len(raw) <= MAX_RESPONSE:
-                self.take(self.parse(json.loads(raw)))
+                try:
+                    self.take(self.parse(json.loads(raw)))
+                except Exception:
+                    text = raw.decode("utf-8", errors="replace")
+                    for line in text.splitlines():
+                        line = line.strip()
+                        if line.startswith("{") and line.endswith("}"):
+                            try:
+                                self.take(self.parse(json.loads(line)))
+                            except Exception:
+                                pass
         except Exception:
             return  # an unreadable browser response is never a guessed video
 
 
-def wait_for_results(page, capture, human, check, rounds, resume=None):
-    """Poll the page until videos arrive or the rounds run out. `check(page)` raises ValueError for a login or verification wall: with
+def navigate(page, url, human):
+    """A navigation failure must not take away the window the owner is trying to recover."""
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=45000)
+    except Exception:
+        if not human:
+            raise
+
+
+def wait_for_results(page, capture, human, check, rounds, resume=None, owner_window=False):
+    """Poll until videos arrive, bounded only for unattended searches. `check(page)` raises ValueError for a login or verification wall: with
     the owner's own window open that is something to wait out, otherwise it is the answer."""
     was_blocked = False
-    for _ in range(120 if human else rounds):
+    remaining = rounds
+    while remaining > 0:
+        remaining -= 1
         if page.is_closed():
             return
-        page.wait_for_timeout(2000)
         try:
+            page.wait_for_timeout(2000)
             check(page)
         except ValueError:
-            if human:
+            if human or owner_window:
                 was_blocked = True
+                remaining += 1  # a verification round does not consume the bounded result wait
                 continue
             raise
+        except Exception as error:
+            if not (human or owner_window) or not navigation_error(error):
+                raise
+            remaining += 1
+            continue
         if resume and resume(page, was_blocked):
             continue
         if capture.seen:

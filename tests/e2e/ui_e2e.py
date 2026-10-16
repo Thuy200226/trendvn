@@ -34,6 +34,41 @@ SAMPLE = (
 )
 
 
+def check_product_rows(browser, check):
+    sys.path.insert(0, str(ROOT / "services" / "agent" / "src"))
+    from trendvn_agent.publisher.product_anchor import exact_row, attached_id
+
+    ctx = browser.new_context()
+    page = ctx.new_page()
+    pid, other = "1731815189062584653", "1731815189062584654"
+    page.set_content(
+        '<div role="dialog"><table><tbody><tr data-product-id="' + other + '"><td>Same product name<input type="radio" name="p"></td></tr>'
+        '<tr data-product-id="' + pid + '"><td>Same product name<input type="radio" name="p"></td></tr></tbody></table></div>'
+    )
+    row = exact_row(page.locator('[role="dialog"]'), pid)
+    check("Cart: exact ID selects second row, never first same-name row", row is not None and row.get_attribute("data-product-id") == pid)
+    row.locator("input").check()
+    check(
+        "Cart: only correct product radio selected",
+        page.locator("input:checked").count() == 1 and page.locator("input").nth(1).is_checked(),
+    )
+    page.set_content(
+        '<div role="dialog"><table><tbody><tr data-product-id="'
+        + pid
+        + '"><td>A</td></tr><tr data-product-id="'
+        + pid
+        + '"><td>B</td></tr></tbody></table></div>'
+    )
+    check("Cart: ambiguous duplicate IDs refuse selection", exact_row(page.locator('[role="dialog"]'), pid) is None)
+    page.set_content('<main><a href="https://www.tiktok.com/shop/pdp/name/' + pid + '">Cart</a></main>')
+    check("Cart: read back exact Shop ID from actual link", attached_id(page.locator("main"), pid))
+    page.set_content('<main><a href="https://www.tiktok.com/view/product/' + other + '">Cart</a></main>')
+    check("Cart: existing wrong product is not success", not attached_id(page.locator("main"), pid))
+    page.set_content('<main><a href="https://tiktok.com.evil.test/view/product/' + pid + '">' + pid + "</a></main>")
+    check("Cart: foreign link and visible ID cannot spoof attachment", not attached_id(page.locator("main"), pid))
+    ctx.close()
+
+
 def free_port():
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -308,7 +343,7 @@ def seed_chat(s):
         account="main",
     )
     s.channel_report("main", "douyin", "wall")
-    s.channel_report("main", "tiktok", "ok", "chu_shop")
+    s.channel_report("main", "tiktok", "ok", s.account("main")["username"])
     s.commission_save("main", found | {"title": long_name})
 
 
@@ -416,6 +451,7 @@ def main():
         with sync_playwright() as p:
             browser = p.chromium.launch(channel="chrome", headless=True)
             check_deletion_notices(browser, check)
+            check_product_rows(browser, check)
             errors = []
 
             def go(pg, url):
@@ -781,7 +817,7 @@ def main():
             check("Chat: the search is pinned to the chosen account", FakeAgent.calls[0][1]["account"] == "main")
             check(
                 "Chat: the search goes to the channels signed in for that account",
-                FakeAgent.calls[0][1]["source"] == "auto" and FakeAgent.calls[0][1]["sources"] == ["tiktok"],
+                FakeAgent.calls[0][1]["source"] == "auto" and set(FakeAgent.calls[0][1]["sources"]) == {"tiktok", "douyin"},
             )
             check(
                 "Chat: the search words are shown before any pick",
@@ -839,7 +875,12 @@ def main():
             pg.evaluate("() => { window.fetch=window.__fetchBeforeRace; delete window.__fetchBeforeRace; delete window.__releaseChat; }")
             # the seeded failed search offers the owner's own verification window; it asks again with the Chinese words kept
             FakeAgent.calls.clear()
-            pg.locator('button[data-human="true"]').first.click()
+            verification = pg.locator('button[data-human="true"]').first
+            answer_id = verification.evaluate("el => el.closest('[data-message-id]').dataset.messageId")
+            product_id = verification.get_attribute("data-id")
+            verification_source = verification.get_attribute("data-source")
+            answers_before = pg.locator("#chat-thread .msg.bot").count()
+            verification.click()
             pg.wait_for_timeout(1500)
             check(
                 "Chat: the verification window searches with the Chinese words and the product model kept",
@@ -848,6 +889,15 @@ def main():
                     for path, payload in FakeAgent.calls
                 ),
             )
+            check(
+                "History: verification updates the same answer without adding a duplicate",
+                pg.locator('#chat-thread [data-message-id="%s"]' % answer_id).count() == 1
+                and pg.locator("#chat-thread .msg.bot").count() == answers_before,
+            )
+            FakeAgent.calls.clear()
+            pg.locator('button[data-chat-act="find"][data-id="%s"][data-source="%s"]' % (product_id, verification_source)).click()
+            pg.wait_for_timeout(500)
+            check("History: reopening a completed result does not search again", not FakeAgent.calls)
             # a pasted link that is still to be confirmed: the owner confirms, then can copy it
             copies = pg.locator("[data-copy]").count()
             pg.locator('button[data-chat-act="confirm"]').first.click()
@@ -859,24 +909,25 @@ def main():
             # signing in to a search channel: a window opens on the machine, the card says so, and the column beside the chat learns the result
             go(pg, base + "/#search")
             side = pg.locator("#chat-side")
-            check("Side: every state the system knows is shown", "Đòi xác minh" in side.inner_text() and "Sẵn sàng" in side.inner_text())
+            check("Side: every state the system knows is shown", "Chờ xác minh" in side.inner_text() and "Sẵn sàng" in side.inner_text())
             pg.locator('#chat-side button[data-chat-act="login"][data-channel="douyin"]').click()
-            pg.wait_for_selector("#chat-thread >> text=Đã mở cửa sổ Chrome trên máy chạy TrendVN", timeout=8000)
+            pg.wait_for_selector("#chat-side >> text=Chờ bạn đăng nhập trong cửa sổ Chrome", timeout=8000)
             check(
                 "Sign-in: while the window is open the card says whose window it is and that nothing is typed for the owner",
-                "không nhập mật khẩu thay bạn" in pg.inner_text("#chat-thread"),
+                "không nhập mật khẩu thay bạn" in pg.inner_text("#chat-side"),
             )
-            pg.wait_for_selector("#chat-thread >> text=Đã đăng nhập: tìm kiếm trên Douyin dùng được", timeout=15000)
+            pg.wait_for_selector("#chat-side >> text=Đã đăng nhập; phiên đã lưu cho Douyin", timeout=15000)
             pg.wait_for_function("() => /Douyin[\\s\\S]*Sẵn sàng/.test(document.getElementById('chat-side').innerText)", timeout=8000)
             check(
                 "Sign-in: the column beside the chat shows Douyin ready without a reload", "Đòi xác minh" not in pg.inner_text("#chat-side")
             )
             pg.locator('#chat-side button[data-chat-act="check"][data-channel="tiktok"]').click()
-            pg.wait_for_selector("#chat-thread >> text=Chưa đăng nhập.", timeout=10000)
+            pg.wait_for_selector("#chat-side >> text=Chưa đăng nhập.", timeout=10000)
             check(
                 "Check: a profile that is signed out is said so and offers the window",
-                pg.locator('#chat-thread button[data-chat-act="login"][data-channel="tiktok"]').count() >= 1,
+                pg.locator('#chat-side button[data-chat-act="login"][data-channel="tiktok"]').count() >= 1,
             )
+            check("History: sign-in and checks stay out of the product thread", "Chưa đăng nhập." not in pg.inner_text("#chat-thread"))
             # saved links: forget; history: clear keeps what is not history
             saved_before, in_db = pg.locator("#chat-side .saved").count(), len(Store(tmp).commission_list("main"))
             pg.locator('#chat-side button[data-chat-act="forget"]').first.click()
@@ -899,6 +950,42 @@ def main():
             check(
                 "History: the clear button works again after it was used",
                 not pg.locator('#chat-side button[data-chat-act="clear"]').is_disabled(),
+            )
+
+            # Clearing during owner waits hides the history, but keeps activity outside it and never resurrects old results.
+            scratch = Store(tmp)
+            login_wait = scratch.chat_add(
+                "bot",
+                "login",
+                {"channel": "douyin", "mode": "login", "account_username": scratch.account("main")["username"]},
+                state="running",
+                account="main",
+            )
+            search_wait = scratch.chat_add(
+                "bot",
+                "videos",
+                {"source": "douyin", "human": True, "account_username": scratch.account("main")["username"]},
+                state="running",
+                account="main",
+            )
+            pg.reload()
+            pg.wait_for_selector("#chat-side >> text=Chờ bạn đăng nhập trong cửa sổ Chrome", timeout=8000)
+            pg.locator('#chat-side button[data-chat-act="clear"]').click()
+            pg.locator("#confirm-action [data-confirm-accept]").click()
+            pg.wait_for_function("() => !document.querySelector('#chat-thread [data-message-id]')", timeout=8000)
+            check("History: clear hides running turns immediately without a reload", scratch.chat_thread() == [])
+            check(
+                "History: cleared owner waits remain visible outside the history",
+                "Chờ bạn đăng nhập" in pg.inner_text("#chat-side")
+                and "Có lượt đã ẩn" in pg.inner_text("#chat-side")
+                and pg.locator("#chat-thread").get_attribute("data-busy") == "1",
+            )
+            scratch.chat_set(login_wait, "done", ok=True)
+            scratch.chat_set(search_wait, "done", results=[])
+            pg.wait_for_function("() => document.getElementById('chat-thread').dataset.busy === '0'", timeout=10000)
+            check(
+                "History: completing a hidden turn never restores its old messages",
+                pg.locator("#chat-thread [data-message-id]").count() == 0 and scratch.chat_waiting() == [],
             )
 
             # files stay in memory, are sent as content, and can be removed
@@ -986,7 +1073,69 @@ def main():
             plain.wait_for_function("() => document.querySelector('#chat-thread').innerText.includes('plain http')", timeout=10000)
             check("Plain http: a chat message still sends, with no page error", len(errors) == before, "; ".join(errors[before:][:3]))
             plain_ctx.close()
+            # The receiver owns its channel states; changing it never borrows another account's sign-in.
+            sessions = Store(tmp)
+            sessions.add_account({"id": "sessiontest", "username": "session_test", "topics": ["pets"]})
+            sessions.channel_report("main", "douyin", "ok")
+            sessions.channel_report("sessiontest", "instagram", "ok")
+            go(pg, base + "/#search")
+            pg.locator('[data-chat-form] select[name="account"]').select_option("main")
+            pg.fill('[data-chat-form] textarea[name="text"]', "Bản nháp được giữ khi đổi tài khoản")
+            check(
+                "Sessions: main sees only its own four search channels",
+                pg.locator("#chat-side .acct-row:visible").count() == 1
+                and pg.locator("#chat-side .acct-row:visible").get_attribute("data-channel-account") == "main",
+            )
+            pg.locator('[data-chat-form] select[name="account"]').select_option("sessiontest")
+            check(
+                "Sessions: changing receiver switches channel identity without losing the draft",
+                pg.locator("#chat-side .acct-row:visible").get_attribute("data-channel-account") == "sessiontest"
+                and pg.locator('[data-chat-form] textarea[name="text"]').input_value() == "Bản nháp được giữ khi đổi tài khoản",
+            )
+            pg.evaluate("() => document.dispatchEvent(new Event('trendvn:state'))")
+            pg.wait_for_timeout(500)
+            check(
+                "Sessions: a live refresh keeps the selected receiver and its saved Instagram state",
+                pg.locator("#chat-side .acct-row:visible").get_attribute("data-channel-account") == "sessiontest"
+                and "phiên đã lưu" in pg.locator("#chat-side .acct-row:visible .chan").last.inner_text(),
+            )
+            pg.reload()
+            pg.wait_for_timeout(400)
+            check(
+                "Sessions: reopening the page restores the selected receiver and saved channels",
+                pg.locator('[data-chat-form] select[name="account"]').input_value() == "sessiontest"
+                and pg.locator("#chat-side .acct-row:visible").get_attribute("data-channel-account") == "sessiontest",
+            )
             check("No console or page errors during flows", not errors, "; ".join(errors[:3]))
+            chosen = {"source": "tiktok", "topic": "beauty", "sales": False, "category": ""}
+            continuation = sessions.chat_add(
+                "bot",
+                "duplicate_confirm",
+                {"query": "Samsung Galaxy S24", "discovery": chosen, "account_username": sessions.account("main")["username"]},
+                account="main",
+            )
+            pg.reload()
+            proceed = pg.locator('button[data-chat-act="confirm_duplicate"][data-id="%s"]' % continuation)
+            proceed.click()
+            request_key = "continue_duplicate_%s" % continuation
+            pg.wait_for_function("() => document.querySelector('#chat-thread').innerText.includes('Samsung Galaxy S24')", timeout=8000)
+            deadline = time.time() + 8
+            while not sessions.chat_request(request_key) and time.time() < deadline:
+                pg.wait_for_timeout(100)
+            continued = sessions.chat_request(request_key)
+            check(
+                "Search: continue preserves original source/topic/sales without requiring a new category",
+                continued and sessions.chat_get(continued["id"])["body"]["discovery"] == chosen,
+            )
+            proceed.wait_for(state="visible")
+            deadline = time.time() + 8
+            while proceed.is_disabled() and time.time() < deadline:
+                pg.wait_for_timeout(100)
+            proceed.click()
+            pg.wait_for_timeout(500)
+            with sessions.connect() as db:
+                count = db.execute("SELECT COUNT(*) FROM chat WHERE request_key=?", (request_key,)).fetchone()[0]
+            check("Search: repeating continue creates one recognition turn", count == 1)
             ctx.close()
             browser.close()
     finally:

@@ -107,10 +107,22 @@ def verify_unresolved():
         for job in mine:
             key = norm(job.get("caption"))
             match = [p for p in posts if key and norm(p["desc"]) == key]
-            if match:
-                worker(
-                    "/api/publish/resolve",
-                    {"id": job["id"], "outcome": "published", "url": "https://www.tiktok.com/@%s/video/%s" % (username, match[0]["id"])},
-                )
-                resolved += 1
+            if len(match) != 1:
+                continue
+            url = "https://www.tiktok.com/@%s/video/%s" % (username, match[0]["id"])
+            if job.get("publish_url") and job["publish_url"] != url:
+                continue
+            binding = job.get("product_binding")
+            payload = {"id": job["id"], "outcome": "published", "url": url}
+            if job.get("commerce_required") and not binding:
+                continue
+            if binding:
+                from .product_anchor import published_cart
+
+                with chrome(profile_name(account), locale="vi-VN", headless=not HEADED) as verification:
+                    if not published_cart(verification, url, match[0]["id"], binding["product_id"]):
+                        continue
+                payload["cart_product_id"] = binding["product_id"]
+            worker("/api/publish/resolve", payload)
+            resolved += 1
     return {"resolved": resolved, "still_unknown": len(items) - resolved}

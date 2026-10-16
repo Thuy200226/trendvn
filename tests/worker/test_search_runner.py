@@ -178,7 +178,7 @@ class SignInTests(StoreCase):
         self.assertEqual(
             (ok, path, payload, timeout), (True, "/api/channel/login", {"account": "main", "channel": "douyin"}, runner.SIGN_IN_TIMEOUT)
         )
-        self.assertGreaterEqual(runner.SIGN_IN_TIMEOUT, 11 * 60)  # more than the ten minutes the agent itself waits
+        self.assertIsNone(runner.SIGN_IN_TIMEOUT)  # only the owner ends a pending login
         message = self.s.chat_get(mid)
         self.assertEqual((message["state"], message["body"]["ok"], message["body"]["who"]), ("done", True, "creator"))
 

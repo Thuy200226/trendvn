@@ -2,17 +2,16 @@
 
 import hmac
 import json
-import threading
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from .browser import BrowserBusy, busy_profiles, is_busy
 from .config import ENV, TOKEN
 from .log import log
 from .worker_client import worker, worker_get
 
 BIND = ENV.get("TRENDVN_AGENT_BIND", "172.20.0.1")
 PORT = int(ENV.get("TRENDVN_AGENT_PORT", "5682"))
-browser_lock = threading.Lock()  # one Chrome job at a time: profiles cannot be shared and sites throttle parallel scans
 MAX_BODY = 1024 * 1024  # a job request is a few small fields; anything bigger is refused before it is read
 SOCKET_TIMEOUT = 30  # seconds a caller may stall mid-request
 
@@ -101,12 +100,12 @@ def _channel_args(payload):
 
 def channel_login(payload):
     channels, account, channel = _channel_args(payload)
-    return channels.login(account, channel)
+    return channels.login(account, channel, minutes=None, report_result=False)
 
 
 def channel_check(payload):
     channels, account, channel = _channel_args(payload)
-    return channels.check(account, channel)
+    return channels.check(account, channel, report_result=False)
 
 
 def delete_post(payload):
@@ -156,7 +155,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            return self.send(200, {"ok": True, "service": "trendvn-agent", "busy": browser_lock.locked()})
+            return self.send(200, {"ok": True, "service": "trendvn-agent", "busy": is_busy(), "busy_profiles": busy_profiles()})
         self.send(404, {"error": "Not found"})
 
     def do_POST(self):
@@ -174,15 +173,25 @@ class Handler(BaseHTTPRequestHandler):
         job = ROUTES.get(self.path)
         if not job:
             return self.send(404, {"error": "Not found"})
-        if not browser_lock.acquire(blocking=False):
-            return self.send(409, {"error": "Agent busy with another browser job"})
+        from .channels import Wall, SignedOut
+
         try:
             self.send(200, job(payload))
+        except BrowserBusy as busy:
+            log("BUSY %s: %s" % (self.path, str(busy)[:120]))
+            self.send(409, {"error": str(busy)[:300], "busy": True})
+        except Wall as wall:
+            log("WALL %s: %s" % (self.path, str(wall)[:120]))
+            self.send(428, {"error": str(wall)[:300], "wall": True})
+        except SignedOut as signed_out:
+            log("SIGNED_OUT %s: %s" % (self.path, str(signed_out)[:120]))
+            self.send(401, {"error": str(signed_out)[:300], "signed_out": True})
+        except ValueError as bad_req:
+            log("VALUE_ERR %s: %s" % (self.path, str(bad_req)[:120]))
+            self.send(400, {"error": str(bad_req)[:300]})
         except Exception as error:
             log("ERROR %s: %s" % (self.path, traceback.format_exc()[-600:]))
             self.send(500, {"error": str(error)[:300]})
-        finally:
-            browser_lock.release()
 
 
 def main():

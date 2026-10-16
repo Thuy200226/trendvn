@@ -8,7 +8,7 @@ from .browser import chrome
 from .channels import profile, signed_in, SignedOut, Wall, window_ok
 from .collector.sources.kuaishou import parse_kuaishou
 from .collector.normalize import to_int
-from .search_capture import Capture, wait_for_results
+from .search_capture import Capture, navigate, wait_for_results
 
 VIDEOS = {
     "kuaishou": re.compile(r"https://www\.kuaishou\.com/short-video/([A-Za-z0-9_-]{1,80})"),
@@ -106,7 +106,7 @@ def search(account, platform, query, links=(), human=False):
         region="CN" if chinese else "US",
         headless=not (human or window_ok()),
     ) as ctx:
-        if not signed_in(platform, ctx.cookies()):
+        if not human and not signed_in(platform, ctx.cookies()):
             raise SignedOut("Chưa đăng nhập %s trong hồ sơ tài khoản này. Bấm Đăng nhập trong Kênh tìm kiếm." % platform)
         for url in direct or [SEARCH_URLS[platform] + quote(query)]:
             page = ctx.new_page()
@@ -117,8 +117,14 @@ def search(account, platform, query, links=(), human=False):
 
             page.on("response", take)
             try:
-                page.goto(url, wait_until="domcontentloaded", timeout=45000)
-                wait_for_results(page, capture, human, _check, rounds=6)
+                navigate(page, url, human)
+
+                def ready(page):
+                    _check(page)
+                    if not signed_in(platform, ctx.cookies()):
+                        raise SignedOut("Chờ bạn đăng nhập trong cửa sổ này")
+
+                wait_for_results(page, capture, human, ready, rounds=6, owner_window=window_ok())
             finally:
                 if not page.is_closed():
                     page.close()

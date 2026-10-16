@@ -48,7 +48,9 @@ def set_caption(page, editor, caption):
     page.keyboard.press("Meta+A")
     page.keyboard.press("Delete")
     page.keyboard.type(caption, delay=25)
-    page.wait_for_timeout(1200)
+    page.wait_for_timeout(800)
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(500)
     shown = re.sub(r"\s+", " ", editor.inner_text()).strip()
     return norm(shown).startswith(norm(caption)[:25]) and "final" != shown
 

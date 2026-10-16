@@ -141,8 +141,10 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
                 return self.send(200, live_data(self.app, tab))
             except ValueError:
                 return self.send(400, {"error": "Tab không hợp lệ"})
+            except Exception:
+                return self.send(200, {"tab": tab, "html": None, "badges": {}, "running": False, "clock": ""})
         if path == "/fragment/chat" and self.local_ui():
-            return self.send(200, chat_html(self.app), "text/html; charset=utf-8")
+            return self.send(200, chat_html(self.app), "text/html; charset=utf-8", extra={"X-CSRF-Token": self.app.csrf})
         if path == "/fragment/queue" and self.local_ui():
             return self.send(200, queue_html(self.app), "text/html; charset=utf-8")
         if path == "/api/status" and self.api_allowed():
@@ -195,10 +197,12 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
         form = parse_qs(self.rfile.read(length).decode(), keep_blank_values=True)
         if not same(form.get("csrf", [""])[0], self.app.csrf):
             return self.send(403, STALE_PAGE, "text/html; charset=utf-8")  # (an open page that outlived an update: say what to do)
+        anchor = "#accounts" if "account" in path else ""
         try:
             result = forms.FORMS[path](self.app, form)
-        except (ValueError, KeyError, TypeError, OSError, OverflowError) as error:
-            return self.redirect(err=vi_error(str(error)) or "Không thực hiện được")
+        except Exception as error:
+            log("form_post error %s: %s\n%s" % (path, error, traceback.format_exc().rstrip()))
+            return self.redirect(err=vi_error(str(error)) or "Không thực hiện được", anchor=anchor)
         return self.redirect(result.key, result.err, result.anchor)
 
     def api_post(self, path, payload):

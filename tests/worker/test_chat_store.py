@@ -277,6 +277,48 @@ class RankTests(StoreCase):
         self.assertEqual([r["source_id"] for r in ranked], ["1111111111", "2222222222"])
         self.assertEqual(ranked[1]["match"]["level"], "different")
 
+    def test_sales_mode_prioritizes_commercial_intent_over_raw_views_and_keeps_different_products_last(self):
+        mid = self.s.chat_add(
+            "bot",
+            "videos",
+            {"identity": {"name": "MCHOSE ACE68", "brand": "MCHOSE", "model": "ACE68"}, "discovery": {"sales": True}},
+            state="running",
+            account="main",
+        )
+        items = [
+            # Item A: High views, matched product, but NO commercial intent (tier 1)
+            {
+                "source_id": "1111111111",
+                "platform": "douyin",
+                "url": "https://www.douyin.com/video/1111111111",
+                "title": "迈从 ACE68 键盘日常",
+                "views": 500000,
+                "likes": 50000,
+            },
+            # Item B: Moderate views, matched product, WITH commercial intent (tier 2) -> SHOULD WIN
+            {
+                "source_id": "2222222222",
+                "platform": "douyin",
+                "url": "https://www.douyin.com/video/2222222222",
+                "title": "迈从 ACE68 磁轴键盘 开箱测评 好物推荐",
+                "views": 10000,
+                "likes": 1000,
+            },
+            # Item C: Huge views, DIFFERENT product (ACE75) (tier 0) -> MUST BE LAST
+            {
+                "source_id": "3333333333",
+                "platform": "douyin",
+                "url": "https://www.douyin.com/video/3333333333",
+                "title": "迈从 ACE75 测评",
+                "views": 9999999,
+                "likes": 999999,
+            },
+        ]
+        ranked = self.s.videos_rank(mid, items)
+        self.assertEqual([r["source_id"] for r in ranked], ["2222222222", "1111111111", "3333333333"])
+        self.assertTrue(ranked[0]["match"]["commercial"])
+        self.assertEqual(ranked[2]["match"]["level"], "different")
+
 
 class CommissionTests(StoreCase):
     FOUND = {
@@ -336,10 +378,13 @@ class ChannelTests(StoreCase):
     def test_what_is_known_of_each_sign_in_is_kept_per_account_and_channel_and_the_latest_report_wins(self):
         self.assertEqual(self.s.channel_states(), {})
         self.s.channel_report("main", "douyin", "wall")
-        self.s.channel_report("main", "tiktok", "ok", who="creator")
+        self.s.channel_report("main", "tiktok", "ok", who=self.s.account("main")["username"])
         self.s.channel_report("main", "douyin", "ok", who="")
         states = self.s.channel_states()["main"]
-        self.assertEqual((states["douyin"]["state"], states["tiktok"]["state"], states["tiktok"]["who"]), ("ok", "ok", "creator"))
+        self.assertEqual(
+            (states["douyin"]["state"], states["tiktok"]["state"], states["tiktok"]["who"]),
+            ("ok", "ok", self.s.account("main")["username"]),
+        )
         self.assertGreater(states["douyin"]["at"], 0)
 
     def test_an_unknown_account_channel_or_state_is_refused(self):
@@ -366,9 +411,10 @@ class ClearHistoryTests(StoreCase):
         picked = self.s.chat_add("bot", "videos", {"identity": {}, "account_username": name, "results": [result()]}, account="main")
         jid = self.s.videos_select(picked, "1234567890", True)
         removed = self.s.chat_clear()
-        self.assertEqual(removed, 3)
+        self.assertEqual(removed, 4)
         left = {m["id"] for m in self.s.chat_thread()}
-        self.assertEqual(left, {running})
+        self.assertEqual(left, set())
+        self.assertEqual([m["id"] for m in self.s.chat_waiting()], [running])
         self.assertNotIn(old, left)
         self.assertNotIn(product, left)
         self.assertEqual(self.s.videos_media_ready(jid)["account"], "main")  # the pick can still be downloaded
@@ -419,8 +465,10 @@ class ClearHistoryTests(StoreCase):
         product = self.s.chat_add("bot", "product", {"identity": {"name": "S24"}}, account="main")
         other = self.s.chat_add("bot", "product", {"identity": {"name": "other"}}, account="main")
         running = self.s.chat_add("bot", "videos", {"product": product}, state="running", account="main")
-        self.assertEqual(self.s.chat_clear(), 2)
-        self.assertEqual({m["id"] for m in self.s.chat_thread()}, {running})
+        self.assertEqual(self.s.chat_clear(), 3)
+        self.assertEqual(self.s.chat_thread(), [])
+        self.s.chat_set(running, "done", results=[])
+        self.assertEqual(self.s.chat_thread(), [])  # completion never resurrects a cleared turn
         self.assertEqual(self.s.chat_get(product)["body"]["identity"]["name"], "S24")
         self.assertNotIn(other, {m["id"] for m in self.s.chat_thread()})
 
@@ -437,7 +485,7 @@ class TikTokSignInIsOneFactTests(StoreCase):
     def test_what_the_search_channel_learns_reaches_the_accounts_tab(self):
         self.s.channel_report("main", "tiktok", "out")
         self.assertIs(self.accounts_view()["main"], False)
-        self.s.channel_report("main", "tiktok", "ok", who="creator")
+        self.s.channel_report("main", "tiktok", "ok", who=self.s.account("main")["username"])
         self.assertIs(self.accounts_view()["main"], True)
 
     def test_what_the_publisher_learns_reaches_the_search_channel(self):
@@ -473,3 +521,19 @@ class SavedLinkListTests(StoreCase):
         self.assertTrue(self.s.commission_forget("main", found["product_id"]))
         self.assertFalse(self.s.commission_forget("main", found["product_id"]))
         self.assertEqual([item["title"] for item in self.s.commission_list("main")], ["Second"])
+
+
+class HiddenLateResultsTests(StoreCase):
+    def test_cleared_turns_hide_late_children_and_auto_search_grandchildren(self):
+        root = self.s.chat_add("bot", "link", {}, state="running", account="main")
+        self.s.chat_clear()
+        child = self.s.chat_add("bot", "product", {"turn_id": root, "identity": {"name": "ACE68"}}, account="main")
+        grandchild = self.s.chat_add("bot", "videos", {"product": child}, state="running", account="main")
+        self.assertEqual(self.s.chat_thread(), [])
+        self.assertEqual({m["id"] for m in self.s.chat_waiting()}, {root, grandchild})
+        self.assertEqual(self.s.chat_get(child)["body"]["identity"]["name"], "ACE68")
+        self.s.chat_set(root, "done")
+        self.s.chat_set(grandchild, "done", results=[])
+        self.assertEqual(self.s.chat_thread(), [])
+        fresh = self.s.chat_add("user", "say", {"text": "new"}, account="main")
+        self.assertEqual([m["id"] for m in self.s.chat_thread()], [fresh])

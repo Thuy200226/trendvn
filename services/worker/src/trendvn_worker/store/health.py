@@ -112,24 +112,29 @@ class HealthMixin:
         return login if isinstance(login, dict) else {}
 
     def set_account_login(self, account_id, ok):
-        """The agent (or the `tiktok login` command) found the browser signed in, or not, to one account."""
-        account = self.account(account_id)
-        if not account:
-            raise ValueError("Không có tài khoản này")
-        known = self.channel_states().get(account_id, {}).get("tiktok")
-        if not known or (known["state"] == "ok") != bool(ok):  # the search channels' view of the same fact
-            self.channel_write(account_id, "tiktok", "ok" if ok else "out", account["username"] if ok else "")
+        """Update TikTok's source report and heartbeat atomically for the same receiving account."""
         with self.transaction() as db:
-            row = db.execute("SELECT value FROM settings WHERE key='hb_publisher'").fetchone()
-            value = json.loads(row["value"]) if row else {"at": time.time(), "ok": True, "detail": None}
-            detail = value["detail"] if isinstance(value.get("detail"), dict) else {}
-            login = dict(detail.get("login") or {})
-            newly_signed_out = not ok and login.get(account_id) is not False  # every tick reports the same logout: tell the owner once
-            login[account_id] = bool(ok)
-            detail["login"] = login
-            enabled = {r["id"] for r in db.execute("SELECT id FROM accounts WHERE enabled=1")}
-            # healthy unless an account that is switched on is known to be signed out (a disabled or deleted one's old flag is history)
-            value.update(detail=detail, at=time.time(), ok=all(state for key, state in login.items() if key in enabled))
-            db.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", ("hb_publisher", json.dumps(value, ensure_ascii=False)))
+            account = db.execute("SELECT username FROM accounts WHERE id=?", (account_id,)).fetchone()
+            if not account:
+                raise ValueError("Không có tài khoản này")
+            known = db.execute("SELECT state FROM channel_logins WHERE account=? AND channel='tiktok'", (account_id,)).fetchone()
+            if not known or (known[0] == "ok") != bool(ok):
+                self._write_channel(db, account_id, "tiktok", "ok" if ok else "out", account[0] if ok else "")
+            newly_signed_out = self._set_account_login(db, account_id, ok)
         if newly_signed_out:
             self._announce_sign_out(account_id)
+
+    def _set_account_login(self, db, account_id, ok):
+        """Heartbeat half of the login update; the caller owns the transaction."""
+        row = db.execute("SELECT value FROM settings WHERE key='hb_publisher'").fetchone()
+        value = json.loads(row["value"]) if row else {"at": time.time(), "ok": True, "detail": None}
+        detail = value["detail"] if isinstance(value.get("detail"), dict) else {}
+        login = dict(detail.get("login") or {})
+        newly_signed_out = not ok and login.get(account_id) is not False  # every tick reports the same logout: tell the owner once
+        login[account_id] = bool(ok)
+        detail["login"] = login
+        enabled = {r["id"] for r in db.execute("SELECT id FROM accounts WHERE enabled=1")}
+        # healthy unless an account that is switched on is known to be signed out (a disabled or deleted one's old flag is history)
+        value.update(detail=detail, at=time.time(), ok=all(state for key, state in login.items() if key in enabled))
+        db.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", ("hb_publisher", json.dumps(value, ensure_ascii=False)))
+        return newly_signed_out

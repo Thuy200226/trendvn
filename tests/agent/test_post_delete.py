@@ -13,6 +13,7 @@ class PostDeleteTests(unittest.TestCase):
 
     def test_studio_menu_is_bound_to_exact_link_and_rechecks_navigation(self):
         page = MagicMock()
+        page.is_closed.return_value = False
         page.url = "https://www.tiktok.com/tiktokstudio/content"
         post = {"url": "https://www.tiktok.com/@owner/video/1234567890", "username": "owner"}
         link = page.locator.return_value
@@ -31,7 +32,7 @@ class PostDeleteTests(unittest.TestCase):
             self.assertIn("/@owner/video/1234567890", page.locator.call_args_list[0].args[0])
             row.get_by_role.assert_called_once_with("button", name="", exact=True)
             row.get_by_role.return_value.click.assert_called_once()
-            page.get_by_placeholder.return_value.press.assert_called_once_with("Enter")
+            page.get_by_placeholder.return_value.press.assert_called_once_with("Enter", timeout=2000)
             videos.count.return_value = 2  # another post/menu becomes available on the same Studio URL
             with self.assertRaisesRegex(ValueError, "đã thay đổi"):
                 same()
@@ -46,6 +47,7 @@ class PostDeleteTests(unittest.TestCase):
 
     def test_studio_ambiguous_post_link_never_opens_menu(self):
         page = MagicMock()
+        page.is_closed.return_value = False
         page.url = "https://www.tiktok.com/tiktokstudio/content"
         page.locator.return_value.count.return_value = 2
         with patch("trendvn_agent.publisher.delete._blocked"), self.assertRaisesRegex(ValueError, "đã thay đổi"):
@@ -54,6 +56,7 @@ class PostDeleteTests(unittest.TestCase):
 
     def test_navigation_during_hydration_cannot_delete_another_post(self):
         page = MagicMock()
+        page.is_closed.return_value = False
         url = "https://www.tiktok.com/@owner/video/1234567890"
         page.url = url
         settings = page.locator.return_value
@@ -65,6 +68,7 @@ class PostDeleteTests(unittest.TestCase):
 
     def test_waits_for_owned_menu_after_page_hydration(self):
         page = MagicMock()
+        page.is_closed.return_value = False
         page.url = "https://www.tiktok.com/@owner/video/1234567890"
         settings = MagicMock()
         hydrated = []
@@ -88,7 +92,7 @@ class PostDeleteTests(unittest.TestCase):
         post = {"url": "https://www.tiktok.com/@owner/video/1234567890", "account": "main", "username": "owner"}
         calls = []
 
-        def worker(path, payload):
+        def worker(path, payload, **kwargs):
             calls.append((path, payload))
             return post if path.endswith("claim") else {}
 
@@ -100,26 +104,27 @@ class PostDeleteTests(unittest.TestCase):
             patch("trendvn_agent.publisher.delete._perform", side_effect=behavior),
         ):
             result = delete_post({"job_id": "a" * 32, "grant": "b" * 32})
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0][0], "/api/post-delete/claim")
+        self.assertTrue(all(c[0] == "/api/post-delete/authorize" for c in calls[1:-1]))
         self.assertEqual(calls[-1][0], "/api/post-delete/finish")
         self.assertEqual(calls[-1][1]["outcome"], result["status"])
         return result
 
     def test_failure_before_any_delete_click_is_retryable(self):
-        def perform(page, post, mark):
+        def perform(page, post, mark, pulse):
             raise ValueError("No owned menu")
 
         self.assertEqual(self.run_deletion(perform)["status"], "failed")
 
     def test_lost_confirmation_after_click_is_unknown_never_success(self):
-        def perform(page, post, mark):
+        def perform(page, post, mark, pulse):
             mark()
             raise TimeoutError("No positive notice")
 
         self.assertEqual(self.run_deletion(perform)["status"], "unknown")
 
     def test_positive_proof_is_reported_to_worker(self):
-        def perform(page, post, mark):
+        def perform(page, post, mark, pulse):
             mark()
             return "TikTok xác nhận đã xóa bài 1234567890"
 

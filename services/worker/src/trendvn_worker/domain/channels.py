@@ -2,4 +2,4 @@
 
 NAMES = {"tiktok": "TikTok", "douyin": "Douyin", "kuaishou": "Kuaishou", "instagram": "Instagram"}
 CHANNELS = tuple(NAMES)
-STATES = ("ok", "out", "wall")  # signed in, signed out, or a verification wall in the way; no row = never looked
+STATES = ("ok", "out", "wall", "unknown")  # signed in, signed out, or a verification wall in the way; no row = never looked
