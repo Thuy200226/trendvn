@@ -107,7 +107,7 @@ class GeminiResilienceTests(StoreCase):
         with self.assertRaises(gemini_api.Transient) as caught:
             gemini_api.generate(self.s, self.s.settings(), [{"text": "x"}])
         self.assertEqual(slept, [10, 30, 60])  # the same words as a day's quota, but nothing marks it as one: it may clear in seconds
-        self.assertIn("quá tải", str(caught.exception))
+        self.assertIn("qu\u00e1 t\u1ea3i", str(caught.exception))
 
     def test_a_model_that_is_out_of_quota_does_not_stop_the_waiting_for_one_that_is_only_busy(self):
         slept = []
@@ -145,7 +145,7 @@ class GeminiResilienceTests(StoreCase):
             time_module.sleep = real_sleep
         self.assertEqual(slept, [])  # tomorrow is not 10, 30 and 60 seconds away
         self.assertEqual(len(calls), len(MODEL_FALLBACKS))  # every model tried once
-        self.assertIn("Hạn mức", str(caught.exception))
+        self.assertIn("H\u1ea1n m\u1ee9c", str(caught.exception))
 
     def test_overload_retries_then_requeues_instead_of_breaking_the_job(self):
         gemini_api.gemini = lambda store, model, body: (_ for _ in ()).throw(ValueError("Gemini HTTP 503 (%s): high demand" % model))
@@ -253,7 +253,7 @@ class GeminiResilienceTests(StoreCase):
 
         for mime, payload in (("audio/wav", wav), ("audio/L16;codec=pcm;rate=24000", b"\x00\x00" * 48000), ("", wav)):
             gemini_api.gemini = shaped(mime, payload)
-            self.assertAlmostEqual(speech.tts(self.s, self.s.settings(), "Xin chào", out), 2.0, places=2)
+            self.assertAlmostEqual(speech.tts(self.s, self.s.settings(), "Xin ch\u00e0o", out), 2.0, places=2)
 
     def error_from_google(self, status, message):
         import urllib.error
@@ -320,7 +320,7 @@ class GeminiResilienceTests(StoreCase):
             "steps": [{"type": "model_output", "content": [{"type": "audio", "data": audio, "mime_type": "audio/wav"}]}]
         }
         with self.assertRaisesRegex(ValueError, "empty audio"):
-            speech.tts(self.s, self.s.settings(), "Xin chào", Path(self.tmp.name) / "v.wav")
+            speech.tts(self.s, self.s.settings(), "Xin ch\u00e0o", Path(self.tmp.name) / "v.wav")
 
     def test_every_3x_tts_model_is_spoken_to_through_the_interactions_api_and_nothing_else_is(self):
         """A 3.x TTS model on the plain path got its style spoken aloud as words before the text (gemini-3.1-flash-tts-preview, a listed
@@ -349,14 +349,14 @@ class GeminiResilienceTests(StoreCase):
 
         gemini_api.gemini = reply
         out = Path(self.tmp.name) / "v.wav"
-        speech.tts(self.s, self.s.settings(), "Chào các bạn.", out, voice="Puck", style="chậm rãi")
+        speech.tts(self.s, self.s.settings(), "Ch\u00e0o c\u00e1c b\u1ea1n.", out, voice="Puck", style="ch\u1eadm r\u00e3i")
         model, endpoint, body = sent[0]
         self.assertEqual((model, endpoint), ("gemini-3.8-flash-tts", "interactions"))
         content = body["input"][0]["content"][0]
-        self.assertEqual(content["text"], "Chào các bạn.")  # nothing before it, nothing after it
-        self.assertEqual(content["annotations"], [{"type": "speech_metadata", "style": "chậm rãi"}])
+        self.assertEqual(content["text"], "Ch\u00e0o c\u00e1c b\u1ea1n.")  # nothing before it, nothing after it
+        self.assertEqual(content["annotations"], [{"type": "speech_metadata", "style": "ch\u1eadm r\u00e3i"}])
         self.assertEqual(body["generation_config"]["speech_config"], [{"voice": "Puck"}])
-        speech.tts(self.s, self.s.settings(), "Chào.", out)  # no style: no annotation at all
+        speech.tts(self.s, self.s.settings(), "Ch\u00e0o.", out)  # no style: no annotation at all
         self.assertNotIn("annotations", sent[1][2]["input"][0]["content"][0])
 
     def test_when_the_interactions_api_is_refused_the_plain_text_is_sent_without_any_instruction(self):
@@ -378,10 +378,10 @@ class GeminiResilienceTests(StoreCase):
             return {"candidates": [{"content": {"parts": [{"inlineData": {"mimeType": "audio/wav", "data": audio}}]}}]}
 
         gemini_api.gemini = reply
-        speech.tts(self.s, self.s.settings(), "Chào các bạn.", Path(self.tmp.name) / "v.wav", style="nhanh")
+        speech.tts(self.s, self.s.settings(), "Ch\u00e0o c\u00e1c b\u1ea1n.", Path(self.tmp.name) / "v.wav", style="nhanh")
         self.assertEqual([e for _, e, _ in sent], ["interactions", None])
         self.assertEqual(
-            sent[1][2]["contents"][0]["parts"][0]["text"], "Chào các bạn."
+            sent[1][2]["contents"][0]["parts"][0]["text"], "Ch\u00e0o c\u00e1c b\u1ea1n."
         )  # the style is NOT put in front of it for this model
 
     def test_an_older_tts_model_takes_the_style_as_words_before_the_text(self):
@@ -399,9 +399,9 @@ class GeminiResilienceTests(StoreCase):
             "candidates": [{"content": {"parts": [{"inlineData": {"mimeType": "audio/wav", "data": audio}}]}}]
         }
         self.s.update_settings({"tts_model": "gemini-2.5-flash-preview-tts"})
-        speech.tts(self.s, self.s.settings(), "Chào.", Path(self.tmp.name) / "v.wav", style="ấm áp")
+        speech.tts(self.s, self.s.settings(), "Ch\u00e0o.", Path(self.tmp.name) / "v.wav", style="\u1ea5m \u00e1p")
         self.assertEqual(sent[0][1], None)
-        self.assertEqual(sent[0][2]["contents"][0]["parts"][0]["text"], "ấm áp: Chào.")
+        self.assertEqual(sent[0][2]["contents"][0]["parts"][0]["text"], "\u1ea5m \u00e1p: Ch\u00e0o.")
 
 
 if __name__ == "__main__":

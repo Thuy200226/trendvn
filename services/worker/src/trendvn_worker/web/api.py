@@ -36,13 +36,13 @@ def handle(app, path, payload):
     if function is None:
         raise NotFound(path)
     if not isinstance(payload, dict):
-        raise ValueError("Cần một đối tượng JSON")
+        raise ValueError("C\u1ea7n m\u1ed9t \u0111\u1ed1i t\u01b0\u1ee3ng JSON")
     return function(app, payload)
 
 
 def _job_id(value):
     if value is not None and not (isinstance(value, str) and JOB_ID.fullmatch(value)):
-        raise ValueError("Mã video không hợp lệ")
+        raise ValueError("M\u00e3 video kh\u00f4ng h\u1ee3p l\u1ec7")
     return value
 
 
@@ -50,7 +50,7 @@ def _text(payload, key, default=None):
     """payload[key] as a string; a list, number or object in its place is a client error (400), not a crash."""
     value = payload.get(key, default)
     if not isinstance(value, str):
-        raise ValueError("%s phải là chuỗi" % key)
+        raise ValueError("%s ph\u1ea3i l\u00e0 chu\u1ed7i" % key)
     return value
 
 
@@ -69,7 +69,7 @@ def attach(app, payload):
 def media_pending(app, payload):
     platform = payload.get("platform")
     if platform is not None and platform not in PLATFORMS:
-        raise ValueError("Nền tảng không hợp lệ")
+        raise ValueError("N\u1ec1n t\u1ea3ng kh\u00f4ng h\u1ee3p l\u1ec7")
     return {"items": app.store.candidates_without_media(int(payload.get("limit", 20)), platform)}
 
 
@@ -171,7 +171,7 @@ def update_account(app, payload):
 @route("/api/accounts/login")
 def account_login(app, payload):
     if not isinstance(payload.get("ok"), bool):
-        raise ValueError("ok phải là true hoặc false")
+        raise ValueError("ok ph\u1ea3i l\u00e0 true ho\u1eb7c false")
     app.store.set_account_login(str(payload.get("id", "")), payload["ok"])
     return OK
 

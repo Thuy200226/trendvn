@@ -81,7 +81,7 @@ class RetentionTests(StoreCase):
         with self.s.connect() as db:
             states = {r["id"]: (r["state"], r["reason"]) for r in db.execute("SELECT id,state,reason FROM jobs")}
         self.assertEqual(states["c-old"][0], "rejected")
-        self.assertIn("không được tải", states["c-old"][1])
+        self.assertIn("kh\u00f4ng \u0111\u01b0\u1ee3c t\u1ea3i", states["c-old"][1])
         self.assertEqual((states["c-new"][0], states["r-new"][0]), ("candidate", "ready"))
         self.assertEqual((states["n-old"][0], states["r-old"][0]), ("rejected", "rejected"))
 
@@ -400,19 +400,19 @@ class CandidateAndCountTests(StoreCase):
             self.ready("r%02d" % n)
         html, data = self.page()
         self.assertEqual(len(data["ready"]), 30)
-        self.assertIn("<b>35</b><small>Sẵn sàng</small>", html)  # the funnel
+        self.assertIn("<b>35</b><small>S\u1eb5n s\u00e0ng</small>", html)  # the funnel
         self.assertIn(">35</i>", html)  # the navigation badge
-        self.assertNotIn("<b>30</b><small>Sẵn sàng</small>", html)
+        self.assertNotIn("<b>30</b><small>S\u1eb5n s\u00e0ng</small>", html)
 
     def test_the_posted_views_label_says_it_covers_the_latest_30(self):
         html, _ = self.page()
-        self.assertIn("Lượt xem (30 bài gần nhất)", html)
-        self.assertNotIn("Lượt xem bài đã đăng", html)
+        self.assertIn("L\u01b0\u1ee3t xem (30 b\u00e0i g\u1ea7n nh\u1ea5t)", html)
+        self.assertNotIn("L\u01b0\u1ee3t xem b\u00e0i \u0111\u00e3 \u0111\u0103ng", html)
 
     def test_the_front_page_shows_free_disk_space(self):
         from trendvn_worker.ui.tabs import home
 
-        self.assertIn("Ổ đĩa", self.page()[0])
+        self.assertIn("\u1ed4 \u0111\u0129a", self.page()[0])
         self.assertIn("good", home._disk_chip(5000))
         self.assertIn("warn", home._disk_chip(1500))
         self.assertIn("bad", home._disk_chip(300))
@@ -499,7 +499,7 @@ class ProcessingSafetyTests(StoreCase):
 
         tiny = {"streams": [{"codec_type": "video", "width": 1, "height": 1}]}
         with mock.patch.object(pipeline, "probe", return_value=(5.0, tiny)), mock.patch.object(pipeline, "file_hash", return_value="h"):
-            with self.assertRaisesRegex(ValueError, "quá nhỏ"):
+            with self.assertRaisesRegex(ValueError, "qu\u00e1 nh\u1ecf"):
                 pipeline._source({"source_file": "/x.mp4", "content_hash": "h"}, {"max_duration": 180})
 
     def test_error_text_from_ffmpeg_does_not_reveal_server_folders(self):

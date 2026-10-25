@@ -1,94 +1,94 @@
-# Nhật ký rà soát phiên bản 1.2
+# Review log version 1.2
 
-> Ghi chú: đây là tài liệu lịch sử của bản 1.2; các đường dẫn trong đó (`worker/`, `agent/`, `runtime/`, `agent_data/`, `install.sh`...) là của bố cục cũ. Bảng đối chiếu sang bố cục 1.3 nằm ở [CHANGELOG](../CHANGELOG.md).
+> Note: this is a historical document of version 1.2; the paths in there (`worker/`, `agent/`, `runtime/`, `agent_data/`, `install.sh`...) are from the old layout. The comparison table to layout 1.3 is located at [CHANGELOG](../CHANGELOG.md).
 
-Mục tiêu: giao diện dùng tốt trên điện thoại, nhanh, không phát sinh lỗi, và chất lượng video, mô tả, hashtag đủ tốt để đăng. Bốn vòng rà soát, cộng các thử nghiệm bằng dịch vụ thật. Mọi phát hiện dưới đây đều đã được tái hiện bằng mã hoặc bằng chạy thật trước khi sửa.
+Goal: the interface works well on phones, is fast, doesn't cause errors, and the video quality, description, and hashtags are good enough to post. Four rounds of testing, plus tests using real services. All findings below were reproduced in code or in runtime before correction.
 
-## Vòng 1 — Giao diện (Chrome thật, tự động)
+## Round 1 — Interface (Real Chrome, Auto)
 
-> **Cập nhật sau phản hồi khi dùng thật:** hàng đợi tách thành tab riêng (6 tab), thanh trạng thái thành thẻ, hướng dẫn khi tab Đăng bài trống; bộ kiểm tra nay chạy 6 tab × 7 kích thước và kiểm tra riêng thanh dưới (nhãn không xuống dòng, không chạm nhau).
+> **Updated after real-use feedback:** queue separated into separate tabs (6 tabs), status bar into tabs, instructions when Posting tab is empty; This tester runs 6 tabs × 7 sizes and tests the bottom bar separately (labels do not wrap, do not touch each other).
 
-Công cụ: `tests/ui_e2e.py` dựng một worker thật với dữ liệu mẫu (có video) cùng một agent giả, mở Chrome thật ở 7 kích thước (320×640, 360×740, 375×812, 414×896, 768×1024, 1280×900, 1440×900) và 6 tab. Mỗi trang được kiểm tra: tràn ngang, các khối chồng lên nhau (so từng cặp hộp), thẻ dính sát nhau, nút nhỏ hơn 44 px, chữ bị cắt, cỡ chữ nhỏ hơn 11 px, thanh dưới che cuối trang. Sau đó bấm thử toàn bộ luồng: Bắt đầu, Thu thập, Xử lý, Đăng ngay, Xem thử, Sửa mô tả, Khôi phục, Bỏ video, bấm đúp, agent bận, agent tắt.
+Tool: `tests/ui_e2e.py` builds a real worker with sample data (with video) and a fake agent, opens real Chrome in 7 sizes (320×640, 360×740, 375×812, 414×896, 768×1024, 1280×900, 1440×900) and 6 tab. Each page is checked for: horizontal overflow, overlapping blocks (compare each pair of boxes), tags stuck together, buttons smaller than 44 px, text cut off, font size smaller than 11 px, bottom bar covering the bottom of the page. Then try the whole flow: Start, Collect, Process, Post now, Preview, Edit description, Restore, Skip video, double click, agent busy, agent off.
 
-| # | Lỗi tìm thấy | Mức độ | Cách sửa |
+| # | Error found | Level | How to fix |
 |---|---|---|---|
-| 1 | **Mọi nút gửi form bị từ chối** ("Local form only"): tiêu đề `Referrer-Policy: no-referrer` khiến Chrome gửi `Origin: null` cho form cùng trang. Đã tồn tại từ 1.0 (trước đó chỉ xem trang, chưa bấm form trong trình duyệt) | nghiêm trọng | `same-origin` và chấp nhận `Origin: null` chỉ khi `Sec-Fetch-Site: same-origin`; vẫn bắt buộc CSRF |
-| 2 | Chính sách bảo mật chặn biểu tượng trang (lỗi console) | thấp | `img-src 'self' data:` |
-| 3 | `.wrap` ghi đè khoảng đệm dưới của `main`: chân trang dính sát thanh điều hướng dưới trên điện thoại | trung bình | tách lề trái/phải khỏi lề trên/dưới |
-| 4 | Bấm menu trên màn hình rộng thì tiêu đề mục bị thanh đầu trang che | trung bình | `scroll-margin-top` |
-| 5 | Nút làm mới 38–41 px; menu trên 35 px (dưới 44 px cho cảm ứng) | thấp | nâng lên 44 px |
-| 6 | Bấm Đăng ngay chuyển sang tab Đăng bài nhưng tiến độ chỉ hiện ở tab Tổng quan: không thấy kết quả | trung bình | bảng tiến độ có mặt ở tab liên quan (Đăng bài, Đã đăng) |
-| 7 | Tab Đăng bài thiếu khoảng cách đều giữa các khối | thấp | hệ khoảng cách chung `.stack` |
+| 1 | **Any form submit button rejected** ("Local form only"): header `Referrer-Policy: no-referrer` causes Chrome to send `Origin: null` for the form on the same page. Has existed since 1.0 (previously only viewed the page, not clicked the form in the browser) | serious | `same-origin` and accepted `Origin: null` only if `Sec-Fetch-Site: same-origin`; CSRF | is still required
+| 2 | Page icon blocking security policy (console error) | low | `img-src 'self' data:` |
+| 3 | `.wrap` overrides bottom padding of `main`: footer sticks to bottom navbar on phones | medium | separates left/right margin from top/bottom margin |
+| 4 | Clicking the menu on a wide screen causes the item title to be covered by the header bar | medium | `scroll-margin-top` |
+| 5 | Refresh button 38–41 px; menu top 35 px (bottom 44 px for touch) | low | raised 44 px |
+| 6 | Click Post Now to switch to the Posting tab but progress is only shown in the Overview tab: results are not visible | average | progress table is present in related tabs (Posting, Posted) |
+| 7 | Posting tab lacks equal spacing between blocks | low | common spacing system `.stack` |
 
-Kết quả cuối: **58 kiểm tra đạt, 0 lỗi** (35 bố cục + 23 luồng bấm nút, kể cả không có lỗi console).
+Final result: **58 passed test, 0 errors** (35 layouts + 23 button press threads, including no console errors).
 
-## Vòng 2 — Hiệu suất (30.000 video, 150.000 sự kiện, 100.000 quan sát)
+## Round 2 — Performance (30,000 videos, 150,000 events, 100,000 observations)
 
-| Thao tác | Trước | Sau chỉ mục |
+| Operation | Previous | After index |
 |---|---|---|
-| Dữ liệu bảng điều khiển | 63 ms | **20 ms** |
-| Trạng thái API (collector và n8n gọi liên tục) | 13 ms | **8 ms** |
-| Cả trang (dữ liệu + HTML) | 66 ms | **22 ms** |
-| Nhập 100 video | 9 ms | 11 ms |
-| HTML gửi đi | 134 KB | **16 KB** sau gzip |
+| Console data | 63 ms | **20 ms** |
+| API status (collector and n8n calling continuously) | 13 ms | **8 ms** |
+| Full page (data + HTML) | 66 ms | **22 ms** |
+| Import 100 videos | 9 ms | 11 ms |
+| Outgoing HTML | 134 KB | **16 KB** after gzip |
 
-Khác: video xem trước không tải khi chưa bấm (`preload=none` + ảnh poster), trang chỉ hỏi một đoạn HTML nhỏ để cập nhật tiến độ (thay vì tải lại cả trang), nền mờ dựng bằng ảnh thu nhỏ rồi phóng (nhanh hơn khoảng 4 lần), file dựng giới hạn 4 Mbps (video 78 giây: 54 MB → 41 MB; video 4K thu về 1080×1920). Một số liệu thật khác: dựng video dọc 78 giây mất 36 giây, video dọc 36 giây mất 7 giây.
+Other: preview video doesn't load without clicking (`preload=none` + poster image), page only asks for a small piece of HTML to update the progress (instead of reloading the whole page), blurred background built with thumbnail image then zoomed in (about 4 times faster), editing file limited to 4 Mbps (78 second video: 54 MB → 41 MB; 4K video captures 1080×1920). Another real statistic: editing a 78-second vertical video takes 36 seconds, a 36-second vertical video takes 7 seconds.
 
-## Vòng 3 — Rà soát độc lập đọc mã (một tác tử riêng, chỉ đọc)
+## Round 3 — Independent review of code reading (a separate, read-only agent)
 
-Nhận 22 phát hiện. Đã kiểm chứng và sửa tất cả; các mục đáng chú ý:
+Get 22 findings. All verified and corrected; Notable items:
 
-| # | Phát hiện | Mức | Xử lý |
+| # | Detection | Level | Treatment |
 |---|---|---|---|
-| 1 | Lỗi trước khi bấm Đăng (Chrome không mở...) để lại bài `publishing`, sau 15 phút thành "đã bấm Đăng chưa xác nhận" và chặn mọi lần đăng | cao | `publish_one` không bao giờ ném lỗi: trước khi bấm = `failed`, sau khi bấm = `unknown` (có test) |
-| 2 | Đăng tay thất bại trên video chờ duyệt lặng lẽ duyệt nó cho lịch tự đăng | trung bình | nhớ `prev_state`, khôi phục khi thất bại |
-| 3 | Một video lỗi mãi chặn cả kênh (lịch chọn lại nó mỗi 30 phút, mỗi lần mở Chrome) | trung bình | nghỉ 1 giờ sau lỗi, 3 lần thì vào Cần xem |
-| 4 | Không có nút duyệt video cho lịch tự đăng khi bật "duyệt tay" | trung bình | thêm nút "Duyệt cho lịch tự đăng" |
-| 5 | Ô để trống bị bỏ qua: xóa giờ vàng không có tác dụng, xóa một ngưỡng lại tắt luôn ngưỡng đó | trung bình | đọc cả ô trống, gộp ngưỡng theo nguồn |
-| 6 | Mở bảng điều khiển ra ngoài máy không có xác thực | trung bình | bắt buộc `TRENDVN_UI_PASSWORD` (cookie HttpOnly, khóa sau 5 lần sai), doctor cảnh báo |
-| 7 | Công tắc "Tự đăng" bật chỉ với một chạm | trung bình | hỏi xác nhận khi bật |
-| 8 | Phụ đề rơi vào vùng chữ của TikTok với video vuông, 4:5, 3:4 và video dọc | trung bình | `caption_zone`: dải mờ dưới hoặc trên, hoặc cao hơn, luôn tránh y > 1440 |
-| 10 | Video có cờ xoay 90° bị bóp méo | thấp | đọc kích thước hiển thị |
-| 11–12 | Nền mờ chậm, video quá lớn không thu nhỏ, `-level` sai | thấp | sửa như trên |
-| 13 | Duyệt lại video "có thể trùng hình" không có tác dụng | thấp | bỏ qua kiểm tra trùng hình khi bạn đã duyệt |
-| 14 | `hashtags` hỏng làm sập cả bảng điều khiển và lịch đăng | thấp | bảo vệ kiểu dữ liệu, một dòng hỏng không kéo cả trang |
-| 15–16 | Xuống dòng CRLF, Unicode tổ hợp, bộ đếm hashtag; số quá lớn gây lỗi 500 | thấp | chuẩn hóa NFC/CRLF, regex Unicode, chặn số |
-| 17 | Ngưỡng 15 phút có thể cắt ngang một lần đăng chậm | thấp | nâng lên 45 phút (tối đa lý thuyết của một lần đăng khoảng 20 phút) |
-| 18 | Đăng tay trùng mô tả thì mất video | thấp | trả về cho bạn sửa mô tả |
-| 19–20 | Mô tả rỗng vẫn đăng; lỗi tạo thư mục để job kẹt `processing` | thấp | vào Cần xem; `mkdir` trong `try`, dọn tác vụ treo trước khi xử lý |
-| 21–22 | macOS: khởi động lại dịch vụ, thư mục Downloads, sao lưu qua chia sẻ file; gói thiếu `.env.example` | thấp | sửa, hướng dẫn `~/trendvn`, sao lưu trong container |
+| 1 | Error before clicking Post (Chrome doesn't open...) leaves post `publishing`, after 15 minutes it becomes "clicked Post not confirmed" and blocks all postings | high | `publish_one` never throws error: before clicking = `failed`, after pressing = `unknown` (with test) |
+| 2 | Post failed on video waiting for approval quietly browse it for self-posting schedule | average | remember `prev_state`, restore on failure |
+| 3 | One video error forever blocks the whole channel (schedule re-selects it every 30 minutes, every time opening Chrome) | average | rests for 1 hour after error, 3 times then comes in Need to watch |
+| 4 | There is no button to browse videos for self-posting schedule when "hand review" is enabled | medium | add "Browse for self-posting schedule" button |
+| 5 | Empty cells are ignored: deleting golden hours has no effect, deleting a threshold turns that threshold off again | average | reads all blank cells, aggregates thresholds by source |
+| 6 | Open the control panel to the machine without authentication | medium | mandatory `TRENDVN_UI_PASSWORD` (HttpOnly cookie, locked after 5 failures), doctor warns |
+| 7 | "Auto Post" switch turns on with one touch | medium | asks for confirmation when turned on |
+| 8 | Subtitles fall into the text area of TikTok with square, 4:5, 3:4 and vertical videos | average | `caption_zone`: blurred band below or above, or above, always avoid y > 1440 |
+| 10 | Video with 90° rotation flag is distorted | low | read display size |
+| 11–12 | Slow background blur, video too large to zoom out, `-level` wrong | low | correct as above |
+| 13 | Revisiting "possible duplicate" videos has no effect | low | skips duplicate checking when you've already browsed |
+| 14 | `hashtags` crashes crashing both dashboard and posting schedule | low | protects data type, one broken line doesn't drag down entire page |
+| 15–16 | Line break CRLF, Unicode combination, hashtag counter; number too large causes error 500 | low | standardize NFC/CRLF, Unicode regex, block number |
+| 17 | 15-minute threshold can interrupt a slow posting | low | raised to 45 minutes (theoretical maximum of a posting is about 20 minutes) |
+| 18 | If you post the same description, you will lose the video | is low | returns to you, edit the description |
+| 19–20 | Empty description still posted; error creating directory for job stuck `processing` | low | on Need to see; `mkdir` in `try`, clean up suspended tasks before processing |
+| 21–22 | macOS: restart services, Downloads folder, backup via file share; package missing `.env.example` | low | fix, instruction `~/trendvn`, backup in container |
 
-Bên rà soát cũng xác nhận ổn: cấp phát đăng nguyên tử (30 lượt đồng thời chỉ 1 thành công), không thể đăng nhầm video (hash), chống truy cập đường dẫn, escape mọi giá trị hiển thị, SQL tham số hóa, ffmpeg ổn với 12 loại đầu vào.
+The reviewer also confirmed that it is fine: atomic posting allocation (30 concurrent attempts with only 1 success), cannot post the wrong video (hash), path access protection, escapes all displayed values, parameterized SQL, ffmpeg is fine with 12 input types.
 
-## Vòng 4 — Tấn công chính các bản sửa
+## Round 4 — Main attack fixes
 
-Tôi giao một tác tử độc lập thứ hai kiểm tra lại các bản sửa, nhưng nó bị ngắt giữa chừng vì giới hạn phiên của dịch vụ và **không trả báo cáo**, nên vòng này do chính tôi thực hiện, không được tính là rà soát độc lập. Nội dung:
+I assigned a second independent agent to review the fixes, but it was interrupted midway because of the service's session limit and **did not return the report**, so this round was done by me and does not count as an independent review. Content:
 
-| Kiểm tra | Kết quả |
+| Test | Result |
 |---|---|
-| Nâng cấp từ cơ sở dữ liệu thật của bản 1.1 (bản sao lưu do `backup.sh` tạo) | 55 video nguyên vẹn, thêm 5 cột và bảng `tasks`, mở lại nhiều lần không lỗi |
-| Vượt cổng mật khẩu: 14 đường dẫn (`//`, `/./`, `/%2e/`, `/login/../`, `/api/dashboard`...), `Host` sai chữ hoa/dấu chấm/khoảng trắng/thiếu, tiêu đề `X-Forwarded-For`/`Forwarded`, cookie giả, POST không CSRF, API không token | Không có đường nào cho vào (test tự động) |
-| Lỗi tôi tự tìm ra khi đọc lại bản sửa: video bị chuyển "Cần xem" sau 3 lần đăng lỗi không còn đường quay lại đăng, và bộ đếm lỗi không xóa khi duyệt lại | Sửa: nút "↩ Đưa về sẵn sàng đăng", bộ đếm về 0 (có test) |
-| Lỗi tìm ra khi chạy test trong ổ đĩa chỉ đọc: ghi nhật ký của agent ném lỗi, phá cam kết "trình đăng không bao giờ ném lỗi" | Sửa: ghi nhật ký không bao giờ làm hỏng tác vụ (có test) |
-| Toàn bộ test | 153 test đạt trên máy, 97 test đạt trong image có ffmpeg, 58 kiểm tra trình duyệt thật đạt |
+| Upgraded from the real database of version 1.1 (backup created by `backup.sh`) | 55 intact videos, added 5 columns and table `tasks`, reopened many times without error |
+| Password bypass: 14 paths (`//`, `/./`, `/%2e/`, `/login/../`, `/api/dashboard`...), `Host` wrong case/period/space/missing, title `X-Forwarded-For`/`Forwarded`, fake cookie, POST without CSRF, API without token | No entry (automatic test) |
+| Error I found myself when re-reading the edit: the video was changed to "Need to watch" after 3 postings, there was no way to return to posting, and the error counter was not cleared when reviewing again | Edit: "↩ Bring back ready to post" button, counter to 0 (with test) |
+| Error found when running test on read-only drive: agent logging throws error, breaking "poster never throws error" promise | Fix: logging never crashes task (with test) |
+| All tests | 153 tests passed on computer, 97 tests passed in image with ffmpeg, 58 tests passed in real browser |
 
-Khuyến nghị: chạy thêm một vòng rà soát độc lập khi dịch vụ sẵn sàng.
+Recommendation: run an additional independent review when the service is ready.
 
-## Thử nghiệm bằng dịch vụ thật (không phải giả lập)
+## Test with real service (not emulator)
 
-| Kiểm tra | Kết quả |
+| Test | Result |
 |---|---|
-| Gemini: phân tích 4 video thật | Phát hiện Gemini bịa phụ đề sau cuối video dài (11 dòng ngoài 138 giây) khiến video bị từ chối: đã sửa bằng bộ chuẩn hóa mốc thời gian; 3/4 lần chạy sau qua; còn lại là Gemini quá tải (503/504), hệ thống xếp lại hàng đợi đúng thiết kế |
-| Chất lượng mô tả | Trước: câu lửng ("...và cái kết") và hashtag tên nền tảng ("tiktokgiaitri"). Sau khi sửa prompt và bộ lọc: "Nghỉ làm cả tháng mà con trai vẫn tính toán để bố trả lương." #haihuoc #tieuphim #congso |
-| Nút Thu thập trên bảng điều khiển đang chạy | Chạy thật qua agent: "Douyin: đọc 48, đạt ngưỡng 2, mới 2 / Kuaishou: đọc 20 ..." |
-| Nút Xem thử | Chạy thật: Chrome mở TikTok Studio, tải video thử, điền mô tả và 5 hashtag (TikTok nhận diện, bộ đếm 97/4000), dừng trước nút Đăng, ảnh chụp mở được từ bảng điều khiển; không có bài nào bị đăng |
-| Nút Bỏ video | Chạy thật, video chuyển sang "rejected" |
-| Nút **🚀 Đăng ngay** trên kênh thật | Được chủ kênh đồng ý cho đúng một bài thử riêng tư: bấm nút trên giao diện, hộp xác nhận nêu đúng "CHỈ MÌNH TÔI", Chrome đăng và **xác nhận trên hồ sơ** (`.../video/7691237769196080404`), video biến mất khỏi danh sách, đếm "Hôm nay 1/2". Sau đó khôi phục chế độ Công khai và xóa bản ghi thử khỏi hệ thống; bài trên TikTok để chủ kênh tự xóa |
+| Gemini: analysis of 4 real videos | Detected that Gemini made up subtitles at the end of a long video (11 lines in addition to 138 seconds) causing the video to be rejected: fixed with timestamp normalizer; 3/4 of the following runs passed; The remaining is Gemini overload (503/504), the system requeues according to the design |
+| Description quality | Before: catchphrase ("...and the ending") and platform name hashtag ("tiktokgiaitri"). After editing the prompt and filter: "After taking a whole month off from work, my son still calculates for his father to pay him." #haihuoc #tieuphim #congso |
+| Collect button on running console | Real run via agent: "Douyin: read 48, reached threshold 2, new 2 / Kuaishou: read 20..." |
+| Preview button | Real run: Chrome opens TikTok Studio, loads test video, fills in description and 5 hashtags (TikTok recognizes, counter 97/4000), stops before Post button, photo can be opened from the panel; No posts posted |
+| Video Skip Button | Real run, video changes to "rejected" |
+| Button **🚀 Post now**on real channel | Get approval from the channel owner for a private test: press the button on the interface, the confirmation box correctly states "ONLY ME", Chrome posts and** confirms on the profile profile** (`.../video/7691237769196080404`), video disappeared from the list, count "Today 1/2". Then restore Public mode and delete the test record from the system; post on TikTok so the channel owner can delete |
 
-## Giới hạn còn lại (nói thẳng)
+## Remaining limit (straight talk)
 
-- macOS: cài đặt sạch đã kiểm chứng trên Linux; launchd và `host-gateway` chưa chạy trên Mac thật.
-- TikTok thỉnh thoảng đòi xác minh (CAPTCHA); hệ thống dừng và báo, không giải thay bạn. Tần suất ở 2 bài/ngày chưa đo dài hạn.
-- Gemini đôi lúc quá tải hoặc chậm (đã thấy 503/504 nhiều lần trong ngày thử); hệ thống thử lại, đổi model và xếp lại hàng đợi, nhưng thời gian xử lý có thể dài hơn bình thường.
-- Cờ xoay video được xử lý theo dữ liệu ffprobe và có test đơn vị; chưa thử với video quay từ điện thoại thật.
-- Chất lượng mô tả đo trên 4 video (chủ yếu tiếng Trung, hài); chưa đo trên video nhạc hay thuyết minh.
+- macOS: proven clean install on Linux; launchd and `host-gateway` do not run on real Macs yet.
+- TikTok sometimes requires verification (CAPTCHA); The system stops and warns, but does not solve the problem for you. Frequency at 2 articles/day has not been measured long term.
+- Gemini is sometimes overloaded or slow (saw 503/504 several times during testing day); The system tries again, changes models, and requeues, but processing time may be longer than usual.
+- Video rotation flag is processed according to ffprobe data and has unit tests; Haven't tried with videos shot from a real phone.
+- Description quality measured on 4 videos (mainly Chinese, comedy); Not measured on music videos or voiceovers.

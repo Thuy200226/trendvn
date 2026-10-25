@@ -39,18 +39,21 @@ class ReportingMixin:
         best = [p for p in self.performance(10) if p["views"]]
         best = max(best, key=lambda p: p["views"], default=None)
         lines = [
-            "📊 TrendVN hôm nay: đã đăng %d/%d" % (st["published_today"], st["daily_limit"]),
-            "Hàng chờ: %d chờ xử lý, %d đã dựng, %d chờ duyệt"
+            "📊 TrendVN h\u00f4m nay: \u0111\u00e3 \u0111\u0103ng %d/%d" % (st["published_today"], st["daily_limit"]),
+            "H\u00e0ng ch\u1edd: %d ch\u1edd x\u1eed l\u00fd, %d \u0111\u00e3 d\u1ef1ng, %d ch\u1edd duy\u1ec7t"
             % (c.get("queued", 0) + c.get("processing", 0), c.get("ready", 0), c.get("awaiting_approval", 0) + c.get("needs_review", 0)),
         ]
         if st["unresolved_publishes"]:
-            lines.append("🚨 %d bài đăng chưa xác nhận" % st["unresolved_publishes"])
+            lines.append("🚨 %d b\u00e0i \u0111\u0103ng ch\u01b0a x\u00e1c nh\u1eadn" % st["unresolved_publishes"])
         if st["discovery"] != "connected":
-            lines.append("🔌 Bộ thu thập: " + st["discovery"])
+            lines.append("🔌 B\u1ed9 thu th\u1eadp: " + st["discovery"])
         if st["publisher"] != "connected":
-            lines.append("🔌 Trình đăng: " + st["publisher"])
+            lines.append("🔌 Tr\u00ecnh \u0111\u0103ng: " + st["publisher"])
         if best:
-            lines.append("🏆 Bài tốt nhất gần đây: %s (%s lượt xem)" % (best["title"][:50], format(best["views"], ",")))
+            lines.append(
+                "🏆 B\u00e0i t\u1ed1t nh\u1ea5t g\u1ea7n \u0111\u00e2y: %s (%s l\u01b0\u1ee3t xem)"
+                % (best["title"][:50], format(best["views"], ","))
+            )
         return "\n".join(lines)
 
     def dashboard_data(self):

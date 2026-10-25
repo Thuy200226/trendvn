@@ -46,8 +46,8 @@ analysis = {
     "kind": "dialogue",
     "confidence": 0.99,
     "segments": [
-        {"start": 0.5, "end": 2.5, "vi": "Đây là video kiểm thử phụ đề tiếng Việt."},
-        {"start": 3, "end": 5.5, "vi": "Không phải video thịnh hành hoặc bài đăng thật."},
+        {"start": 0.5, "end": 2.5, "vi": "\u0110\u00e2y l\u00e0 video ki\u1ec3m th\u1eed ph\u1ee5 \u0111\u1ec1 ti\u1ebfng Vi\u1ec7t."},
+        {"start": 3, "end": 5.5, "vi": "Kh\u00f4ng ph\u1ea3i video th\u1ecbnh h\u00e0nh ho\u1eb7c b\u00e0i \u0111\u0103ng th\u1eadt."},
     ],
 }
 subdir = root / "subtitles"

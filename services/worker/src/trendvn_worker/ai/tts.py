@@ -1,7 +1,7 @@
 """Vietnamese voice-over with Gemini text-to-speech, fitted to the window the original speech occupies.
 
 What the current TTS models (gemini-3.x-flash-tts) do, measured on 2026-10-02 by transcribing the audio back: the `text` is a VERBATIM
-transcript. An instruction written before it ("Đọc bằng tiếng Việt tự nhiên... chỉ đọc đoạn sau:") is read ALOUD, which put an extra
+transcript. An instruction written before it ("Read in natural Vietnamese... just read the following paragraph:") is read ALOUD, which put an extra
 10 seconds of spoken instructions in front of every voice-over and made the narration look far too long for its window. Style and pace
 travel separately, in the Interactions API's `speech_metadata.style`; the same style words move the pace from 12 to 24 characters a
 second with every word still spoken (recall 1.00), so pace is chosen with words, not by squeezing the audio afterwards.
@@ -152,7 +152,7 @@ def make_voice(store, cfg, a, folder, duration=None):
     """
     text = clean_spoken((a.get("narration_vi") or "").strip() or " ".join(s["vi"] for s in a["segments"]))
     if not text:
-        raise VoiceoverUnfit("Không có lời nào để đọc")
+        raise VoiceoverUnfit("Kh\u00f4ng c\u00f3 l\u1eddi n\u00e0o \u0111\u1ec3 \u0111\u1ecdc")
     start, end = a["segments"][0]["start"], a["segments"][-1]["end"]
     span = max(2.0, end - start)
     voice = voices.pick_voice(cfg, a.get("speaker"))
@@ -169,16 +169,21 @@ def make_voice(store, cfg, a, folder, duration=None):
         except (ValueError, OSError, wave.Error, EOFError):
             pass
     if len(text) / seconds > MAX_CHARS_PER_SECOND:
-        raise VoiceoverUnfit("Giọng đọc %.1fs quá ngắn cho %d ký tự: có thể bị bỏ sót chữ" % (seconds, len(text)))
+        raise VoiceoverUnfit(
+            "Gi\u1ecdng \u0111\u1ecdc %.1fs qu\u00e1 ng\u1eafn cho %d k\u00fd t\u1ef1: c\u00f3 th\u1ec3 b\u1ecb b\u1ecf s\u00f3t ch\u1eef"
+            % (seconds, len(text))
+        )
     ratio = seconds / span
     if ratio > MAX_TEMPO or ratio < MIN_FILL:
-        raise VoiceoverUnfit("Giọng đọc %.1fs không khớp cửa sổ lời %.1fs" % (seconds, span))
+        raise VoiceoverUnfit("Gi\u1ecdng \u0111\u1ecdc %.1fs kh\u00f4ng kh\u1edbp c\u1eeda s\u1ed5 l\u1eddi %.1fs" % (seconds, span))
     tempo = min(MAX_TEMPO, max(MIN_TEMPO, ratio))
     spoken = seconds / tempo
     if duration and start + spoken > duration + OVERRUN_ALLOWED:
-        raise VoiceoverUnfit("Giọng đọc kéo dài quá hết video (%.1fs vào giây %.1f)" % (spoken, start))
+        raise VoiceoverUnfit(
+            "Gi\u1ecdng \u0111\u1ecdc k\u00e9o d\u00e0i qu\u00e1 h\u1ebft video (%.1fs v\u00e0o gi\u00e2y %.1f)" % (spoken, start)
+        )
     if decode_check(wav, True).get("lufs", -120.0) < SILENT_LUFS:
         wav.unlink(missing_ok=True)  # not kept: a run that comes back must synthesise afresh, not read the same silence
-        raise VoiceoverUnfit("Giọng đọc im lặng (tạo giọng hỏng)")
+        raise VoiceoverUnfit("Gi\u1ecdng \u0111\u1ecdc im l\u1eb7ng (t\u1ea1o gi\u1ecdng h\u1ecfng)")
     # `until`: the original sound stays low to the end of the window the original speech occupied, not only to the end of the voice
     return {"wav": wav, "tempo": tempo, "delay": start, "seconds": spoken, "until": max(start + spoken, end), "voice": voice, "pace": pace}

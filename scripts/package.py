@@ -40,26 +40,26 @@ def keep(path):
 def preflight():
     problems = []
     if subprocess.run([sys.executable, str(ROOT / "n8n" / "build.py"), "--check"], capture_output=True).returncode != 0:
-        problems.append("n8n/workflows không khớp n8n/build.py (chạy ./trendvn n8n build)")
+        problems.append("n8n/workflows kh\u00f4ng kh\u1edbp n8n/build.py (ch\u1ea1y ./trendvn n8n build)")
     for f in sorted(ROOT.rglob("*.py")):
         if keep(f):
             try:
                 compile(f.read_text(encoding="utf-8"), str(f), "exec")
             except SyntaxError as e:
-                problems.append("lỗi cú pháp %s dòng %s: %s" % (f.relative_to(ROOT), e.lineno, e.msg))
+                problems.append("l\u1ed7i c\u00fa ph\u00e1p %s d\u00f2ng %s: %s" % (f.relative_to(ROOT), e.lineno, e.msg))
     for f in sorted(list(ROOT.rglob("*.sh")) + list(ROOT.rglob("*.command")) + [ROOT / "trendvn"]):
         if keep(f) and subprocess.run(["bash", "-n", str(f)], capture_output=True).returncode != 0:
-            problems.append("lỗi cú pháp shell: " + str(f.relative_to(ROOT)))
+            problems.append("l\u1ed7i c\u00fa ph\u00e1p shell: " + str(f.relative_to(ROOT)))
     changelog = (ROOT / "CHANGELOG.md").read_text()
     if "## %s " % VERSION not in changelog:
-        problems.append("CHANGELOG.md chưa có mục cho phiên bản " + VERSION)
+        problems.append("CHANGELOG.md ch\u01b0a c\u00f3 m\u1ee5c cho phi\u00ean b\u1ea3n " + VERSION)
     return problems
 
 
 def main():
     problems = preflight()
     if problems:
-        print("Không đóng gói vì:\n  - " + "\n  - ".join(problems), file=sys.stderr)
+        print("Kh\u00f4ng \u0111\u00f3ng g\u00f3i v\u00ec:\n  - " + "\n  - ".join(problems), file=sys.stderr)
         return 1
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)
@@ -85,8 +85,8 @@ def main():
             count += 1
     digest = hashlib.sha256(out.read_bytes()).hexdigest()
     (dist / (NAME + ".tar.gz.sha256")).write_text("%s  %s\n" % (digest, out.name))
-    print("Đã tạo dist/%s (%d file, %.0f KB)\nsha256 %s" % (out.name, count, out.stat().st_size / 1024, digest))
-    print("Chép sang máy Mac (AirDrop/USB), giải nén, rồi làm theo docs/MAC.md")
+    print("\u0110\u00e3 t\u1ea1o dist/%s (%d file, %.0f KB)\nsha256 %s" % (out.name, count, out.stat().st_size / 1024, digest))
+    print("Ch\u00e9p sang m\u00e1y Mac (AirDrop/USB), gi\u1ea3i n\u00e9n, r\u1ed3i l\u00e0m theo docs/MAC.md")
     return 0
 
 

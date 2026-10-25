@@ -3,7 +3,7 @@
 Tick or write "n/a". Anything unticked needs a note: owner, date, why accepted. Based on OWASP Top 10:2025 / ASVS 5.0 / CWE Top 25 (2025).
 
 ## Access and identity
-- [ ] Every new route/handler/job checks **authentication** and **authorization per object** (another user's id is refused); deny by default
+- [ ] Every new route/handler/job checks **authentication**and**authorization per object** (another user's id is refused); deny by default
 - [ ] No ids or roles trusted from the client; tenant filter present in every query
 - [ ] Sessions/tokens: secure cookie flags, rotation on login, short lifetimes, scopes minimal; OAuth uses code + PKCE, exact redirect URIs
 - [ ] Passwords hashed with Argon2id (>= 19 MiB, t=2, p=1) or equivalent; MFA for admin/sensitive actions

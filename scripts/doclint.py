@@ -52,19 +52,20 @@ for f in files:
         for m in re.finditer(r"\./trendvn ([a-z0-9-]+)(?: ([a-z0-9-]+))?", line):
             cmd, sub = m.group(1), m.group(2)
             if cmd not in top:
-                problems.append("%s:%d ./trendvn %s: không có lệnh này" % (rel, n, cmd))
+                problems.append("%s:%d ./trendvn %s: kh\u00f4ng c\u00f3 l\u1ec7nh n\u00e0y" % (rel, n, cmd))
             elif cmd in NEEDS_SUB and sub and not sub.startswith("-") and sub not in subs.get(cmd, set()) and not sub.isdigit():
-                # a word after the sub-command slot may be plain prose ("./trendvn agent restart, rồi"): only flag lowercase words that look like a sub-command
-                if re.fullmatch(r"[a-z-]+", sub) and sub not in {"rồi", "và", "hoặc", "thì"}:
+                # a word after the sub-command slot may be plain prose (""./trendvn agent restart, then"): only flag lowercase words that look like a sub-command
+                if re.fullmatch(r"[a-z-]+", sub) and sub not in {"r\u1ed3i", "v\u00e0", "ho\u1eb7c", "th\u00ec"}:
                     problems.append(
-                        "%s:%d ./trendvn %s %s: không có lệnh con này (có: %s)" % (rel, n, cmd, sub, ", ".join(sorted(subs.get(cmd, []))))
+                        "%s:%d ./trendvn %s %s: kh\u00f4ng c\u00f3 l\u1ec7nh con n\u00e0y (c\u00f3: %s)"
+                        % (rel, n, cmd, sub, ", ".join(sorted(subs.get(cmd, []))))
                     )
 
 # every command the CLI has must be documented in docs/COMMANDS.md
 commands_doc = (ROOT / "docs" / "COMMANDS.md").read_text(encoding="utf-8")
 for cmd in sorted(top - {"help", "version"}):
     if "./trendvn " + cmd not in commands_doc:
-        problems.append("docs/COMMANDS.md không nhắc tới lệnh ./trendvn %s" % cmd)
+        problems.append("docs/COMMANDS.md kh\u00f4ng nh\u1eafc t\u1edbi l\u1ec7nh ./trendvn %s" % cmd)
 
 # ---- 2. relative links
 for f in list(ROOT.glob("*.md")) + list((ROOT / "docs").glob("*.md")):
@@ -74,7 +75,7 @@ for f in list(ROOT.glob("*.md")) + list((ROOT / "docs").glob("*.md")):
                 continue
             path = target.split("#")[0]
             if path and not (f.parent / path).resolve().exists():
-                problems.append("%s:%d liên kết hỏng: %s" % (f.relative_to(ROOT), n, target))
+                problems.append("%s:%d li\u00ean k\u1ebft h\u1ecfng: %s" % (f.relative_to(ROOT), n, target))
 
 # ---- 3. old layout leftovers
 OLD = re.compile(
@@ -82,16 +83,19 @@ OLD = re.compile(
     r"python agent/|(?<![\w/])agent/(?:server|publisher|collector|common)\.py|(?<![\w/])worker/(?:core|media|server|ui|tasks|prompts|notify)\.py|"
     r"services/worker/app|services/agent/(?:server|publisher|collector|common)\.py|(?<![\w/.])(?:publisher|collector)\.py|_looks_blocked"
 )
-ALLOWED_LINE = ("thư-mục-1.2", "thư mục cũ", "bản 1.2")  # the migration recipe legitimately names the old scripts
+ALLOWED_LINE = ("old-directory-1.2", "old directory", "version 1.2")  # migration instructions legitimately reference old scripts
 for f in files:
     rel = f.relative_to(ROOT).as_posix()
     if rel in HISTORY:
         continue
     for n, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
         if OLD.search(line) and not any(a in line for a in ALLOWED_LINE):
-            problems.append("%s:%d còn đường dẫn/tên của bố cục cũ: %s" % (rel, n, OLD.search(line).group(0)))
+            problems.append(
+                "%s:%d c\u00f2n \u0111\u01b0\u1eddng d\u1eabn/t\u00ean c\u1ee7a b\u1ed1 c\u1ee5c c\u0169: %s"
+                % (rel, n, OLD.search(line).group(0))
+            )
 
 if problems:
-    print("doclint: %d vấn đề\n  - " % len(problems) + "\n  - ".join(problems))
+    print("doclint: %d v\u1ea5n \u0111\u1ec1\n  - " % len(problems) + "\n  - ".join(problems))
     sys.exit(1)
-print("doclint OK: lệnh, liên kết và đường dẫn trong tài liệu khớp mã.")
+print("doclint OK: l\u1ec7nh, li\u00ean k\u1ebft v\u00e0 \u0111\u01b0\u1eddng d\u1eabn trong t\u00e0i li\u1ec7u kh\u1edbp m\u00e3.")

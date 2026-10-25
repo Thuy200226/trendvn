@@ -49,11 +49,14 @@ class FeedbackTests(StoreCase):
 
 class SummaryTests(unittest.TestCase):
     def test_process_summaries(self):
-        self.assertIn("TẮT", tasks_mod.summarize_process([{"status": "disabled"}]))
-        self.assertIn("Không có video", tasks_mod.summarize_process([{"status": "idle"}]))
-        self.assertIn("2 sẵn sàng đăng", tasks_mod.summarize_process([{"status": "ready"}, {"status": "ready"}, {"status": "idle"}]))
+        self.assertIn("T\u1eaeT", tasks_mod.summarize_process([{"status": "disabled"}]))
+        self.assertIn("Kh\u00f4ng c\u00f3 video", tasks_mod.summarize_process([{"status": "idle"}]))
+        self.assertIn(
+            "2 s\u1eb5n s\u00e0ng \u0111\u0103ng",
+            tasks_mod.summarize_process([{"status": "ready"}, {"status": "ready"}, {"status": "idle"}]),
+        )
         # two runs at once finish in any order: an idle one first must not hide the video the other processed
-        self.assertIn("1 sẵn sàng đăng", tasks_mod.summarize_process([{"status": "idle"}, {"status": "ready"}]))
+        self.assertIn("1 s\u1eb5n s\u00e0ng \u0111\u0103ng", tasks_mod.summarize_process([{"status": "idle"}, {"status": "ready"}]))
         self.assertIn(
             "Gemini",
             tasks_mod.summarize_process(
@@ -64,14 +67,14 @@ class SummaryTests(unittest.TestCase):
     def test_collect_summary_handles_skipped_and_first_scan(self):
         text = tasks_mod.summarize_collect(
             {
-                "tiktok": {"status": "skipped", "reason": "Cần IP US"},
+                "tiktok": {"status": "skipped", "reason": "C\u1ea7n IP US"},
                 "douyin": {"status": "ok", "summary": {"s": {"seen": 10, "qualified": 3, "baseline": True, "new": 3}}},
-                "kuaishou": {"status": "error", "reason": "hết thời gian"},
+                "kuaishou": {"status": "error", "reason": "h\u1ebft th\u1eddi gian"},
             }
         )
-        self.assertIn("bỏ qua", text)
-        self.assertIn("lần đầu", text)
-        self.assertIn("lỗi", text)
+        self.assertIn("b\u1ecf qua", text)
+        self.assertIn("l\u1ea7n \u0111\u1ea7u", text)
+        self.assertIn("l\u1ed7i", text)
 
 
 if __name__ == "__main__":

@@ -78,7 +78,7 @@ def call_with_fallback(store, cfg, key, chain_default, fn, rounds=4, waits=(10, 
         transient = busy = exhausted = False
         for model in chain:
             if time.time() > deadline and last is not None:
-                raise Transient("Gemini không phản hồi kịp (%ds), sẽ thử lại sau: %s" % (budget, last))
+                raise Transient("Gemini kh\u00f4ng ph\u1ea3n h\u1ed3i k\u1ecbp (%ds), s\u1ebd th\u1eed l\u1ea1i sau: %s" % (budget, last))
             try:
                 result = fn(model)
             except KeyRejected as e:  # this model refuses the key: a key can lack access to one model while the fallbacks work
@@ -112,7 +112,11 @@ def call_with_fallback(store, cfg, key, chain_default, fn, rounds=4, waits=(10, 
         raise rejected  # every model that answered refused the key: the key is the problem, whatever else failed on the way
     if transient:
         raise Transient(
-            ("Hạn mức Gemini của khóa đã hết, sẽ thử lại sau: " if exhausted and not busy else "Gemini đang quá tải, sẽ thử lại sau: ")
+            (
+                "H\u1ea1n m\u1ee9c Gemini c\u1ee7a kh\u00f3a \u0111\u00e3 h\u1ebft, s\u1ebd th\u1eed l\u1ea1i sau: "
+                if exhausted and not busy
+                else "Gemini \u0111ang qu\u00e1 t\u1ea3i, s\u1ebd th\u1eed l\u1ea1i sau: "
+            )
             + str(last)
         )
     raise last

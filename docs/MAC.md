@@ -1,85 +1,85 @@
-# Cài TrendVN trên máy Mac ở nhà (30–60 phút cho Mac mới toanh; 10–15 phút nếu đã có Docker, Python, Chrome)
+# Install TrendVN on your Mac at home (30–60 minutes for brand new Mac; 10–15 minutes if you already have Docker, Python, Chrome)
 
-## 1. Chuẩn bị (làm một lần)
+## 1. Preparation (do once)
 
-| Cần | Cài |
+| Need | Install |
 |---|---|
-| **Docker Desktop** | https://www.docker.com/products/docker-desktop/ → mở lên, đợi biểu tượng cá voi đứng yên |
+| **Docker Desktop** | https://www.docker.com/products/docker-desktop/ → open it, wait for the stationary whale icon |
 | **Google Chrome** | https://www.google.com/chrome/ |
-| **Python 3.10 trở lên** | macOS chỉ kèm Python 3.9 (sau khi cài "Command Line Tools": gõ `xcode-select --install`), **quá cũ** cho agent. Cài thêm: `brew install python@3.12` hoặc tải bản cài tại https://www.python.org/downloads/macos/ . Kiểm tra: `python3.12 --version` |
+| **Python 3.10 or later**| macOS only comes with Python 3.9 (after installing "Command Line Tools": type `xcode-select --install`),**too old** for agents. Install more: `brew install python@3.12` or download the installation version here https://www.python.org/downloads/macos/ . Check: `python3.12 --version` |
 
-Có Homebrew thì gọn hơn: `brew install python@3.12` và cài Docker Desktop, Chrome (tên gói cask của Docker có thể là `docker-desktop` hoặc `docker` tùy phiên bản Homebrew). Mở Docker Desktop một lần và bật **Start Docker Desktop when you sign in** (Settings → General) để sau khi khởi động lại Mac, container tự lên.
+With Homebrew is more compact: `brew install python@3.12` and install Docker Desktop, Chrome (Docker's cask package name can be `docker-desktop` or `docker` depending on the Homebrew version). Open Docker Desktop once and enable **Start Docker Desktop when you sign in** (Settings → General) so that after restarting the Mac, the container will start up automatically.
 
-Google Chrome phải nằm trong thư mục **/Applications** (cài mặc định là vậy).
+Google Chrome must be in the folder **/Applications** (this is the default setting).
 
-## 2. Chép dự án sang Mac
+## 2. Copy project to Mac
 
-Trên **máy đang chạy**, đóng gói (không kèm mật khẩu, khóa hay dữ liệu):
+On **machine running**, packaging (no password, key or data included):
 
 ```bash
-./trendvn package        # tạo dist/trendvn-1.6.tar.gz và file .sha256
+./trendvn package        # creates dist/trendvn-1.6.tar.gz and .sha256 file
 ```
 
-Chép file đó sang Mac bằng AirDrop, USB hoặc `scp`, rồi nhấp đúp để giải nén thành thư mục `trendvn-1.6`. **Hãy chuyển thư mục đó vào `~/trendvn`** (thư mục nhà của bạn), đừng để trong Downloads, Documents hay Desktop: macOS hạn chế các chương trình nền truy cập những thư mục này nên agent có thể không chạy được.
+Copy the file to Mac using AirDrop, USB or `scp`, then double-click to extract it into the `trendvn-1.6` folder. **Move that folder to `~/trendvn`** (your home folder), don't put it in Downloads, Documents or Desktop: macOS restricts background programs from accessing these folders so the agent may not be able to run.
 
-## 3. Cài
+## 3. Install
 
-Mở Terminal:
+Open Terminal:
 
 ```bash
-cd ~/trendvn      # thư mục bạn vừa chuyển vào
+cd ~/trendvn      # the folder you just moved into
 ./trendvn install
 ```
 
-Hoặc nhấp đúp `macos/Cai-dat.command`. Nếu macOS chặn (file tải bằng trình duyệt hoặc AirDrop bị gắn cờ cách ly): Cài đặt hệ thống → Quyền riêng tư & Bảo mật → **Vẫn mở**, hoặc gỡ cờ cách ly cho cả thư mục bằng `xattr -dr com.apple.quarantine ~/trendvn` rồi nhấp đúp lại (cách này cũng áp dụng cho các file `.command` khác). Dùng Terminal với `./trendvn install` thì không bị chặn.
+Or double click `macos/Install.command`. If blocked by macOS (files downloaded by browser or AirDrop are flagged as quarantined): System Settings → Privacy & Security → **Still open**, or remove the quarantine flag for the entire folder with `xattr -dr com.apple.quarantine ~/trendvn` and then double-click again (this also applies to other `.command` files). Using Terminal with `./trendvn install` is not blocked.
 
-Script tự kiểm tra máy, dựng container, sinh và nạp 6 workflow vào n8n, bật lịch và cài dịch vụ nền. Cuối cùng nó in bảng chẩn đoán: các dòng **✓** là ổn; các dòng vàng **!** (chưa có khóa Gemini, chưa đăng nhập TikTok, Tự đăng đang tắt...) là bình thường ở thời điểm này và chính là 5 việc ở mục 4. Lần đầu build image mất vài phút.
+Script to self-test the machine, build containers, generate and load 6 workflows into n8n, turn on the schedule and install background services. Finally it prints the diagnostic table: the lines **✓**are fine; The gold lines**!** (no Gemini key, not logged in to TikTok, Self-publishing is off...) are normal at this time and are the 5 tasks in section 4. The first time building an image takes a few minutes.
 
-## 4. Năm việc chỉ bạn làm được
+## 4. Five things only you can do
 
-1. `./trendvn open` (hoặc http://localhost:5681) → **Thêm → Cài đặt**: dán khóa Gemini (tạo ở https://aistudio.google.com/apikey), bật "Xử lý video".
-2. **Thêm → Cài đặt → Lịch đăng → "Tài khoản TikTok mặc định"**: đổi thành đúng kênh của bạn, **trước** khi đăng nhập (lệnh đăng nhập chỉ chấp nhận đúng tài khoản này) (mặc định là một tài khoản mẫu; nếu sai, mọi bài đăng sẽ không xác nhận được và việc đăng tự dừng).
-3. Đăng nhập TikTok một lần (bạn tự nhập trong cửa sổ Chrome hiện ra): `./trendvn tiktok login` (hoặc nhấp đúp `macos/Dang-nhap-TikTok.command`).
-4. Chờ có video để thử. Lần quét đầu chỉ **ghi mốc**, chưa tải gì; video chỉ xuất hiện từ lần quét thứ hai. Bấm **▶ Bắt đầu** ở Tổng quan, bấm lại sau vài giờ (hoặc chờ lịch 3 giờ) cho tới khi tab **Đăng bài** có video. Rồi chạy thử, **không đăng thật**; một cửa sổ Chrome thật sẽ hiện lên khoảng 1–2 phút, đừng đóng giữa chừng:
+1. `./trendvn open` (or http://localhost:5681) → **More → Settings**: paste the Gemini key (created in https://aistudio.google.com/apikey), enable "Video processing".
+2. **More → Settings → Posting schedule → "Default TikTok account"**: change to your correct channel, **before** when logging in (the login command only accepts this exact account) (default is a sample account; if false, any posts will not is confirmed and posting stops automatically).
+3. Log in to TikTok once (enter it yourself in the Chrome window that appears): `./trendvn tiktok login` (or double-click `macos/Sign-in-TikTok.command`).
+4. Waiting for a video to try. The first scan only recorded **as**, nothing was loaded; the video only appears from the second scan. Click **▶ Get Started**in Overview, click again after a few hours (or wait for 3 hours schedule) until tab**Posting**has a video. Then test it,** is not really posted**; A real Chrome window will appear for about 1–2 minutes, don't close it halfway:
    ```bash
    ./trendvn tiktok dry-run
    ```
-   Kết quả `"status": "idle"` nghĩa là chưa có video dựng xong (không phải lỗi). Nếu TikTok hiện hình xác minh, tự giải trong cửa sổ đó (không giải thay được). Xem ảnh chụp: `data/worker/exports/shot_*.png` (tên in trong kết quả; nút "Xem thử" trên tab Đăng bài cũng hiện ảnh).
-5. Vào bảng điều khiển bật **"Tự đăng"**. Mẹo: vài bài đầu đặt Cài đặt → Chế độ hiển thị = "Chỉ mình tôi" để xem thử trong TikTok Studio, ổn rồi đổi sang "Mọi người".
+   The result `"status": "idle"` means that the video has not yet been edited (not an error). If TikTok displays a verification image, resolve it automatically in that window (cannot be resolved instead). View photo: `data/worker/exports/shot_*.png` (name printed in results; "Preview" button on Post tab also shows photo).
+5. Go to the control panel and turn on **"Auto Post"**. Tip: for the first few songs, set Settings → Display mode = "Only me" to test it out in TikTok Studio, then set it to "Everyone".
 
-## Dùng hằng ngày
+## Use daily
 
 ```bash
-./trendvn status          # mọi thứ có chạy không
-./trendvn logs -f         # xem log trực tiếp (worker + n8n); ./trendvn logs agent -f cho agent
-./trendvn restart         # khởi động lại
-./trendvn doctor          # chẩn đoán, mỗi lỗi kèm cách sửa
+./trendvn status          # is everything running
+./trendvn logs -f         # view log directly (worker + n8n); ./trendvn logs agent -f for agent
+./trendvn restart         # restarts
+./trendvn doctor          # diagnoses, each error comes with a fix
 ```
 
-Nhấp đúp `macos/Mo-bang-dieu-khien.command` để mở bảng điều khiển. Lưu ý: `./trendvn down` chỉ dừng n8n và worker; **agent (Chrome) vẫn chạy**, dừng nó bằng `./trendvn agent stop`. Sau khi khởi động lại Mac: đăng nhập tài khoản macOS, để Docker Desktop tự chạy (đã bật ở mục 1), container và agent tự lên; kiểm tra bằng `./trendvn status`.
+Double click `macos/Open-dashboard.command` to open the console. Note: `./trendvn down` only stops n8n and workers; **agent (Chrome) still running **, stop it with `./trendvn agent stop`. After restarting the Mac: log in to your macOS account, let Docker Desktop run automatically (enabled in item 1), the container and agent will automatically launch; Check with `./trendvn status`.
 
-Danh sách đầy đủ: [COMMANDS.md](COMMANDS.md).
+Full list: [COMMANDS.md](COMMANDS.md).
 
-## n8n có cần đăng nhập hay đóng gói gì thêm không?
+## n8n require any additional login or packaging?
 
-**Không.** n8n ở đây chạy ngay trên Mac của bạn, không phải tài khoản trên mạng. `./trendvn install` đã sinh và nạp sẵn đủ 6 workflow cùng thông tin xác thực ([N8N.md](N8N.md)). Lần đầu mở **http://localhost:5680**, n8n bắt bạn tạo tài khoản chủ mới (email và mật khẩu tùy chọn). Muốn giữ nguyên tài khoản, lịch sử và cài đặt của máy cũ thì làm thêm: `./trendvn backup` ở máy cũ, chép file trong `data/backups/` sang Mac, cài xong chạy `./trendvn restore data/backups/<file>`.
+**No.**n8n here runs right on your Mac, not a network account. `./trendvn install` has generated and loaded all 6 workflows and authentication information ([N8N.md](N8N.md)). The first time you open**http://localhost:5680**, n8n forces you to create a new home account (optional email and password). If you want to keep the account, history and settings of the old device intact, do the following: `./trendvn backup` on the old device, copy the files in `data/backups/` to Mac, install and run `./trendvn restore data/backups/<file>`.
 
-## Lưu ý riêng cho Mac
+## Note only for Mac
 
-- **Mac phải bật và không ngủ** thì lịch mới chạy. Cắm sạc, đặt "Ngăn Mac tự ngủ khi cắm sạc" trong Cài đặt hệ thống; gập màn hình laptop sẽ làm máy ngủ. Dịch vụ nền đã dùng `caffeinate` để máy không tự ngủ khi đang làm việc.
-- **Chỉ một máy chạy tự động cho một kênh TikTok.** Tắt máy cũ (`./trendvn uninstall`) trước khi bật máy mới.
-- **TikTok và Instagram Mỹ** cần IP Mỹ. Ở nhà Việt Nam thì hai nguồn này bị bỏ qua (Douyin và Kuaishou vẫn chạy). Có proxy/VPN Mỹ thì thêm vào `.env`: `TRENDVN_US_PROXY=http://user:pass@host:port`, rồi `./trendvn agent restart`.
-- **Gỡ hẳn:** `./trendvn uninstall` (giữ dữ liệu) hoặc `./trendvn uninstall --purge`.
+- **Mac must be on and not sleeping** for the schedule to run. Plug in charger, set "Prevent Mac from sleeping when plugged in" in System Settings; Folding the laptop screen will put the laptop to sleep. The background service used `caffeinate` to prevent the machine from sleeping while working.
+- **Only one device running automatically for one TikTok channel.** Turn off the old device (`./trendvn uninstall`) before turning on the new device.
+- **TikTok and Instagram US** need US IP. In Vietnam, these two sources are ignored (Douyin and Kuaishou still run). If you have an American proxy/VPN, add `.env`: `TRENDVN_US_PROXY=http://user:pass@host:port`, then `./trendvn agent restart`.
+- **Uninstall completely:** `./trendvn uninstall` (data hold) or `./trendvn uninstall --purge`.
 
-## Nếu gặp lỗi
+## If an error occurs
 
-| Lỗi | Cách xử lý |
+| Error | How to handle |
 |---|---|
-| "Docker Desktop chưa chạy" | Mở ứng dụng Docker, đợi khởi động xong, chạy lại |
-| "Chưa có Google Chrome" | Cài Chrome vào thư mục Applications |
-| Mục "Agent trình duyệt chạy" đỏ | `./trendvn agent status`, rồi `./trendvn agent logs` (lỗi khởi động nằm ở `data/agent/launchd.log`) |
-| n8n không gọi được agent | Kiểm tra dòng `TRENDVN_AGENT_HOSTREF=host-gateway` và `TRENDVN_AGENT_BIND=127.0.0.1` trong `.env` |
-| macOS chặn file `.command` | Quyền riêng tư & Bảo mật → Vẫn mở, hoặc `xattr -dr com.apple.quarantine ~/trendvn`; hoặc dùng Terminal với `./trendvn …` |
-| Cài dừng ở bước Python ("Cần Python 3.10") | `brew install python@3.12` rồi chạy lại `./trendvn install` |
+| "Docker Desktop is not running" | Open the Docker application, wait for it to start, run again |
+| "There is no Google Chrome yet" | Install Chrome in the Applications folder |
+| The "Run browser agent" item is red | `./trendvn agent status`, then `./trendvn agent logs` (startup error is located at `data/agent/launchd.log`) |
+| n8n cannot call agent | Check lines `TRENDVN_AGENT_HOSTREF=host-gateway` and `TRENDVN_AGENT_BIND=127.0.0.1` in `.env` |
+| macOS blocks file `.command` | Privacy & Security → Leave open, or `xattr -dr com.apple.quarantine ~/trendvn`; or use Terminal with `./trendvn …` |
+| Stop installation at Python step ("Need Python 3.10") | `brew install python@3.12` then run again `./trendvn install` |
 
-> Ghi chú trung thực: đã chạy thật trên Linux: cài sạch từ bản đóng gói (bỏ bước dịch vụ nền), n8n gọi agent, sao lưu và khôi phục; đăng thật lên TikTok và phân tích bằng Gemini cũng đã chạy thật (ở bản trước). Dịch vụ nền systemd/launchd mới được kiểm tra tĩnh (nội dung sinh ra hợp lệ và trỏ đúng file). **Toàn bộ phần macOS chưa được chạy thử trên máy Mac thật** (launchd, `host-gateway` của Docker Desktop, Python 3.10+ qua Homebrew, cờ cách ly file); các script chỉ dùng cú pháp chạy được trên bash 3.2/BSD của macOS (có phép kiểm tra tự động). Nếu có gì lạ, gửi kết quả `./trendvn doctor` để sửa nhanh.
+> Honest notes: actually ran on Linux: clean install from package (skip background services step), n8n call agent, backup and restore; Posting it to TikTok and analyzing it with Gemini also worked (in the previous version). The new systemd/launchd background service is statically checked (the generated content is valid and points to the correct file). **The entire macOS section has not been tested on a real Mac** (launchd, `host-gateway` of Docker Desktop, Python 3.10+ via Homebrew, file quarantine flag); Scripts only use syntax that runs on macOS bash 3.2/BSD (with automatic testing). If there is anything strange, send the result `./trendvn doctor` for quick correction.

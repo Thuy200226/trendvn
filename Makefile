@@ -1,5 +1,5 @@
-# Lối tắt cho ./trendvn (mọi việc thật nằm trong ./trendvn, Makefile chỉ gọi nó). `make help` liệt kê lệnh.
-# Ví dụ:  make install   make up   make logs S=worker   make logs S=n8n F=1   make backup   make test
+# Shortcut for ./trendvn (everything is actually in ./trendvn, Makefile just calls it). `make help` lists the command.
+# Example: make install make up make logs S=worker make logs S=n8n F=1 make backup make test
 S ?= all
 N ?= 100
 

@@ -1,10 +1,10 @@
 {
   "id": "trendvn00status",
-  "name": "TrendVN | 00 · Kiểm tra kết nối và mức sẵn sàng",
+  "name": "TrendVN | 00 \u00b7 Ki\u1ec3m tra k\u1ebft n\u1ed1i v\u00e0 m\u1ee9c s\u1eb5n s\u00e0ng",
   "nodes": [
     {
       "id": "fb934867176c57d3b1e3db5a226bcebc",
-      "name": "Chạy kiểm tra",
+      "name": "Ch\u1ea1y ki\u1ec3m tra",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
@@ -15,7 +15,7 @@
     },
     {
       "id": "4e15542c9a545f9a8e31c29711587aed",
-      "name": "Đọc trạng thái worker",
+      "name": "\u0110\u1ecdc tr\u1ea1ng th\u00e1i worker",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -34,13 +34,13 @@
       "credentials": {
         "httpHeaderAuth": {
           "id": "trendvnWorkerAuth",
-          "name": "TrendVN · Worker riêng"
+          "name": "TrendVN \u00b7 Worker ri\u00eang"
         }
       }
     },
     {
       "id": "0c65ce5b4c7659e1b983c7f1720d7776",
-      "name": "Kiểm tra agent trình duyệt",
+      "name": "Ki\u1ec3m tra agent tr\u00ecnh duy\u1ec7t",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -58,7 +58,7 @@
     },
     {
       "id": "bdc303f8f7e258529948ac5e3e54b135",
-      "name": "Tổng hợp phần còn thiếu",
+      "name": "T\u1ed5ng h\u1ee3p ph\u1ea7n c\u00f2n thi\u1ebfu",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -66,12 +66,12 @@
         0
       ],
       "parameters": {
-        "jsCode": "const s=$('Đọc trạng thái worker').first().json;\nconst a=$input.first().json;\nconst missing=[];\nif(!a.ok) missing.push('Agent trình duyệt trên máy chưa chạy (systemd: trendvn-agent)');\nif(!s.gemini_configured) missing.push('Chưa có khóa Gemini API');\nif(!s.processing_enabled) missing.push('Xử lý video đang tắt');\nif(s.discovery!=='connected') missing.push('Bộ thu thập chưa có lần chạy thành công');\nif(s.publisher!=='connected') missing.push('Chưa đăng nhập TikTok trong hồ sơ riêng của trình đăng');\nif(!s.publisher_enabled) missing.push('Công tắc Tự đăng đang tắt (chỉ bạn bật trên bảng điều khiển)');\nif(s.unresolved_publishes>0) missing.push('Có bài chưa xác nhận đã đăng hay chưa');\nreturn [{json:{...s,agent_ok:!!a.ok,ready_for_unattended_publishing:missing.length===0,missing}}];"
+        "jsCode": "const s=$('\u0110\u1ecdc tr\u1ea1ng th\u00e1i worker').first().json;\nconst a=$input.first().json;\nconst missing=[];\nif(!a.ok) missing.push('Agent tr\u00ecnh duy\u1ec7t tr\u00ean m\u00e1y ch\u01b0a ch\u1ea1y (systemd: trendvn-agent)');\nif(!s.gemini_configured) missing.push('Ch\u01b0a c\u00f3 kh\u00f3a Gemini API');\nif(!s.processing_enabled) missing.push('X\u1eed l\u00fd video \u0111ang t\u1eaft');\nif(s.discovery!=='connected') missing.push('B\u1ed9 thu th\u1eadp ch\u01b0a c\u00f3 l\u1ea7n ch\u1ea1y th\u00e0nh c\u00f4ng');\nif(s.publisher!=='connected') missing.push('Ch\u01b0a \u0111\u0103ng nh\u1eadp TikTok trong h\u1ed3 s\u01a1 ri\u00eang c\u1ee7a tr\u00ecnh \u0111\u0103ng');\nif(!s.publisher_enabled) missing.push('C\u00f4ng t\u1eafc T\u1ef1 \u0111\u0103ng \u0111ang t\u1eaft (ch\u1ec9 b\u1ea1n b\u1eadt tr\u00ean b\u1ea3ng \u0111i\u1ec1u khi\u1ec3n)');\nif(s.unresolved_publishes>0) missing.push('C\u00f3 b\u00e0i ch\u01b0a x\u00e1c nh\u1eadn \u0111\u00e3 \u0111\u0103ng hay ch\u01b0a');\nreturn [{json:{...s,agent_ok:!!a.ok,ready_for_unattended_publishing:missing.length===0,missing}}];"
       }
     },
     {
       "id": "b017fec127c45377bd5d3b7c54e4e2c1",
-      "name": "Ghi chú",
+      "name": "Ghi ch\u00fa",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -79,40 +79,40 @@
         -300
       ],
       "parameters": {
-        "content": "## Kiểm tra mức sẵn sàng\nĐọc trạng thái thật từ worker và agent. Không đổi dữ liệu.\nBảng điều khiển: http://localhost:5681",
+        "content": "## Ki\u1ec3m tra m\u1ee9c s\u1eb5n s\u00e0ng\n\u0110\u1ecdc tr\u1ea1ng th\u00e1i th\u1eadt t\u1eeb worker v\u00e0 agent. Kh\u00f4ng \u0111\u1ed5i d\u1eef li\u1ec7u.\nB\u1ea3ng \u0111i\u1ec1u khi\u1ec3n: http://localhost:5681",
         "height": 200,
         "width": 520
       }
     }
   ],
   "connections": {
-    "Chạy kiểm tra": {
+    "Ch\u1ea1y ki\u1ec3m tra": {
       "main": [
         [
           {
-            "node": "Đọc trạng thái worker",
+            "node": "\u0110\u1ecdc tr\u1ea1ng th\u00e1i worker",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Đọc trạng thái worker": {
+    "\u0110\u1ecdc tr\u1ea1ng th\u00e1i worker": {
       "main": [
         [
           {
-            "node": "Kiểm tra agent trình duyệt",
+            "node": "Ki\u1ec3m tra agent tr\u00ecnh duy\u1ec7t",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Kiểm tra agent trình duyệt": {
+    "Ki\u1ec3m tra agent tr\u00ecnh duy\u1ec7t": {
       "main": [
         [
           {
-            "node": "Tổng hợp phần còn thiếu",
+            "node": "T\u1ed5ng h\u1ee3p ph\u1ea7n c\u00f2n thi\u1ebfu",
             "type": "main",
             "index": 0
           }

@@ -1,10 +1,10 @@
 {
   "id": "trendvn03daily",
-  "name": "TrendVN | 03 · Chốt ngày: hiệu quả và tóm tắt",
+  "name": "TrendVN | 03 \u00b7 Ch\u1ed1t ng\u00e0y: hi\u1ec7u qu\u1ea3 v\u00e0 t\u00f3m t\u1eaft",
   "nodes": [
     {
       "id": "98a7cef4ee875f74bd801e325f3d84ec",
-      "name": "23:30 mỗi ngày",
+      "name": "23:30 m\u1ed7i ng\u00e0y",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -24,7 +24,7 @@
     },
     {
       "id": "f78d7b9345e55b18938e88f1bf99761a",
-      "name": "Chạy thử chốt ngày",
+      "name": "Ch\u1ea1y th\u1eed ch\u1ed1t ng\u00e0y",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
@@ -35,7 +35,7 @@
     },
     {
       "id": "1bc21e77bafd53839327150e23fb72b6",
-      "name": "Đọc lượt xem các bài đã đăng",
+      "name": "\u0110\u1ecdc l\u01b0\u1ee3t xem c\u00e1c b\u00e0i \u0111\u00e3 \u0111\u0103ng",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -57,14 +57,14 @@
       "credentials": {
         "httpHeaderAuth": {
           "id": "trendvnWorkerAuth",
-          "name": "TrendVN · Worker riêng"
+          "name": "TrendVN \u00b7 Worker ri\u00eang"
         }
       },
       "onError": "continueRegularOutput"
     },
     {
       "id": "eb1925232e305271b41021189fdbfbc2",
-      "name": "Gửi tóm tắt ngày",
+      "name": "G\u1eedi t\u00f3m t\u1eaft ng\u00e0y",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -86,14 +86,14 @@
       "credentials": {
         "httpHeaderAuth": {
           "id": "trendvnWorkerAuth",
-          "name": "TrendVN · Worker riêng"
+          "name": "TrendVN \u00b7 Worker ri\u00eang"
         }
       },
       "onError": "continueRegularOutput"
     },
     {
       "id": "c270602464bc5557834d4f232fffb5a7",
-      "name": "Chốt ngày",
+      "name": "Ch\u1ed1t ng\u00e0y",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -101,40 +101,40 @@
         -280
       ],
       "parameters": {
-        "content": "## Chốt ngày\nĐọc lượt xem, tim của bài đã đăng để hệ thống tự điều chỉnh độ ưu tiên từng nguồn (cần tối thiểu 8 bài), rồi gửi tóm tắt qua kênh thông báo bạn đã cấu hình.",
+        "content": "## Ch\u1ed1t ng\u00e0y\n\u0110\u1ecdc l\u01b0\u1ee3t xem, tim c\u1ee7a b\u00e0i \u0111\u00e3 \u0111\u0103ng \u0111\u1ec3 h\u1ec7 th\u1ed1ng t\u1ef1 \u0111i\u1ec1u ch\u1ec9nh \u0111\u1ed9 \u01b0u ti\u00ean t\u1eebng ngu\u1ed3n (c\u1ea7n t\u1ed1i thi\u1ec3u 8 b\u00e0i), r\u1ed3i g\u1eedi t\u00f3m t\u1eaft qua k\u00eanh th\u00f4ng b\u00e1o b\u1ea1n \u0111\u00e3 c\u1ea5u h\u00ecnh.",
         "height": 220,
         "width": 560
       }
     }
   ],
   "connections": {
-    "23:30 mỗi ngày": {
+    "23:30 m\u1ed7i ng\u00e0y": {
       "main": [
         [
           {
-            "node": "Đọc lượt xem các bài đã đăng",
+            "node": "\u0110\u1ecdc l\u01b0\u1ee3t xem c\u00e1c b\u00e0i \u0111\u00e3 \u0111\u0103ng",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Chạy thử chốt ngày": {
+    "Ch\u1ea1y th\u1eed ch\u1ed1t ng\u00e0y": {
       "main": [
         [
           {
-            "node": "Đọc lượt xem các bài đã đăng",
+            "node": "\u0110\u1ecdc l\u01b0\u1ee3t xem c\u00e1c b\u00e0i \u0111\u00e3 \u0111\u0103ng",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Đọc lượt xem các bài đã đăng": {
+    "\u0110\u1ecdc l\u01b0\u1ee3t xem c\u00e1c b\u00e0i \u0111\u00e3 \u0111\u0103ng": {
       "main": [
         [
           {
-            "node": "Gửi tóm tắt ngày",
+            "node": "G\u1eedi t\u00f3m t\u1eaft ng\u00e0y",
             "type": "main",
             "index": 0
           }

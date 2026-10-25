@@ -1,10 +1,10 @@
 {
   "id": "trendvn10inbox",
-  "name": "TrendVN | 10 · Nhận quan sát và chống trùng ID",
+  "name": "TrendVN | 10 \u00b7 Nh\u1eadn quan s\u00e1t v\u00e0 ch\u1ed1ng tr\u00f9ng ID",
   "nodes": [
     {
       "id": "989b43a29a255e019bf5ac5476be0501",
-      "name": "Nhận quan sát nguồn",
+      "name": "Nh\u1eadn quan s\u00e1t ngu\u1ed3n",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
@@ -21,14 +21,14 @@
       "credentials": {
         "httpHeaderAuth": {
           "id": "trendvnWorkerAuth",
-          "name": "TrendVN · Worker riêng"
+          "name": "TrendVN \u00b7 Worker ri\u00eang"
         }
       },
       "webhookId": "trendvn-observations"
     },
     {
       "id": "4bf843cecb09504d84e786a411f07ce3",
-      "name": "Lưu mốc và nhận diện video mới",
+      "name": "L\u01b0u m\u1ed1c v\u00e0 nh\u1eadn di\u1ec7n video m\u1edbi",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -50,13 +50,13 @@
       "credentials": {
         "httpHeaderAuth": {
           "id": "trendvnWorkerAuth",
-          "name": "TrendVN · Worker riêng"
+          "name": "TrendVN \u00b7 Worker ri\u00eang"
         }
       }
     },
     {
       "id": "879f8c7a91d7562ea40c35eaf1f8fff8",
-      "name": "Hợp đồng dữ liệu",
+      "name": "H\u1ee3p \u0111\u1ed3ng d\u1eef li\u1ec7u",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -64,18 +64,18 @@
         -300
       ],
       "parameters": {
-        "content": "## Đầu vào JSON có xác thực (nhập tay hoặc công cụ khác)\nplatform, stream, observed_at (Unix seconds), items[]\nMỗi item: source_id, url HTTPS chính chủ, country CN/US, title, rank hoặc views, evidence_url.\nLần đầu chỉ tạo baseline. Bộ thu thập tự động dùng workflow 01, không cần webhook này.",
+        "content": "## \u0110\u1ea7u v\u00e0o JSON c\u00f3 x\u00e1c th\u1ef1c (nh\u1eadp tay ho\u1eb7c c\u00f4ng c\u1ee5 kh\u00e1c)\nplatform, stream, observed_at (Unix seconds), items[]\nM\u1ed7i item: source_id, url HTTPS ch\u00ednh ch\u1ee7, country CN/US, title, rank ho\u1eb7c views, evidence_url.\nL\u1ea7n \u0111\u1ea7u ch\u1ec9 t\u1ea1o baseline. B\u1ed9 thu th\u1eadp t\u1ef1 \u0111\u1ed9ng d\u00f9ng workflow 01, kh\u00f4ng c\u1ea7n webhook n\u00e0y.",
         "height": 230,
         "width": 560
       }
     }
   ],
   "connections": {
-    "Nhận quan sát nguồn": {
+    "Nh\u1eadn quan s\u00e1t ngu\u1ed3n": {
       "main": [
         [
           {
-            "node": "Lưu mốc và nhận diện video mới",
+            "node": "L\u01b0u m\u1ed1c v\u00e0 nh\u1eadn di\u1ec7n video m\u1edbi",
             "type": "main",
             "index": 0
           }

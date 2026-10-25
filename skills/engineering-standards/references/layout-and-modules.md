@@ -32,9 +32,7 @@ tests/                    mirrors src; support.py shared; e2e/ separate
 docs/                     ROADMAP, ARCHITECTURE, OPERATIONS, API, SECURITY, DEPLOY, COMMANDS
 scripts/                  install, backup, restore, package, doctor (shell + small scripts; shellcheck-clean)
 ```
-**Multiple services / monorepo:** `services/<name>/` each with its own package, tests and Dockerfile; shared contracts in `contracts/` (schemas, API specs) with contract tests on both sides; shared code only in versioned internal libraries (not copy-paste); one root front door and one CI gate.
-**Frontend app:** `features/<feature>/{components,hooks,api,state,types}` + `shared/`; pages thin; data-fetching separated from presentation; design tokens in one place.
-**Library:** `src/` public API in one entry module, internal modules private, examples and docs tested.
+**Multiple services / monorepo:**`services/<name>/` each with its own package, tests and Dockerfile; shared contracts in `contracts/` (schemas, API specs) with contract tests on both sides; shared code only in versioned internal libraries (not copy-paste); one root front door and one CI gate.**Frontend app:**`features/<feature>/{components,hooks,api,state,types}` + `shared/`; pages thin; data-fetching separated from presentation; design tokens in one place.**Library:** `src/` public API in one entry module, internal modules private, examples and docs tested.
 
 ## Naming and style
 Names say what a thing is or does, not how; no `utils`/`helpers`/`misc` dumping grounds (name the concept); consistent casing; boring and explicit beats clever. One formatter and one linter, **pinned to exact versions**, run by one command; style arguments are settled by the tool, not by review.

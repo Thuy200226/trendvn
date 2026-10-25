@@ -35,12 +35,12 @@ class PublishQueueTests(unittest.TestCase):
                     jid,
                     "https://www.douyin.com/video/" + jid,
                     "CN",
-                    "Tiêu đề",
+                    "Ti\u00eau \u0111\u1ec1",
                     first_seen,
                     "ready",
                     "/data/jobs/%s/final.mp4" % jid,
                     "h",
-                    json.dumps({"kind": "music", "caption_vi": "Bài hát hay"}),
+                    json.dumps({"kind": "music", "caption_vi": "B\u00e0i h\u00e1t hay"}),
                     "original",
                     1,
                 ),
@@ -155,7 +155,7 @@ class PublishQueueTests(unittest.TestCase):
         self.assertEqual(self.s.status()["discovery"], "not_connected")
         self.s.heartbeat("discovery", True, {"douyin": "ok"})
         self.assertEqual(self.s.status()["discovery"], "connected")
-        self.s.heartbeat("publisher", False, "Chưa đăng nhập")
+        self.s.heartbeat("publisher", False, "Ch\u01b0a \u0111\u0103ng nh\u1eadp")
         self.assertEqual(self.s.status()["publisher"], "error")
         with self.assertRaises(ValueError):
             self.s.heartbeat("other", True)
@@ -188,9 +188,9 @@ class WindowTests(StoreCase):
     def test_window_state(self):
         self.assertEqual(self.s.window_state(now=at(12)), (True, ""))
         self.assertEqual(self.s.window_state(now=at(19, 30)), (True, ""))
-        self.assertEqual(self.s.window_state(now=at(15)), (False, "19:00 hôm nay"))
-        self.assertEqual(self.s.window_state(now=at(23, 30)), (False, "11:00 ngày mai"))
-        self.assertEqual(self.s.window_state(now=at(3)), (False, "11:00 hôm nay"))
+        self.assertEqual(self.s.window_state(now=at(15)), (False, "19:00 h\u00f4m nay"))
+        self.assertEqual(self.s.window_state(now=at(23, 30)), (False, "11:00 ng\u00e0y mai"))
+        self.assertEqual(self.s.window_state(now=at(3)), (False, "11:00 h\u00f4m nay"))
 
     def test_claim_respects_window(self):
         self.job("a", "ready", output_file="/data/a.mp4", output_hash="h")
@@ -239,7 +239,7 @@ class ApprovalTests(StoreCase):
             "confidence": 0.5,
             "topic": "other",
             "sensitive": True,
-            "segments": [{"start": 0, "end": 2, "vi": "xin chào"}],
+            "segments": [{"start": 0, "end": 2, "vi": "xin ch\u00e0o"}],
         }
         with self.assertRaises(ValueError):
             validate_analysis(a, 10, strict=True)
@@ -279,7 +279,7 @@ class ChallengeTests(StoreCase):
         d["notify_channels"] = []
         d["voice_sample"] = False
         html = ui.render(d, "T")
-        self.assertIn("yêu cầu xác minh", html)
+        self.assertIn("y\u00eau c\u1ea7u x\u00e1c minh", html)
         self.assertIn("./trendvn tiktok trust", html)
 
     def test_publisher_recognises_challenge_text(self):
@@ -294,9 +294,9 @@ class ChallengeTests(StoreCase):
             def inner_text(self, *a, **k):
                 return self.text
 
-        self.assertTrue(has_challenge(Page("Chọn 2 đối tượng có hình dạng giống nhau")))
-        self.assertTrue(has_challenge(Page("bất kỳ", sel=1)))
-        self.assertFalse(has_challenge(Page("Tải video lên")))
+        self.assertTrue(has_challenge(Page("Ch\u1ecdn 2 \u0111\u1ed1i t\u01b0\u1ee3ng c\u00f3 h\u00ecnh d\u1ea1ng gi\u1ed1ng nhau")))
+        self.assertTrue(has_challenge(Page("b\u1ea5t k\u1ef3", sel=1)))
+        self.assertFalse(has_challenge(Page("T\u1ea3i video l\u00ean")))
 
 
 class ManualPublishTests(StoreCase):
@@ -331,9 +331,9 @@ class ManualPublishTests(StoreCase):
     def test_claim_uses_edited_caption_and_visibility(self):
         self.ready("a")
         self.s.update_settings({"visibility": "self"})
-        self.s.set_caption("a", "Mô tả của chủ kênh #vui #haihuoc #giadinh")
+        self.s.set_caption("a", "M\u00f4 t\u1ea3 c\u1ee7a ch\u1ee7 k\u00eanh #vui #haihuoc #giadinh")
         r = self.s.publish_claim(job_id="a")
-        self.assertEqual(r["caption"], "Mô tả của chủ kênh #vui #haihuoc #giadinh")
+        self.assertEqual(r["caption"], "M\u00f4 t\u1ea3 c\u1ee7a ch\u1ee7 k\u00eanh #vui #haihuoc #giadinh")
         self.assertEqual(r["visibility"], "self")
 
     def test_parked_video_can_be_put_back_and_starts_with_a_clean_slate(self):
@@ -345,7 +345,7 @@ class ManualPublishTests(StoreCase):
             "ready",
             output_file=str(out),
             output_hash="h",
-            analysis=json.dumps({"caption_vi": "Mô tả đủ dài", "hashtags": ["a1", "b2", "c3"]}),
+            analysis=json.dumps({"caption_vi": "M\u00f4 t\u1ea3 \u0111\u1ee7 d\u00e0i", "hashtags": ["a1", "b2", "c3"]}),
         )
         for _ in range(3):
             r = self.s.publish_claim(job_id="a")

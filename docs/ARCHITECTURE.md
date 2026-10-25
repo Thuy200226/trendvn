@@ -1,146 +1,146 @@
-# Kiến trúc và nơi đặt từng quy tắc
+# Architecture and where each rule is located
 
-## 1. Ba khối và vì sao tách như vậy
+## 1. Three blocks and why they separated like that
 
 ```
-┌──────────────── Docker (mạng riêng trendvn_private) ────────────────┐      ┌──── Máy chủ (host) ────┐
-│  n8n :5680        điều phối theo lịch, gọi API bằng HTTP            │      │  agent :5682           │
-│  worker :5681     dữ liệu, quy tắc, ffmpeg, Gemini, bảng điều khiển │◄────►│  Chrome thật (Playwright)│
-│  volume: data/worker/ (SQLite, video)   n8n_data (thông tin n8n)        │      │  hồ sơ: data/agent/    │
+┌──────────────── Docker (trendvn_private private network) ────────────────┐ ┌──── Server ────┐
+│ n8n :5680 scheduled dispatch, API call using HTTP │ │ agent :5682 │
+│ worker :5681 data, rules, ffmpeg, Gemini, console │◄────►│ Real Chrome (Playwright)│
+│ volume: data/worker/ (SQLite, video) n8n_data (n8n information) │ │ profile: data/agent/ │
 └──────────────────────────────────────────────────────────────────────┘      └────────────────────────┘
 ```
 
-- **worker** giữ mọi *quyết định* (được đăng không, video này đạt không) và mọi *dữ liệu*. Không chạm vào trình duyệt.
-- **agent** chỉ *làm* việc cần Chrome thật: quét bốn nguồn, tải video, đăng bài, đọc lượt xem. Không tự quyết định gì: mỗi lần đăng nó phải xin worker cấp quyền (claim) và báo lại kết quả.
-- **n8n** chỉ *hẹn giờ và nối bước*. Toàn bộ logic nghiệp vụ nằm ở worker, nên đổi workflow không thể làm hỏng luật an toàn.
-- Agent cần Chrome thật và màn hình/hồ sơ của máy nên chạy trực tiếp trên host (dịch vụ systemd người dùng). Nó chỉ lắng nghe trên địa chỉ cầu nối Docker (`TRENDVN_AGENT_BIND`, mặc định `172.20.0.1`), n8n gọi qua tên `trendvn-agent`.
-- Ba khối cùng dùng một khóa `TRENDVN_TOKEN` (Bearer). n8n giữ khóa trong credential "TrendVN · Worker riêng".
-- **Cách n8n tìm agent:** Linux dùng địa chỉ cầu nối của dự án (`TRENDVN_AGENT_HOSTREF`); macOS/Windows (Docker Desktop, container chạy trong máy ảo) dùng `host-gateway` và agent nghe ở `127.0.0.1`. `scripts/setup_env.py` tự chọn theo hệ điều hành.
+- **worker** holds all *decisions* (posted no, this video gets no) and all *data*. Don't touch the browser.
+- **agent** just *does* what requires real Chrome: scan four sources, download videos, post, read views. Doesn't make any decisions on its own: every time it posts, it must ask the worker for permission and report back the results.
+- **n8n** only *timer and steps*. All business logic resides in the worker, so changing the workflow cannot break security rules.
+- Agent needs real Chrome and its screen/profile should run directly on the host (user systemd service). It only listens on the Docker bridge address (`TRENDVN_AGENT_BIND`, default `172.20.0.1`), which is called `trendvn-agent`.
+- Three blocks use the same key `TRENDVN_TOKEN` (Bearer). n8n holds the key in the "TrendVN · Private Worker" credential.
+- **How to find an agent:** Linux uses the project's bridge address (`TRENDVN_AGENT_HOSTREF`); macOS/Windows (Docker Desktop, containers running in virtual machines) uses `host-gateway` and the agent listens at `127.0.0.1`. `scripts/setup_env.py` selects automatically according to the operating system.
 
-## 2. Vòng đời của một video (máy trạng thái)
+## 2. Life cycle of a video (state machine)
 
 ```
-                 lần quét đầu                     
-   (quét) ─────► baseline  (chỉ để nhận diện video mới, không bao giờ xử lý)
-        │ lần quét sau, video chưa từng thấy
+                 first scan
+   (scan) ─────► baseline (only to detect new videos, never process)
+        │ next scan, never seen video
         ▼
-     candidate ──tải lỗi 3 lần──► failed
-        │ tải xong, chưa trùng hash
+     candidate ──download error 3 times──► failed
+        │ downloaded, no hash match
         ▼
-      queued ──trùng hash──► duplicate
-        │ worker nhận việc
+      queued ──duplicate hash──► duplicate
+        │ worker accepts job
         ▼
-    processing ──trùng hình / lệch chủ đề / nhạy cảm / Gemini không chắc / lỗi──► needs_review ──bạn duyệt──► queued (bỏ qua kiểm tra phán đoán)
-        │ dựng xong                                                        └──bạn bỏ──► rejected
-        ├── cài đặt "duyệt tay" bật ─► awaiting_approval ──duyệt──► ready │ bỏ──► rejected
+    processing ──duplicate / off topic / sensitive / Gemini not sure / error──► needs_review ──your approval──► queued (skip judgment check)
+        │ completed └──you quit──► rejected
+        ├── "hand approval" setting on ─► awaiting_approval ──approval──► ready │ reject──► rejected
         ▼
-       ready ──đủ điều kiện đăng──► publishing ──xác nhận trên hồ sơ──► published
-                                        │  ├─ nút Đăng chưa bấm mà lỗi ─► ready (thử lại sau)
-                                        │  ├─ trùng mô tả đã có ─► duplicate
-                                        │  └─ đã bấm mà chưa xác nhận ─► publish_unknown ──bạn/agent xác nhận──► published │ ready
+       ready ──eligible to post──► publishing ──confirmed on profile──► published
+                                        │ ├─ Post button has not been clicked but error ─► ready (try again later)
+                                        │ ├─ duplicate description already exists ─► duplicate
+                                        │ └─ clicked but not confirmed ─► publish_unknown ──you/agent confirmed──► published │ ready
 ```
 
-Bất biến quan trọng (đều có test):
+Important invariants (all tested):
 
-1. **`publish_unknown` chặn mọi lần đăng sau đó.** Không có cơ chế tự thử lại một bài đã bấm Đăng.
-2. **Mỗi lần chỉ một bài ở trạng thái `publishing`** (kiểm tra và đặt trong cùng một giao dịch SQLite `BEGIN IMMEDIATE`).
-3. **Lease:** `processing` và `publishing` mang một token; kết quả trả về sai token bị từ chối, nên tiến trình cũ (treo, chạy lại) không ghi đè kết quả mới.
-4. **`baseline` không bao giờ thành ứng viên.** Lần quét đầu của mỗi luồng chỉ ghi mốc; như vậy hệ thống không đăng ồ ạt các video đã nổi từ trước.
-5. Quét cũ hơn lần trước bị từ chối (`observed_at`), lô có một mục sai thì cả lô không được ghi.
+1. **`publish_unknown` blocks all subsequent posting attempts.** There is no mechanism to automatically retry a post that has been clicked Post.
+2. **Only one post at a time is in state `publishing`** (check and place in the same SQLite transaction `BEGIN IMMEDIATE`).
+3. **Lease:** `processing` and `publishing` carry one token; If the result returns an incorrect token, the token is rejected, so the old process (hangs, reruns) does not overwrite the new result.
+4. **`baseline` never becomes a candidate.** The first scan of each stream records only the landmark; Thus, the system does not massively post previously popular videos.
+5. Scans older than the previous one were rejected (`observed_at`), if the batch has one wrong entry, the entire batch will not be recorded.
 
-### Các điểm bổ sung ở 1.2
+### Additional points in 1.2
 
-- **Tác vụ nền** (`services/worker/src/trendvn_worker/tasks.py`): mỗi nút trên bảng điều khiển tạo một dòng trong bảng `tasks` và một luồng chạy nền. Khóa: một việc dùng trình duyệt tại một thời điểm (cùng khóa với agent, nên cả lịch n8n), một lần xử lý tại một thời điểm (cùng `process_lock` với `/api/process`). Khởi động lại worker đánh dấu việc dang dở là lỗi.
-- **Trạng thái đăng:** `publishing` ghi nhớ `prev_state` (để đăng tay thất bại không vô tình duyệt video), `publish_fails` và `last_publish_fail` (nghỉ 1 giờ sau lỗi, 3 lần thì `needs_review`). Kết quả `deferred` không tính lỗi. Ngưỡng `publishing` → `publish_unknown` là 45 phút.
-- **Dựng video:** một lượt ffmpeg: đưa về khung dọc 1080×1920 (nền mờ cho video ngang, vuông, 4:5, 3:4), nhận đúng video xoay, phụ đề đặt tránh vùng chữ của TikTok, chuẩn hóa âm lượng −14 LUFS, bỏ siêu dữ liệu, tối đa 30 fps, đo chất lượng đầu ra (`qc`) và tạo ảnh xem trước.
-- **Mô tả và hashtag:** Gemini đề xuất; mã luôn lọc lại (`build_caption`: bỏ hashtag tên nền tảng, chuẩn hóa Unicode, cắt ở ranh giới từ), `lint_caption` hiển thị chất lượng, bạn sửa được trước khi đăng.
+- **Background task** (`services/worker/src/trendvn_worker/tasks.py`): each button on the control panel creates a line in table `tasks` and a background thread. Lock: one browser use at a time (same lock as agent, so also schedule n8n), one process at a time (same `process_lock` with `/api/process`). Restarting the worker marks unfinished work as an error.
+- **Posting status:** `publishing` remember `prev_state` (to post failed hand without accidentally browsing the video), `publish_fails` and `last_publish_fail` (rest 1 hour after error, 3 times then `needs_review`). The result `deferred` does not account for errors. The threshold `publishing` → `publish_unknown` is 45 minutes.
+- **Edit video:** one ffmpeg pass: set to 1080×1920 vertical frame (blurred background for landscape, square, 4:5, 3:4 videos), get properly rotated video, subtitles set to avoid TikTok text area, normalize volume −14 LUFS, remove metadata, max 30 fps, measure output quality (`qc`) and create a preview image.
+- **Description and hashtag:** Gemini recommended; code is always filtered again (`build_caption`: remove platform name hashtag, standardize Unicode, crop at word boundary), `lint_caption` shows quality, you can edit before posting.
 
-## 3. Quyết định nằm ở đâu
+## 3. Where is the decision?
 
-| Câu hỏi | Nơi quyết định | Hàm / cấu hình |
+| Question | Where to decide | Function / configuration |
 |---|---|---|
-| Video nào đáng xem xét? | `services/agent/src/trendvn_agent/collector/rules.py` + `collector/sources/*.py` | `parse_*` (chuẩn hóa từng nguồn), `qualifies` (thời lượng, tuổi, lượt xem/tim), `score` |
-| Video nào tải trước? | `services/agent/src/trendvn_agent/collector/rules.py` | `score` = mức tương tác ÷ (tuổi tính theo giờ, tối thiểu 6)^0.6 × trọng số nguồn |
-| Có tải thêm không? | `services/agent/src/trendvn_agent/collector/run.py` | `fetch_pending`: dừng khi hàng chờ ≥ `max_backlog` |
-| Video mới hay cũ? | `services/worker/src/trendvn_worker/store/ingest.py` | `Store.ingest` (baseline/candidate, trùng theo `(platform, source_id)` và URL) |
-| Trùng file? | `services/worker/src/trendvn_worker/store/ingest.py` | `Store.attach` (SHA-256 nội dung) |
-| Trùng hình dù mã hóa khác? | `services/worker/src/trendvn_worker/media/fingerprint.py` | `fingerprint` (5 khung hình, hash 64-bit) + `similar` |
-| Nhạc hay lời? Chủ đề? Nhạy cảm? | Gemini theo `services/worker/src/trendvn_worker/ai/prompts.py` | kiểm tra lại cứng ở `domain/analysis.py::validate_analysis` |
-| Xử lý theo đường nào? | `services/worker/src/trendvn_worker/domain/route.py` | `choose_route` trả đường đi và lý do; `validate_analysis` (analysis.py) kiểm tra rồi gọi nó |
-| Dựng video | `services/worker/src/trendvn_worker/media/` và `ai/tts.py` | `render`, `ass_subtitles`, `make_voice` |
-| Được đăng lúc này không? | `services/worker/src/trendvn_worker/store/publishing.py` | `publish_claim`: công tắc → không có bài chưa xác nhận → giờ vàng → giới hạn ngày → giãn cách → chọn bài điểm cao nhất |
-| Đăng và xác nhận | `services/agent/src/trendvn_agent/publisher/post.py`, `publisher/jobs.py` | `publish_one`, `verify_unresolved` |
-| Học từ kết quả | `services/worker/src/trendvn_worker/store/feedback.py` | `record_stats`, `platform_weights` (cần ≥ 8 bài đã đăng > 24 giờ) |
-| Gửi thông báo | `services/worker/src/trendvn_worker/notify.py` | `Notifier` (chống spam theo loại + khóa) |
-| Cài đặt đổi được | `services/worker/src/trendvn_worker/domain/settings.py` | `validate_settings` (mỗi khóa có khoảng giá trị chặt) |
+| Which videos are worth considering? | `services/agent/src/trendvn_agent/collector/rules.py` + `collector/sources/*.py` | `parse_*` (normalized per source), `qualifies` (duration, age, views/heart), `score` |
+| Which video loads first? | `services/agent/src/trendvn_agent/collector/rules.py` | `score` = engagement ÷ (age in hours, min 6)^0.6 × source weight |
+| Are there additional downloads? | `services/agent/src/trendvn_agent/collector/run.py` | `fetch_pending`: stop when queue ≥ `max_backlog` |
+| New or old video? | `services/worker/src/trendvn_worker/store/ingest.py` | `Store.ingest` (baseline/candidate, matches `(platform, source_id)` and URL) |
+| Duplicate files? | `services/worker/src/trendvn_worker/store/ingest.py` | `Store.attach` (SHA-256 content) |
+| Same image even though encoding is different? | `services/worker/src/trendvn_worker/media/fingerprint.py` | `fingerprint` (5 frames, 64-bit hash) + `similar` |
+| Music or lyrics? Topic? Sensitive? | Gemini according to `services/worker/src/trendvn_worker/ai/prompts.py` | hard retest at `domain/analysis.py::validate_analysis` |
+| Which way to handle? | `services/worker/src/trendvn_worker/domain/route.py` | `choose_route` return route and reason; `validate_analysis` (analysis.py) checks then calls it |
+| Video editing | `services/worker/src/trendvn_worker/media/` and `ai/tts.py` | `render`, `ass_subtitles`, `make_voice` |
+| Posted now? | `services/worker/src/trendvn_worker/store/publishing.py` | `publish_claim`: switch → no unconfirmed posts → happy hour → day limit → spacing → select highest scoring post |
+| Post and confirm | `services/agent/src/trendvn_agent/publisher/post.py`, `publisher/jobs.py` | `publish_one`, `verify_unresolved` |
+| Learn from results | `services/worker/src/trendvn_worker/store/feedback.py` | `record_stats`, `platform_weights` (need ≥ 8 posts > 24 hours) |
+| Send notification | `services/worker/src/trendvn_worker/notify.py` | `Notifier` (anti-spam by type + lock) |
+| Redeemable settings | `services/worker/src/trendvn_worker/domain/settings.py` | `validate_settings` (each key has a tight range) |
 
-## 3b. Chủ đề và nhiều tài khoản
+## 3b. Topics and multiple accounts
 
-- **Thực đơn chủ đề** (`domain/topics.py`): 15 chủ đề (âm nhạc/nhảy, hài, thú cưng, ẩm thực, du lịch, gia đình, làm đẹp, thể thao, game, anime, phim, đời sống, kiến thức, tin nóng/drama, giải trí tổng hợp) cộng `other` (quảng cáo, bán hàng, spam; chỉ chủ duyệt tay mới đăng). Prompt Gemini, schema và giao diện đều sinh từ cùng một bảng này.
-- **Hai lần quyết định chủ đề.** Trước khi tải: *gợi ý* miễn phí từ danh mục của nguồn (tab Douyin, chip TikTok) và từ khóa trong tiêu đề (đo trên 230 tiêu đề Douyin thật: đoán trúng 67% trong số tiêu đề có từ khóa; danh mục của nguồn tự nó cũng nhiễu nên chỉ dùng để chọn tải). Sau khi phân tích: **Gemini quyết định**; video thuộc chủ đề không tài khoản nào nhận vào "Cần xem" với lý do rõ.
-- **Tài khoản** (`accounts`, `store/accounts.py`, `domain/accounts.py`): mỗi tài khoản có tên TikTok, danh sách chủ đề nhận, và (tùy chọn) giới hạn ngày, giãn cách, giờ vàng, chế độ hiển thị riêng; bỏ trống thì dùng cài đặt chung. Tài khoản của bản 1.0–1.3 thành `main` (nhận các chủ đề cũ: giải trí, nhạc, hài, thú cưng, gia đình, đời sống; migration phiên bản 4 thêm `tin nóng` nếu chủ chưa sửa danh sách). Mỗi tài khoản có **hồ sơ Chrome riêng** (`data/agent/profiles/publisher-<id>`; `main` giữ `publisher`) nên phiên đăng nhập không lẫn.
-- **Lịch đăng** (`store/publishing.py`): mỗi lần hỏi, thử lần lượt các tài khoản đang bật, tài khoản đăng lâu nhất trước; tài khoản nào còn chỗ (giờ vàng, giới hạn ngày, giãn cách, không có bài chưa xác nhận) và có video điểm cao thuộc chủ đề của nó thì nhận video đó. Bài chưa xác nhận chỉ chặn tài khoản của nó; một bài đang đăng chặn mọi tài khoản (agent chỉ làm một việc trình duyệt một lúc). Nút Đăng ngay chọn tài khoản nhận chủ đề đó (ít bài hôm nay nhất), nếu không có thì tài khoản mặc định.
-- **Thu thập theo chủ đề** (`collector/sources`): Douyin: một lần mở trang `jingxuan`, đọc luồng mặc định rồi bấm tab của từng chủ đề cần (tối đa 6 tab mỗi lần quét, luân phiên theo đồng hồ); Kuaishou không có danh mục cho khách chưa đăng nhập; TikTok: chip theo chủ đề; chip không có thì bỏ qua không thử lại. Ngưỡng cho tab chủ đề thấp hơn luồng chung vì đo trên 520 video Douyin thật: chỉ 12% video trong tab đạt mốc 150 nghìn tim của luồng chung (trung vị 10–70 nghìn) và tuổi trung vị là 39 ngày nên giới hạn 7 ngày chỉ cho qua 10%; luồng chủ đề dùng 15% ngưỡng tim/lượt xem và cho phép cũ gấp 4 lần (28 ngày), điểm xếp hạng vẫn ưu tiên video mới. Chọn tải (`choose_downloads`): bỏ video có gợi ý là chủ đề không ai nhận, chia lượt giữa các chủ đề, điểm cao trước, để một chủ đề đông không lấn át chủ đề khác.
+- **Topic menu** (`domain/topics.py`): 15 topics (music/dance, comedy, pets, food, travel, family, beauty, sports, games, anime, movies, life, knowledge, hot news/drama, general entertainment) plus `other` (advertisement, sales goods, spam; only approved owners post). Gemini prompt, schema and interface are all generated from this same table.
+- **Twice to decide the topic.** Before downloading: Free *hints* from the source's category (Douyin tab, TikTok chip) and keywords in the title (measured on 230 real Douyin titles: 67% of titles with keywords are correctly guessed; the source's category itself is noisy so it is only used to choose to download). After analysis: **Gemini decision**; The video belongs to a topic that no account has accepted as "Need to watch" for a clear reason.
+- **Account**(`accounts`, `store/accounts.py`, `domain/accounts.py`): each account has its own TikTok name, list of topics to receive, and (optional) date limit, spacing, prime time, unique display mode; If left blank, use general settings. Version 1.0–1.3 account becomes `main` (receive old topics: entertainment, music, comedy, pets, family, life; migration version 4 adds `tin n\u00f3ng` if the owner has not edited the list). Each account has** its own Chrome profile** (`data/agent/profiles/publisher-<id>`; `main` keeps `publisher`) so the login session is not mixed.
+- **Posting schedule** (`store/publishing.py`): each time asking, try the active accounts in turn, the longest posting account first; Any account that has space available (prime time, limited days, spacing, no unconfirmed posts) and has a high scoring video on its topic will receive that video. Unconfirmed posts only block its account; A post being posted blocks all accounts (the agent can only do one browsing job at a time). The Post Now button selects the account receiving that topic (fewest posts today), if not, then the default account.
+- **Collect by topic** (`collector/sources`): Douyin: once open the `jingxuan` page, read the default stream and then click the tab of each topic needed (maximum 6 tabs per scan, rotating by clock); Kuaishou does not have a category for non-logged in guests; TikTok: themed chips; If the chip is not there, skip it and try again. The threshold for the topic tab is lower than the general stream because it is measured on 520 real Douyin videos: only 12% of the videos in the tab reach the 150k hearts mark of the general stream (median 10–70k) and the median age is 39 days so the 7-day limit only passes 10%; Topic streams use 15% heart/view threshold and allow 4 times older (28 days), ranking still prioritizes new videos. Select download (`choose_downloads`): remove videos with suggested topics that no one accepts, split turns between topics, high scores first, so that a crowded topic does not overwhelm other topics.
 
-## 3c. Hiệu suất (đo trên video thật, máy 12 nhân)
+## 3c. Performance (measured on real video, 12-core machine)
 
-Thời gian xử lý một video: Gemini khoảng hai phần ba (30–100 giây, tùy lúc API rảnh; thường gặp lỗi 503 "quá tải" kéo dài nên chốt chặn và xếp hàng lại quan trọng hơn tối ưu), dựng khoảng một phần tư, phần còn lại là bản xem trước, dấu vân tay và kiểm tra (đo: video 78 giây dựng 24 giây; video ngang 153 giây dựng 40 giây).
+Time to process a video: Gemini about two-thirds (30–100 seconds, depending on when the API is free; often the 503 "overload" error lasts for a long time so blocking and queuing are more important than optimization), editing about a quarter, the rest is preview, fingerprinting and testing (measured: 78 second video built in 24 seconds; 153 second horizontal video built in 40 seconds).
 
-- **Xử lý song song** (`pipeline.process_many`): mặc định 2 video cùng lúc (`TRENDVN_PROCESS_PARALLEL`, 1 = lần lượt). Vì phần lớn thời gian một video là chờ Gemini nên 2 luồng gần như gấp đôi thông lượng mà không tranh CPU; dừng phát việc mới ngay khi gặp trạng thái dừng (tắt, thiếu khóa, hết hạn mức, hết hàng chờ).
-- **Giữ nguyên hình** (`media/render.can_copy_video`): video **giữ nguyên** (nhạc, không lời) đã là dọc H.264 8-bit trong khung 1080×1920, ≤ 30 khung/giây, bitrate ≤ 6 Mb/s thì chỉ chỉnh âm lượng, hình được sao nguyên từng điểm ảnh (kiểm bằng md5). Đo trên video thật: 3,3 giây thay cho 24 giây, tệp 13,8 MB thay cho 24,8 MB, không mất chất lượng.
-- **Chờ thích nghi khi thu thập Douyin** (`collector/capture.Feed`): thay các lần chờ cố định bằng "chờ tới khi trang đã trả lời và yên lặng"; cuộn dừng sau hai lần cuộn liên tiếp không có gì mới. Số video mỗi tab đo được vẫn 40–59 như trước. Kuaishou và TikTok **giữ chờ cố định**: dữ liệu Kuaishou về rải rác trong khoảng 25 giây (đã thấy ở giây 4, 16–19, 21, 25) và đôi khi kẹt ở yêu cầu đầu; lần so sánh trực tiếp không phân định được vì trang bị hạn chế khi tải lặp (0 đến 98 video với cả hai bản mã), nên không đánh đổi độ tin cậy lấy vài giây.
-- Không đổi sau khi đo: bộ lọc khung 9:16 (giải mã 1080p và co ảnh chiếm hơn nửa, thử các biến thể không nhanh hơn), mã hóa `veryfast` (đã chọn ở Phase B), trang bảng điều khiển (8–12 ms mỗi lần tải trên CSDL thật nhỏ; đo trên CSDL giả 20.000 video: dựng trang 39 ms, `status` 17 ms, `record_stats` 200 mục 9 ms; trước đợt rà soát 52, 22 và 927 ms).
+- **Parallel processing** (`pipeline.process_many`): default 2 videos at the same time (`TRENDVN_PROCESS_PARALLEL`, 1 = sequentially). Since most of the time a video is waiting for Gemini, two threads almost double the throughput without competing for CPU; Stop generating new jobs as soon as a stop status is encountered (shutdown, missing key, out of limit, out of queue).
+- **Preserve picture** (`media/render.can_copy_video`): video **preserve** (music, no lyrics) is already vertical H.264 8-bit in frame 1080×1920, ≤ 30 frames/sec, bitrate ≤ 6 Mb/s, only adjust the volume, the image is copied pixel by pixel (check with md5). Measured on real video: 3.3 seconds instead of 24 seconds, 13.8 MB file instead of 24.8 MB, no quality loss.
+- **Adaptive wait on crawl Douyin**(`collector/capture.Feed`): replace fixed waits with "wait until page has responded and is quiet"; stopping scrolling after two consecutive rolls is nothing new. The number of videos per tab measured is still 40–59 as before. Kuaishou and TikTok**holding fixed**: Kuaishou data returns sporadically for about 25 seconds (seen at seconds 4, 16–19, 21, 25) and sometimes gets stuck on the first request; A direct comparison is inconclusive because the device is limited to loop loading (0 to 98 videos with both encodings), so there is no trade-off in reliability for a few seconds.
+- Unchanged after measurement: 9:16 frame filter (1080p decoding and over half image shrink, try variations not faster), `veryfast` encoding (selected in Phase B), console page (8–12 ms per load on small real database; measured on 20,000 video dummy database: page build 39 ms, `status` 17 ms, `record_stats` 200 items 9 ms; before review 52, 22 and 927 ms).
 
-## 4. Nguồn thu thập
+## 4. Collection source
 
-| Nguồn | Cách lấy | Ghi chú |
+| Source | How to get | Notes |
 |---|---|---|
-| Douyin | Trang 精选 (`/jingxuan`), bắt JSON `aweme/v2/web/module/feed`; mỗi tab chủ đề (音乐, 小剧场, 动物, 美食, 旅行, 亲子, 美妆穿搭, 体育, 游戏, 二次元, 影视, 生活vlog, 知识) cho khoảng 40 video riêng | Trình duyệt tự ký yêu cầu; chỉ nhận `aweme_type == 0` (video), bỏ quảng cáo và album ảnh |
-| Kuaishou | Trang `brilliant`, bắt GraphQL `brilliantTypeData` | Đôi khi ngắt kết nối: thử lại tối đa 3 lần |
-| TikTok | Trang Explore, nhấn các chip theo chủ đề (Singing & Dancing, Comedy, Animals, Food...), bắt `explore/item_list` | **Chỉ chạy khi IP thoát là Mỹ** |
-| Instagram | Trang Reels công khai, lấy mã reel, `yt-dlp` lấy siêu dữ liệu và tải | **Chỉ chạy khi IP thoát là Mỹ** |
+| Douyin | Trang 精选 (`/jingxuan`), capture JSON `aweme/v2/web/module/feed`; each topic tab (音乐, 小剧场, 动物, 美食, 旅行, 亲子, 美妆穿搭, 体育, 游戏, 二次元, 影视, 生活vlog,知识) for about 40 private videos | Self-signed browser required; only get `aweme_type == 0` (video), remove ads and photo album |
+| Kuaishou | Page `brilliant`, catch GraphQL `brilliantTypeData` | Sometimes disconnects: retry up to 3 times |
+| TikTok | Explore page, click on the themed chips (Singing & Dancing, Comedy, Animals, Food...), catch `explore/item_list` | **Only runs when the exit IP is US** |
+| Instagram | Public Reels page, get reel code, `yt-dlp` get metadata and load | **Only run when exit IP is US** |
 
-Douyin và Kuaishou chỉ phục vụ nội dung trong nước nên IP nào cũng cho đúng nguồn Trung Quốc. TikTok và Instagram đổi nội dung theo IP, nên agent kiểm tra quốc gia của IP thoát (`exit_country`) trước mỗi lần quét. Nếu gặp CAPTCHA hoặc yêu cầu đăng nhập, luồng đó báo lỗi thay vì cố vượt qua.
+Douyin and Kuaishou only serve domestic content, so every IP is the correct Chinese source. TikTok and Instagram exchange content by IP, so the agent checks the country of the exit IP (`exit_country`) before each scan. If a CAPTCHA or login request is encountered, the flow throws an error instead of trying to pass.
 
-## 5. Dữ liệu
+## 5. Data
 
-- `data/worker/trendvn.sqlite3` (WAL): `jobs` (mỗi video một dòng), `observations` (lịch sử thứ hạng/lượt xem mỗi lần quét), `events` (nhật ký), `settings`, `accounts` (các tài khoản TikTok: chủ đề nhận, giới hạn riêng), `api_calls` (đếm lượt gọi Gemini), `post_stats` (lượt xem sau đăng), `notif_log` (chống spam thông báo).
-- `data/agent/profiles/`: một hồ sơ Chrome cho mỗi tài khoản TikTok (`publisher` cho `main`, `publisher-<mã>` cho các tài khoản thêm), `collector-cn`, `collector-us`.
-- `data/worker/inbox/` video gốc tải về; `data/worker/jobs/<id>/` sản phẩm dựng (`final.mp4`, `vi.ass`, `manifest.json` ghi cả phiên bản prompt).
-- **Dọn đĩa** (`store/retention.py`, chạy trong `/api/housekeeping`): ứng viên quá 3 ngày chưa tải và video quá 21 ngày không ai quyết định thành `rejected`; video đã đăng/bỏ/trùng/lỗi mất tệp gốc và bản dựng sau 7 ngày (giữ `manifest.json`, `poster.jpg` và dòng trong CSDL để không đăng trùng); xóa lịch sử cũ (quan sát 30 ngày, nhật ký 60, tác vụ 14); tệp mồ côi và ảnh chụp cũ. Dưới 1 GB trống thì ngừng tải thêm, dưới 512 MB thì ngừng dựng; ô "Ổ đĩa" ở trang Tổng quan cho biết còn bao nhiêu. Worker khởi động lại tự xếp lại video đang xử lý dở (mỗi video được thử tối đa 2 lần, sau đó chờ chủ xem); tuổi tệp mồ côi tính theo thời điểm đổi inode (`ctime`), không phải `mtime` (yt-dlp chép ngày của máy chủ vào `mtime`); việc xóa tệp thất bại không bị ghi là đã xong mà thử lại sau 24 giờ; tệp một video khác còn sống đang dùng không bao giờ bị xóa; còn dưới 1 GB trống thì housekeeping gửi một tin nhắn điện thoại.
-- `data/worker/gemini.key`, `data/worker/notify.json`: bí mật, quyền 0600, không bao giờ trả về qua API.
-- `data/agent/agent.log`, `data/agent/shots/` (ảnh chụp khi đăng lỗi; ảnh của lần chạy thử nằm ở `data/worker/exports/` để bảng điều khiển hiển thị).
+- `data/worker/trendvn.sqlite3` (WAL): `jobs` (one video per stream), `observations` (rank/view history per scan), `events` (log), `settings`, `accounts` (TikTok accounts: receiving topics, separate limits), `api_calls` (count Gemini calls), `post_stats` (post views), `notif_log` (anti-notification spam).
+- `data/agent/profiles/`: one Chrome profile for each TikTok account (`publisher` for `main`, `publisher-<id>` for additional accounts), `collector-cn`, `collector-us`.
+- `data/worker/inbox/` original video download; `data/worker/jobs/<id>/` builds (`final.mp4`, `vi.ass`, `manifest.json` including prompt version).
+- **Disk cleanup** (`store/retention.py`, running in `/api/housekeeping`): candidate has not been downloaded for more than 3 days and video is more than 21 days old and no one has decided to become `rejected`; posted/abandoned/duplicated video/error lost original file and version after 7 days (keep `manifest.json`, `poster.jpg` and stream in database to avoid duplicate posting); delete old history (observation 30 days, log 60, task 14); Orphaned files and old snapshots. If less than 1 GB is free, stop downloading, if less than 512 MB, stop building; The "Drives" box on the Overview page shows how much is left. The worker restarts and automatically reschedules the unfinished video (each video can be tried a maximum of 2 times, then waits for the master to watch); orphan file age based on inode change time (`ctime`), not `mtime` (yt-dlp copies server date to `mtime`); Failed file deletion is not recorded as completed but retried after 24 hours; Another live video file in use is never deleted; If there is less than 1 GB free space, housekeeping will send a phone message.
+- `data/worker/gemini.key`, `data/worker/notify.json`: secret, permission 0600, never returned via API.
+- `data/agent/agent.log`, `data/agent/shots/` (picture taken when posting the error; the test run picture is at `data/worker/exports/` for the console to display).
 
-## 6. Mở rộng
+## 6. Expand
 
-- **Thêm nguồn mới (2 file + test):** tạo một file trong `collector/sources/` với `parse_<nguồn>` (trả danh sách mục có `source_id`, `url`, `title`, `likes`, `views`, `duration`, `created`, `media`), `scan_<nguồn>` và `CDN` (tên miền phát video), đăng ký một dòng trong `collector/sources/__init__.py` (đặt `geo_locked`), và thêm **một dòng** vào `REGISTRY` ở `services/worker/src/trendvn_worker/domain/platforms.py` (tên, nước, tên miền, ngưỡng lượt xem mặc định). Nhãn trên bảng điều khiển, ô nhập ngưỡng, cài đặt mặc định, hashtag bị cấm và tên trong thông báo đều sinh từ `REGISTRY`; `tests/agent/test_collector.py::RegistryContractTests` kiểm tra hai phía khớp nhau.
-- **Thêm tab mới (1 file + 1 dòng):** một module trong `ui/tabs/` có `render(view)` và một dòng trong `TABS` ở `ui/page.py` (nhãn, biểu tượng, hàm đếm huy hiệu); mục điều hướng và `<section>` được sinh từ đó.
-- **Thêm cài đặt mới (5 chỗ, có chủ ý):** `DEFAULTS` và `validate_settings` (domain/settings.py), `DASHBOARD_SETTINGS` (store/reporting.py), ô nhập (ui/tabs/more.py), đọc biểu mẫu (web/forms.py); test `tests/worker/test_settings.py`. Chưa gom thành bảng khai báo vì mỗi cài đặt có luật kiểm tra riêng và việc gom không rút ngắn được chỗ nào đáng kể.
-- **Đổi cách chấm điểm:** sửa `score` (một hàm thuần, đã có test ở `tests/agent/test_collector.py::ScoringTests`).
-- **Đổi luật an toàn khi đăng:** chỉ sửa `publish_claim`; agent và n8n không cần đổi.
+- **Add new source (2 files + test):**create a file in `collector/sources/` with `parse_<source>` (returns list of items with `source_id`, `url`, `title`, `likes`, `views`, `duration`, `created`, `media`), `scan_<source>` and `CDN` (video streaming domain), register a line in `collector/sources/__init__.py` (put `geo_locked`), and add**a line** into `REGISTRY` at `services/worker/src/trendvn_worker/domain/platforms.py` (name, country, domain, default view threshold). The panel labels, threshold input boxes, default settings, banned hashtags, and names in notifications all come from `REGISTRY`; `tests/agent/test_collector.py::RegistryContractTests` checks that both sides match.
+- **Add new tab (1 file + 1 line):** a module in `ui/tabs/` has `render(view)` and a line in `TABS` in `ui/page.py` (label, icon, badge count function); navigation item and `<section>` are generated from it.
+- **Add new settings (5 places, intentionally):** `DEFAULTS` and `validate_settings` (domain/settings.py), `DASHBOARD_SETTINGS` (store/reporting.py), input box (ui/tabs/more.py), read forms (web/forms.py); test `tests/worker/test_settings.py`. It has not been collected into a declaration table because each installation has its own testing rules and the collection does not shorten anything significantly.
+- **Change scoring method:** edit `score` (a pure function, tested in `tests/agent/test_collector.py::ScoringTests`).
+- **Change security rules when posting:** only edit `publish_claim`; agent and n8n do not need to be changed.
 
-## 7. Bố cục mã và dữ liệu
+## 7. Code and data layout
 
 ```
 services/worker/
   Dockerfile
-  src/trendvn_worker/                  → đóng gói thành image Docker (chỉ thư viện chuẩn của Python)
-    domain/        luật thuần, không đọc/ghi gì: platforms, settings, analysis, route, readability, hardsubs, captions, schedule, states
-    store/         SQLite: base, schema (di trú có số phiên bản), ingest, queue, publishing, captions, health, task_log, feedback, reporting
-    ai/            Gemini: gemini (gọi, ngân sách, dự phòng model), prompts, analyzer, tts, errors
+  src/trendvn_worker/ → packaged as Docker image (Python standard library only)
+    domain/plain rules, nothing read/write: platforms, settings, analysis, route, readability, hardsubs, captions, schedule, states
+    store/ SQLite: base, schema (migration with version number), ingest, queue, publishing, captions, health, task_log, feedback, reporting
+    ai/ Gemini: gemini (call, budget, model backup), prompts, analyzer, tts, errors
     media/         ffmpeg: ffmpeg, fingerprint, geometry, subtitles, render
-    pipeline.py    một video đi từ hàng đợi tới bản dựng đã kiểm tra
+    pipeline.py a video going from the queue to the tested build
     web/           HTTP: handler, security, forms, api, media_files, pages, responses, app, server
-    ui/            giao diện: view, components, cards, tabs/ (mỗi tab một file), static/app.css, static/app.js
+    ui/ interface: view, components, cards, tabs/ (one file per tab), static/app.css, static/app.js
     notify.py  tasks.py  version.py
 services/agent/
-  src/trendvn_agent/                   → chạy trên máy (Chrome thật), cùng .venv của dự án
+  src/trendvn_agent/ → runs on the machine (real Chrome), with the project's .venv
     collector/     sources/ (douyin, kuaishou, tiktok, instagram), rules, capture, download, run, cli
     publisher/     session, profile, studio, challenge, post, jobs, screenshots, cli
     browser.py  config.py  log.py  worker_client.py  server.py
-n8n/               build.py (sinh workflow) · manage.py (nạp/bật/xuất) · workflows/*.json (kết quả)
+n8n/ build.py (generate workflow) · manage.py (load/enable/export) · workflows/*.json (result)
 scripts/           install · backup · restore · migrate · uninstall · test · doctor · package · setup_env · agent · lib · service/
-data/              worker/ (gắn vào container) · agent/ (hồ sơ Chrome, log, ảnh chụp) · backups/     ← sinh ra khi chạy, không đóng gói
+data/ worker/ (attached to container) · agent/ (Chrome profile, log, snapshot) · backups/ ← generated at runtime, not packaged
 ```
 
-Quy tắc đặt file (mỗi file một việc, ghi ở dòng docstring đầu file): luật nghiệp vụ không phụ thuộc I/O nằm ở `domain/` để kiểm thử nhanh; mọi truy cập SQLite nằm ở `store/` (mỗi mối quan tâm một mixin, ghép lại thành `Store`); mọi việc cần Chrome nằm ở `services/agent`; một nguồn mới = một file trong `collector/sources/`; mỗi tab của giao diện là một file trong `ui/tabs/`; n8n chỉ hẹn giờ và nối bước (xem [N8N.md](N8N.md)); mọi lệnh vận hành đi qua `./trendvn` (xem [COMMANDS.md](COMMANDS.md)).
+Rules for placing files (one thing per file, written in the docstring line at the beginning of the file): business rules that do not depend on I/O are in `domain/` for quick testing; all SQLite accesses are located at `store/` (one concern per mixin, combined into `Store`); Everything that needs Chrome is located at `services/agent`; a new source = a file in `collector/sources/`; Each tab of the interface is a file in `ui/tabs/`; n8n indicates timing and stepping (see [N8N.md](N8N.md)); all operating commands pass through `./trendvn` (see [COMMANDS.md](COMMANDS.md)).

@@ -83,9 +83,9 @@ class TaskTests(StoreCase):
         self.assertTrue(self.processed)
 
     def test_a_collect_where_every_source_failed_is_not_reported_as_done(self):
-        """A green 'Xong' over 'lỗi, lỗi' made the owner believe the scan had worked."""
+        """A green 'Done' over 'error' made the owner believe the scan had worked."""
         FakeAgentHandler.body = {
-            "report": {"douyin": {"status": "error", "reason": "mạng"}, "kuaishou": {"status": "skipped", "reason": "x"}}
+            "report": {"douyin": {"status": "error", "reason": "m\u1ea1ng"}, "kuaishou": {"status": "skipped", "reason": "x"}}
         }
         try:
             row = self.wait(self.t.start("collect"))
@@ -100,13 +100,13 @@ class TaskTests(StoreCase):
             }
         self.assertEqual(row["state"], "error")
         self.assertEqual(row["steps"][0]["state"], "error")
-        self.assertIn("lỗi", row["result"])
+        self.assertIn("l\u1ed7i", row["result"])
 
     def test_one_source_working_is_enough_for_the_scan_to_count(self):
         FakeAgentHandler.body = {
             "report": {
                 "douyin": {"status": "ok", "summary": {"jingxuan": {"seen": 5, "qualified": 2, "baseline": False, "new": 1}, "media": {}}},
-                "kuaishou": {"status": "error", "reason": "mạng"},
+                "kuaishou": {"status": "error", "reason": "m\u1ea1ng"},
             }
         }
         try:
@@ -125,7 +125,9 @@ class TaskTests(StoreCase):
     def test_a_challenge_found_while_posting_tells_the_owner_the_exact_command_of_that_account(self):
         self.assertIn(
             "trust --account pets",
-            tasks_mod.summarize_publish({"status": "challenge", "reason": "TikTok đòi xác minh. ./trendvn tiktok trust --account pets"}),
+            tasks_mod.summarize_publish(
+                {"status": "challenge", "reason": "TikTok \u0111\u00f2i x\u00e1c minh. ./trendvn tiktok trust --account pets"}
+            ),
         )
         self.assertIn("tiktok trust", tasks_mod.summarize_publish({"status": "challenge"}))  # an older agent: the plain command
 
@@ -133,7 +135,7 @@ class TaskTests(StoreCase):
         FakeAgentHandler.code = 409
         row = self.wait(self.t.start("collect"))
         self.assertEqual(row["state"], "error")
-        self.assertIn("bận", row["error"] + row["result"])
+        self.assertIn("b\u1eadn", row["error"] + row["result"])
         self.srv.shutdown()
         self.srv.server_close()
         row = self.wait(self.t.start("collect"))
@@ -153,7 +155,7 @@ class TaskTests(StoreCase):
         self.lock.acquire()
         try:
             row = self.wait(self.t.start("process"))
-            self.assertIn("lịch tự động", (row["error"] + row["result"]))
+            self.assertIn("l\u1ecbch t\u1ef1 \u0111\u1ed9ng", (row["error"] + row["result"]))
             self.assertFalse(self.processed)
         finally:
             self.lock.release()
@@ -162,7 +164,7 @@ class TaskTests(StoreCase):
         FakeAgentHandler.body = {"status": "published", "url": "https://www.tiktok.com/@u/video/1"}
         row = self.wait(self.t.start("publish", "b" * 32))
         self.assertEqual(FakeAgentHandler.hits[-1][:2], ("/api/publish", {"job_id": "b" * 32}))
-        self.assertIn("Đã đăng", row["result"])
+        self.assertIn("\u0110\u00e3 \u0111\u0103ng", row["result"])
         FakeAgentHandler.body = {"status": "dry_run", "screenshot": "/x.png"}
         row = self.wait(self.t.start("dryrun", "b" * 32))
         self.assertEqual(FakeAgentHandler.hits[-1][0], "/api/dry-run")
@@ -170,7 +172,7 @@ class TaskTests(StoreCase):
         FakeAgentHandler.body = {"status": "challenge"}
         row = self.wait(self.t.start("publish", "b" * 32))
         self.assertEqual(row["state"], "error")
-        self.assertIn("xác minh", row["result"])
+        self.assertIn("x\u00e1c minh", row["result"])
 
     def test_bad_requests_are_rejected(self):
         for kind, job in (("nope", None), ("publish", None), ("dryrun", "")):

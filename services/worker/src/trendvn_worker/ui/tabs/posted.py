@@ -1,4 +1,4 @@
-"""Đã đăng: what was posted and how it performed."""
+"""Posted: what was posted and how it performed."""
 
 from ..components import cell, platform_badge, table, task_panel
 from ..format import ago, escape as E, headline, num
@@ -17,23 +17,27 @@ def _performance_table(view):
         rows.append(
             "<tr>%s%s%s%s%s%s</tr>"
             % (
-                cell("Nguồn", platform_badge(post["platform"])),
-                cell("Bài đăng", link, "t"),
-                cell("Kiểu", E(ROUTE_LABEL.get(post["route"], post["route"] or ""))),
-                cell("Lượt xem", num(post["views"])),
+                cell("Ngu\u1ed3n", platform_badge(post["platform"])),
+                cell("B\u00e0i \u0111\u0103ng", link, "t"),
+                cell("Ki\u1ec3u", E(ROUTE_LABEL.get(post["route"], post["route"] or ""))),
+                cell("L\u01b0\u1ee3t xem", num(post["views"])),
                 cell("Tim", num(post["likes"])),
-                cell("Đăng", ago(post["published_at"], view.now)),
+                cell("\u0110\u0103ng", ago(post["published_at"], view.now)),
             )
         )
-    return table(("Nguồn", "Bài đăng", "Kiểu", "Lượt xem", "Tim", "Đăng"), rows, "Chưa có bài nào được đăng.")
+    return table(
+        ("Ngu\u1ed3n", "B\u00e0i \u0111\u0103ng", "Ki\u1ec3u", "L\u01b0\u1ee3t xem", "Tim", "\u0110\u0103ng"),
+        rows,
+        "Ch\u01b0a c\u00f3 b\u00e0i n\u00e0o \u0111\u01b0\u1ee3c \u0111\u0103ng.",
+    )
 
 
 def render(view):
     return (
-        '<h2>Đã đăng và hiệu quả</h2><div class="card stack"><p class="hint">Đọc lượt xem và tim từ hồ sơ TikTok để cập nhật bảng '
-        "và để hệ thống học nguồn nào hiệu quả hơn.</p>%s%s</div>%s"
+        '<h2>\u0110\u00e3 \u0111\u0103ng v\u00e0 hi\u1ec7u qu\u1ea3</h2><div class="card stack"><p class="hint">\u0110\u1ecdc l\u01b0\u1ee3t xem v\u00e0 tim t\u1eeb h\u1ed3 s\u01a1 TikTok \u0111\u1ec3 c\u1eadp nh\u1eadt b\u1ea3ng '
+        "v\u00e0 \u0111\u1ec3 h\u1ec7 th\u1ed1ng h\u1ecdc ngu\u1ed3n n\u00e0o hi\u1ec7u qu\u1ea3 h\u01a1n.</p>%s%s</div>%s"
     ) % (
-        view.action("stats", "📊 Đọc lượt xem ngay", "ghost", view.busy_browser, "posted"),
+        view.action("stats", "📊 \u0110\u1ecdc l\u01b0\u1ee3t xem ngay", "ghost", view.busy_browser, "posted"),
         task_panel(view.tasks, view.now, ("stats",)),
         _performance_table(view),
     )

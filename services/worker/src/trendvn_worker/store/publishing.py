@@ -70,13 +70,16 @@ class PublishingMixin:
         with self.transaction() as db:
             accounts = self._accounts_in(db, enabled_only=True)  # read under the lock: an account deleted a moment ago must not get a post
             if not accounts:
-                return {"status": "blocked", "reason": "Chưa có tài khoản TikTok nào đang bật"}
+                return {"status": "blocked", "reason": "Ch\u01b0a c\u00f3 t\u00e0i kho\u1ea3n TikTok n\u00e0o \u0111ang b\u1eadt"}
             if db.execute("SELECT count(*) FROM jobs WHERE state='publishing'").fetchone()[0]:
                 return {"status": "blocked", "reason": "A previous publish is unconfirmed; resolve it before publishing again"}
             if manual:
                 row = self._chosen_video(db, job_id)
                 if not row:
-                    return {"status": "idle", "reason": "Video này không còn ở trạng thái sẵn sàng đăng"}
+                    return {
+                        "status": "idle",
+                        "reason": "Video n\u00e0y kh\u00f4ng c\u00f2n \u1edf tr\u1ea1ng th\u00e1i s\u1eb5n s\u00e0ng \u0111\u0103ng",
+                    }
                 account = self._account_for_manual(db, row, accounts, now)
                 if self._unconfirmed(db, account):
                     return {"status": "blocked", "reason": "A previous publish is unconfirmed; resolve it before publishing again"}
@@ -96,7 +99,8 @@ class PublishingMixin:
             if logins.get(account["id"]) is False:
                 refusal = {
                     "status": "blocked",
-                    "reason": "Chưa đăng nhập TikTok cho @%s: ./trendvn tiktok login --account %s" % (account["username"], account["id"]),
+                    "reason": "Ch\u01b0a \u0111\u0103ng nh\u1eadp TikTok cho @%s: ./trendvn tiktok login --account %s"
+                    % (account["username"], account["id"]),
                 }
             elif self._unconfirmed(db, account):
                 refusal = {"status": "blocked", "reason": "A previous publish is unconfirmed; resolve it before publishing again"}
@@ -139,7 +143,11 @@ class PublishingMixin:
         eff = effective(account, cfg)
         inside, opening = self.window_state({**cfg, "post_windows": eff["windows"]}, now)
         if not inside:
-            return {"status": "wait", "reason": "Ngoài giờ vàng; lần tới lúc " + opening, "next_window": opening}
+            return {
+                "status": "wait",
+                "reason": "Ngo\u00e0i gi\u1edd v\u00e0ng; l\u1ea7n t\u1edbi l\u00fac " + opening,
+                "next_window": opening,
+            }
         if self.published_today(db, now, account) >= eff["daily_limit"]:
             return {"status": "limit", "reason": "Daily limit reached"}
         last = self._last_post(db, account)
@@ -179,7 +187,7 @@ class PublishingMixin:
             "UPDATE jobs SET state='publishing',publish_lease=?,prev_state=?,account=?,target=?,updated=? WHERE id=?",
             (token, row["state"], account["id"], account["username"], now, row["id"]),
         )
-        self.event(db, row["id"], "publishing", ("thủ công " if manual else "") + "@" + account["username"])
+        self.event(db, row["id"], "publishing", ("th\u1ee7 c\u00f4ng " if manual else "") + "@" + account["username"])
         analysis = loads(row["analysis"], {})
         caption = row["caption_user"] or build_caption(analysis, row["title"])
         db.execute("UPDATE jobs SET caption=? WHERE id=?", (caption, row["id"]))
@@ -206,7 +214,7 @@ class PublishingMixin:
         if account_id:
             asked = next((a for a in accounts if a["id"] == account_id), None)
             if not asked:
-                raise ValueError("Không có tài khoản đang bật có mã %s" % account_id)
+                raise ValueError("Kh\u00f4ng c\u00f3 t\u00e0i kho\u1ea3n \u0111ang b\u1eadt c\u00f3 m\u00e3 %s" % account_id)
         with self.connect() as db:
             if job_id:
                 row = self._chosen_video(db, job_id)
@@ -254,7 +262,10 @@ class PublishingMixin:
                 fails, last_fail = fails + 1, now
                 if fails >= 3:
                     state, parked = "needs_review", True  # a video that keeps failing stops blocking the queue
-                    reason = "Đăng thất bại %d lần liên tiếp, cần bạn xem: %s" % (fails, reason)
+                    reason = "\u0110\u0103ng th\u1ea5t b\u1ea1i %d l\u1ea7n li\u00ean ti\u1ebfp, c\u1ea7n b\u1ea1n xem: %s" % (
+                        fails,
+                        reason,
+                    )
             db.execute(
                 "UPDATE jobs SET state=?,publish_lease=NULL,publish_url=?,reason=?,published_at=?,updated=?,publish_fails=?,last_publish_fail=COALESCE(?,last_publish_fail) WHERE id=?",
                 (state, url or None, reason[:700], now if outcome == "published" else None, now, fails, last_fail, jid),
@@ -262,13 +273,27 @@ class PublishingMixin:
             self.event(db, jid, "publish_" + outcome, reason)
             title = (db.execute("SELECT title FROM jobs WHERE id=?", (jid,)).fetchone() or ["?"])[0][:60]
         if outcome == "published":
-            self.emit("published", "✅ Đã đăng: %s\n%s" % (title, url), jid)
+            self.emit("published", "✅ \u0110\u00e3 \u0111\u0103ng: %s\n%s" % (title, url), jid)
         elif outcome == "unknown":
-            self.emit("urgent", "🚨 Đã bấm Đăng nhưng chưa xác nhận được: %s\nHệ thống dừng đăng. %s" % (title, reason), jid)
+            self.emit(
+                "urgent",
+                "🚨 \u0110\u00e3 b\u1ea5m \u0110\u0103ng nh\u01b0ng ch\u01b0a x\u00e1c nh\u1eadn \u0111\u01b0\u1ee3c: %s\nH\u1ec7 th\u1ed1ng d\u1eebng \u0111\u0103ng. %s"
+                % (title, reason),
+                jid,
+            )
         elif parked:
-            self.emit("review", "⚠️ Video đăng lỗi nhiều lần, đã chuyển sang Cần xem: %s\n%s" % (title, reason), jid)
+            self.emit(
+                "review",
+                "⚠️ Video \u0111\u0103ng l\u1ed7i nhi\u1ec1u l\u1ea7n, \u0111\u00e3 chuy\u1ec3n sang C\u1ea7n xem: %s\n%s"
+                % (title, reason),
+                jid,
+            )
         elif outcome == "failed":
-            self.emit("publish_failed", "⚠️ Đăng chưa thành công (sẽ thử lại sau): %s" % reason, "publish_failed")
+            self.emit(
+                "publish_failed",
+                "⚠️ \u0110\u0103ng ch\u01b0a th\u00e0nh c\u00f4ng (s\u1ebd th\u1eed l\u1ea1i sau): %s" % reason,
+                "publish_failed",
+            )
 
     def set_challenge(self, active, account=None):
         """TikTok asked for human verification in one account's browser profile. Publishing pauses (no retries that would keep triggering
@@ -289,12 +314,12 @@ class PublishingMixin:
             self.event(db, "", "challenge_on" if active else "challenge_off", account or "")
         if active:
             mac = (
-                " (Mac: nhấp đúp macos/Xac-minh-TikTok.command)" if account in (None, "main") else ""
+                " (Mac: nh\u1ea5p \u0111\u00fap macos/Verify-TikTok.command)" if account in (None, "main") else ""
             )  # that launcher opens the main profile
             self.emit(
                 "urgent",
-                "🧩 TikTok đang yêu cầu xác minh (CAPTCHA)%s. Đăng bài tạm dừng. Hãy giải một lần: chạy `./trendvn tiktok trust%s`%s."
-                % (" ở @" + known["username"] if known else "", account_flag(account), mac),
+                "🧩 TikTok \u0111ang y\u00eau c\u1ea7u x\u00e1c minh (CAPTCHA)%s. \u0110\u0103ng b\u00e0i t\u1ea1m d\u1eebng. H\u00e3y gi\u1ea3i m\u1ed9t l\u1ea7n: ch\u1ea1y `./trendvn tiktok trust%s`%s."
+                % (" \u1edf @" + known["username"] if known else "", account_flag(account), mac),
                 "challenge:%s" % (account or ""),
             )
         return True

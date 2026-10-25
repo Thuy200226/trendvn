@@ -24,37 +24,41 @@ HEADED = wants_window()
 LOGIN_URL = "https://www.tiktok.com/login"
 
 
-POST_LABELS = re.compile(r"^\s*(Post|Đăng|Publish)\s*$", re.I)
+POST_LABELS = re.compile("^\\s*(Post|\u0110\u0103ng|Publish)\\s*$", re.I)
 
 
-NOT_NOW = re.compile(r"^\s*(Not now|Cancel|Later|Để sau|Hủy|Huỷ|Bỏ qua)\s*$", re.I)
+NOT_NOW = re.compile("^\\s*(Not now|Cancel|Later|\u0110\u1ec3 sau|H\u1ee7y|Hu\u1ef7|B\u1ecf qua)\\s*$", re.I)
 
 
-UPLOADED_HINTS = ("Uploaded", "Đã tải lên", "Upload complete", "Tải lên hoàn tất")
+UPLOADED_HINTS = ("Uploaded", "\u0110\u00e3 t\u1ea3i l\u00ean", "Upload complete", "T\u1ea3i l\u00ean ho\u00e0n t\u1ea5t")
 
 
-VISIBILITY_LABELS = {"public": ("Mọi người", "Everyone"), "friends": ("Bạn bè", "Friends"), "self": ("Chỉ mình bạn", "Only me")}
+VISIBILITY_LABELS = {
+    "public": ("M\u1ecdi ng\u01b0\u1eddi", "Everyone"),
+    "friends": ("B\u1ea1n b\u00e8", "Friends"),
+    "self": ("Ch\u1ec9 m\u00ecnh b\u1ea1n", "Only me"),
+}
 
 
 POPUP_BUTTONS = (
-    "Hủy",
-    "Đã hiểu",
+    "H\u1ee7y",
+    "\u0110\u00e3 hi\u1ec3u",
     "Cancel",
     "Got it",
-)  # 'Hủy' here answers 'turn on automatic content checks?' with no: that is an account setting, yours to change
+)  # 'Cancel' here answers 'turn on automatic content checks?' with no: that is an account setting, yours to change
 
 
 CHALLENGE_GRACE = 45  # TikTok sometimes clears a check by itself; only a persistent one pauses publishing
 
 
 CHALLENGE_TEXT = (
-    "Chọn 2 đối tượng",
+    "Ch\u1ecdn 2 \u0111\u1ed1i t\u01b0\u1ee3ng",
     "Select 2 objects",
-    "Kéo thanh trượt",
+    "K\u00e9o thanh tr\u01b0\u1ee3t",
     "Drag the slider",
-    "Xoay hình",
+    "Xoay h\u00ecnh",
     "Rotate the image",
     "Verify to continue",
-    "Xác minh để tiếp tục",
-    "Hoàn thành xác minh",
+    "X\u00e1c minh \u0111\u1ec3 ti\u1ebfp t\u1ee5c",
+    "Ho\u00e0n th\u00e0nh x\u00e1c minh",
 )

@@ -1,10 +1,10 @@
 {
   "id": "trendvn20process",
-  "name": "TrendVN | 20 · Xử lý video và phụ đề Việt",
+  "name": "TrendVN | 20 \u00b7 X\u1eed l\u00fd video v\u00e0 ph\u1ee5 \u0111\u1ec1 Vi\u1ec7t",
   "nodes": [
     {
       "id": "be652cda6b06520fb8578272649cd0c2",
-      "name": "Chạy xử lý thử",
+      "name": "Ch\u1ea1y x\u1eed l\u00fd th\u1eed",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
@@ -15,7 +15,7 @@
     },
     {
       "id": "d50fd1d84bdf51549af7e9d45f8ffebb",
-      "name": "Phát hiện tác vụ gián đoạn",
+      "name": "Ph\u00e1t hi\u1ec7n t\u00e1c v\u1ee5 gi\u00e1n \u0111o\u1ea1n",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -37,13 +37,13 @@
       "credentials": {
         "httpHeaderAuth": {
           "id": "trendvnWorkerAuth",
-          "name": "TrendVN · Worker riêng"
+          "name": "TrendVN \u00b7 Worker ri\u00eang"
         }
       }
     },
     {
       "id": "8f9b0260b46e5ed394178da561566ffd",
-      "name": "Phân loại nhạc và tạo Vietsub",
+      "name": "Ph\u00e2n lo\u1ea1i nh\u1ea1c v\u00e0 t\u1ea1o Vietsub",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -65,13 +65,13 @@
       "credentials": {
         "httpHeaderAuth": {
           "id": "trendvnWorkerAuth",
-          "name": "TrendVN · Worker riêng"
+          "name": "TrendVN \u00b7 Worker ri\u00eang"
         }
       }
     },
     {
       "id": "200a079a33c1512da8b8192bf1e829f4",
-      "name": "Xử lý thủ công",
+      "name": "X\u1eed l\u00fd th\u1ee7 c\u00f4ng",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -79,29 +79,29 @@
         -300
       ],
       "parameters": {
-        "content": "## Chạy tay bước xử lý\nNhạc: giữ nguyên âm thanh. Hội thoại/thuyết minh: Vietsub.\nKiểm tra hash nguồn, dấu vân tay hình ảnh, thời lượng, chủ đề, nhạy cảm và giải mã đầu ra.\nLịch tự động nằm ở workflow 01 (thu thập, xử lý) và 02 (đăng).",
+        "content": "## Ch\u1ea1y tay b\u01b0\u1edbc x\u1eed l\u00fd\nNh\u1ea1c: gi\u1eef nguy\u00ean \u00e2m thanh. H\u1ed9i tho\u1ea1i/thuy\u1ebft minh: Vietsub.\nKi\u1ec3m tra hash ngu\u1ed3n, d\u1ea5u v\u00e2n tay h\u00ecnh \u1ea3nh, th\u1eddi l\u01b0\u1ee3ng, ch\u1ee7 \u0111\u1ec1, nh\u1ea1y c\u1ea3m v\u00e0 gi\u1ea3i m\u00e3 \u0111\u1ea7u ra.\nL\u1ecbch t\u1ef1 \u0111\u1ed9ng n\u1eb1m \u1edf workflow 01 (thu th\u1eadp, x\u1eed l\u00fd) v\u00e0 02 (\u0111\u0103ng).",
         "height": 240,
         "width": 560
       }
     }
   ],
   "connections": {
-    "Chạy xử lý thử": {
+    "Ch\u1ea1y x\u1eed l\u00fd th\u1eed": {
       "main": [
         [
           {
-            "node": "Phát hiện tác vụ gián đoạn",
+            "node": "Ph\u00e1t hi\u1ec7n t\u00e1c v\u1ee5 gi\u00e1n \u0111o\u1ea1n",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Phát hiện tác vụ gián đoạn": {
+    "Ph\u00e1t hi\u1ec7n t\u00e1c v\u1ee5 gi\u00e1n \u0111o\u1ea1n": {
       "main": [
         [
           {
-            "node": "Phân loại nhạc và tạo Vietsub",
+            "node": "Ph\u00e2n lo\u1ea1i nh\u1ea1c v\u00e0 t\u1ea1o Vietsub",
             "type": "main",
             "index": 0
           }

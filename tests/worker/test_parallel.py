@@ -10,7 +10,7 @@ from tests.support import StoreCase
 from trendvn_worker import pipeline
 from trendvn_worker.files import file_hash
 
-ANALYSIS = {"kind": "dialogue", "caption_vi": "Mô tả", "hashtags": ["a", "b", "c"], "segments": [], "topic": "pets"}
+ANALYSIS = {"kind": "dialogue", "caption_vi": "M\u00f4 t\u1ea3", "hashtags": ["a", "b", "c"], "segments": [], "topic": "pets"}
 
 
 class ProcessManyTests(StoreCase):

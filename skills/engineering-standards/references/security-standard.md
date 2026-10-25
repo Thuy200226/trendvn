@@ -3,7 +3,7 @@
 Goal: secure by default, verifiable, proportionate. Aligned with OWASP Top 10:2025, OWASP ASVS 5.0, the 2025 CWE Top 25, NIST SSDF and SLSA (see "Sources"). Use **ASVS Level 1 as the minimum for every app, Level 2 for anything holding user data or money, Level 3 for high-value targets**. Security is a property of design and process, not a late scan: do the threat model first.
 
 ## 0. Threat model in 15 minutes (before designing or reviewing)
-List: **assets** (data, accounts, compute, reputation), **entry points** (HTTP routes, CLI args, files, queues, webhooks, admin tools, CI, dependencies, LLM/tool outputs), **actors** (anonymous, user, other tenant, admin, insider, compromised dependency), **abuse cases** ("user A reads user B's order", "an upload runs code", "a leaked token publishes as us", "a prompt-injected agent deletes data"). Each abuse case gets a control and a test. Keep the list in the repo (`docs/SECURITY.md`).
+List: **assets**(data, accounts, compute, reputation),**entry points**(HTTP routes, CLI args, files, queues, webhooks, admin tools, CI, dependencies, LLM/tool outputs),**actors**(anonymous, user, other tenant, admin, insider, compromised dependency),**abuse cases** ("user A reads user B's order", "an upload runs code", "a leaked token publishes as us", "a prompt-injected agent deletes data"). Each abuse case gets a control and a test. Keep the list in the repo (`docs/SECURITY.md`).
 
 ## 1. OWASP Top 10:2025 - what to do about each
 1. **A01 Broken Access Control** (includes SSRF): deny by default; check authorization on *every* object access server-side (CWE-862/863/639); never trust ids from the client; tenant isolation in queries; block SSRF (allow-list outbound hosts, no internal ranges, no redirects to them).
@@ -29,7 +29,7 @@ List: **assets** (data, accounts, compute, reputation), **entry points** (HTTP r
 - **Dependencies in code**: avoid `pickle`/unsafe YAML load/`eval`; prefer maintained libraries for parsing, crypto, auth, HTML sanitizing.
 
 ## 3. Containers and runtime
-Minimal base image (slim/distroless), multi-stage build, **non-root numeric UID** (e.g. 10001), **read-only root filesystem** with explicit writable tmp/data mounts, drop all Linux capabilities and add only what is needed, `no-new-privileges`, no privileged mode or host mounts of sockets, resource limits, healthcheck, image labels with version/commit, scan images (Trivy/Grype) in CI, sign (cosign/Sigstore) and verify, pin base images by digest in release builds. Template: `assets/Dockerfile.hardened`.
+Minimal base image (slim/distroless), multi-stage build, **non-root numeric UID**(e.g. 10001),**read-only root filesystem** with explicit writable tmp/data mounts, drop all Linux capabilities and add only what is needed, `no-new-privileges`, no privileged mode or host mounts of sockets, resource limits, healthcheck, image labels with version/commit, scan images (Trivy/Grype) in CI, sign (cosign/Sigstore) and verify, pin base images by digest in release builds. Template: `assets/Dockerfile.hardened`.
 
 ## 4. CI/CD hardening
 Least-privilege token by default (`permissions: contents: read`; write only in the job that needs it); third-party actions/steps pinned to full commit SHA; OIDC to the cloud, no long-lived keys; separate build and deploy identities; protected branches, required reviews and status checks; secrets only in protected environments; no secrets to forked-PR workflows; SBOM and provenance generated and attached; deploy only signed artifacts built by CI. Template: `assets/ci-github-actions.yml`.

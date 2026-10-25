@@ -36,9 +36,13 @@ def main():
         db = sqlite3.connect("file:%s/data/worker/trendvn.sqlite3?mode=ro" % root, uri=True)
         copied = dict(db.execute("SELECT state, COUNT(*) FROM jobs GROUP BY state").fetchall())
         live = get(port, token, "/api/status")["counts"]
-        print("Dữ liệu đã chép:", copied)
-        print("Hệ thống mới   :", live)
-        print("KHỚP" if copied == live else "KHÁC (nhẹ là bình thường nếu một lịch vừa chạy giữa hai lần đọc)")
+        print("D\u1eef li\u1ec7u \u0111\u00e3 ch\u00e9p:", copied)
+        print("H\u1ec7 th\u1ed1ng m\u1edbi   :", live)
+        print(
+            "KH\u1edaP"
+            if copied == live
+            else "KH\u00c1C (nh\u1eb9 l\u00e0 b\u00ecnh th\u01b0\u1eddng n\u1ebfu m\u1ed9t l\u1ecbch v\u1eeba ch\u1ea1y gi\u1eefa hai l\u1ea7n \u0111\u1ecdc)"
+        )
     else:
         sys.exit(2)
 

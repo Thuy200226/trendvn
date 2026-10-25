@@ -1,55 +1,56 @@
 #!/usr/bin/env bash
-# TrendVN: một lệnh cho mọi việc.  ./trendvn help
+# TrendVN: one command for everything.  ./trendvn help
 set -euo pipefail
 # shellcheck source=scripts/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/scripts/lib.sh"
 
 usage() {
-cat <<'HELP'
-TrendVN — thu thập video xu hướng, làm Vietsub/lồng tiếng, tự đăng TikTok.   Dùng: ./trendvn <lệnh>
+printf '%b\n' "$(cat <<'HELP'
+TrendVN — thu th\0341\0272\0255p video xu h\0306\0260\0341\0273\0233ng, l\0303\0240m Vietsub/l\0341\0273\0223ng ti\0341\0272\0277ng, t\0341\0273\0261 \0304\0221\0304\0203ng TikTok.   D\0303\0271ng: ./trendvn <l\0341\0273\0207nh>
 
-Cài đặt và chạy
-  install [--no-activate] [--no-service]   Cài lần đầu: cấu hình, Docker, n8n, agent. Chạy lại an toàn.
-  up                  Dựng (nếu cần) và chạy n8n + worker, đợi tới khi khỏe
-  down                Dừng n8n + worker (giữ dữ liệu)
-  restart [worker|n8n|agent]   Khởi động lại (bỏ trống = cả ba)
-  update              Áp dụng bản mới sau khi thay mã: build lại, gói Python của agent, sinh + nạp lại workflow, khởi động lại
-  status              Trạng thái container, agent, workflow
-  doctor              Chẩn đoán đầy đủ, chỉ cách sửa từng lỗi
-  open                Mở bảng điều khiển trong trình duyệt
-  uninstall [--purge] Gỡ dịch vụ và dừng container (--purge: xóa cả dữ liệu)
-  migrate <thư-mục-1.2> [--yes] [--no-service]   Chuyển hệ thống đang chạy từ thư mục bản 1.2 sang thư mục này (sao lưu, dừng bản cũ, chép dữ liệu, cài)
+C\0303\0240i \0304\0221\0341\0272\0267t v\0303\0240 ch\0341\0272\0241y
+  install [--no-activate] [--no-service]   C\0303\0240i l\0341\0272\0247n \0304\0221\0341\0272\0247u: c\0341\0272\0245u h\0303\0254nh, Docker, n8n, agent. Ch\0341\0272\0241y l\0341\0272\0241i an to\0303\0240n.
+  up                  D\0341\0273\0261ng (n\0341\0272\0277u c\0341\0272\0247n) v\0303\0240 ch\0341\0272\0241y n8n + worker, \0304\0221\0341\0273\0243i t\0341\0273\0233i khi kh\0341\0273\0217e
+  down                D\0341\0273\0253ng n8n + worker (gi\0341\0273\0257 d\0341\0273\0257 li\0341\0273\0207u)
+  restart [worker|n8n|agent]   Kh\0341\0273\0237i \0304\0221\0341\0273\0231ng l\0341\0272\0241i (b\0341\0273\0217 tr\0341\0273\0221ng = c\0341\0272\0243 ba)
+  update              \0303\0201p d\0341\0273\0245ng b\0341\0272\0243n m\0341\0273\0233i sau khi thay m\0303\0243: build l\0341\0272\0241i, g\0303\0263i Python c\0341\0273\0247a agent, sinh + n\0341\0272\0241p l\0341\0272\0241i workflow, kh\0341\0273\0237i \0304\0221\0341\0273\0231ng l\0341\0272\0241i
+  status              Tr\0341\0272\0241ng th\0303\0241i container, agent, workflow
+  doctor              Ch\0341\0272\0251n \0304\0221o\0303\0241n \0304\0221\0341\0272\0247y \0304\0221\0341\0273\0247, ch\0341\0273\0211 c\0303\0241ch s\0341\0273\0255a t\0341\0273\0253ng l\0341\0273\0227i
+  open                M\0341\0273\0237 b\0341\0272\0243ng \0304\0221i\0341\0273\0201u khi\0341\0273\0203n trong tr\0303\0254nh duy\0341\0273\0207t
+  uninstall [--purge] G\0341\0273\0241 d\0341\0273\0213ch v\0341\0273\0245 v\0303\0240 d\0341\0273\0253ng container (--purge: x\0303\0263a c\0341\0272\0243 d\0341\0273\0257 li\0341\0273\0207u)
+  migrate <th\0306\0260-m\0341\0273\0245c-1.2> [--yes] [--no-service]   Chuy\0341\0273\0203n h\0341\0273\0207 th\0341\0273\0221ng \0304\0221ang ch\0341\0272\0241y t\0341\0273\0253 th\0306\0260 m\0341\0273\0245c b\0341\0272\0243n 1.2 sang th\0306\0260 m\0341\0273\0245c n\0303\0240y (sao l\0306\0260u, d\0341\0273\0253ng b\0341\0272\0243n c\0305\0251, ch\0303\0251p d\0341\0273\0257 li\0341\0273\0207u, c\0303\0240i)
 
 Xem log
-  logs [worker|n8n|agent|all] [-f] [-n SỐ]   Mặc định: worker + n8n, 100 dòng cuối. -f: theo dõi trực tiếp.
+  logs [worker|n8n|agent|all] [-f] [-n S\0341\0273\0220]   M\0341\0272\0267c \0304\0221\0341\0273\0213nh: worker + n8n, 100 d\0303\0262ng cu\0341\0273\0221i. -f: theo d\0303\0265i tr\0341\0273\0261c ti\0341\0272\0277p.
 
 Build
-  build [--no-cache]  Build image Docker của worker
-  n8n build           Sinh workflow n8n từ mã (n8n/build.py)
-  n8n import          Nạp workflow + credential vào n8n đang chạy (workflow đang bật vẫn bật)
-  n8n activate|deactivate [id...]   Bật/tắt lịch tự động (mặc định 01, 02, 03)
-  n8n status          Workflow nào đang bật
-  n8n export [thư mục]  Lưu workflow hiện có trong n8n ra file JSON
+  build [--no-cache]  Build image Docker c\0341\0273\0247a worker
+  n8n build           Sinh workflow n8n t\0341\0273\0253 m\0303\0243 (n8n/build.py)
+  n8n import          N\0341\0272\0241p workflow + credential v\0303\0240o n8n \0304\0221ang ch\0341\0272\0241y (workflow \0304\0221ang b\0341\0272\0255t v\0341\0272\0253n b\0341\0272\0255t)
+  n8n activate|deactivate [id...]   B\0341\0272\0255t/t\0341\0272\0257t l\0341\0273\0213ch t\0341\0273\0261 \0304\0221\0341\0273\0231ng (m\0341\0272\0267c \0304\0221\0341\0273\0213nh 01, 02, 03)
+  n8n status          Workflow n\0303\0240o \0304\0221ang b\0341\0272\0255t
+  n8n export [th\0306\0260 m\0341\0273\0245c]  L\0306\0260u workflow hi\0341\0273\0207n c\0303\0263 trong n8n ra file JSON
 
-Agent trình duyệt (Chrome trên máy này)
+Agent tr\0303\0254nh duy\0341\0273\0207t (Chrome tr\0303\0252n m\0303\0241y n\0303\0240y)
   agent install|uninstall|start|stop|restart|status|logs|run|venv|update
-  tiktok login [phút] [--account ID]   Đăng nhập TikTok một lần (bạn tự nhập trong cửa sổ Chrome); --account cho tài khoản thêm
-  tiktok trust [phút] [--account ID]   Giải hình xác minh của TikTok một lần
-  tiktok dry-run [--account ID]   Chạy thử không đăng thật (ảnh chụp: data/worker/exports/); --account: diễn tập cho tài khoản đó
+  tiktok login [ph\0303\0272t] [--account ID]   \0304\0220\0304\0203ng nh\0341\0272\0255p TikTok m\0341\0273\0231t l\0341\0272\0247n (b\0341\0272\0241n t\0341\0273\0261 nh\0341\0272\0255p trong c\0341\0273\0255a s\0341\0273\0225 Chrome); --account cho t\0303\0240i kho\0341\0272\0243n th\0303\0252m
+  tiktok trust [ph\0303\0272t] [--account ID]   Gi\0341\0272\0243i h\0303\0254nh x\0303\0241c minh c\0341\0273\0247a TikTok m\0341\0273\0231t l\0341\0272\0247n
+  tiktok dry-run [--account ID]   Ch\0341\0272\0241y th\0341\0273\0255 kh\0303\0264ng \0304\0221\0304\0203ng th\0341\0272\0255t (\0341\0272\0243nh ch\0341\0273\0245p: data/worker/exports/); --account: di\0341\0273\0205n t\0341\0272\0255p cho t\0303\0240i kho\0341\0272\0243n \0304\0221\0303\0263
   tiktok status|verify|stats
 
-Dữ liệu và bàn giao
-  backup [--with-session] [--keep N]   Sao lưu vào data/backups/
-  restore FILE [--yes]  Khôi phục từ bản sao lưu
-  package             Đóng gói dist/trendvn-<phiên bản>.tar.gz để chép sang máy khác
+D\0341\0273\0257 li\0341\0273\0207u v\0303\0240 b\0303\0240n giao
+  backup [--with-session] [--keep N]   Sao l\0306\0260u v\0303\0240o data/backups/
+  restore FILE [--yes]  Kh\0303\0264i ph\0341\0273\0245c t\0341\0273\0253 b\0341\0272\0243n sao l\0306\0260u
+  package             \0304\0220\0303\0263ng g\0303\0263i dist/trendvn-<phi\0303\0252n b\0341\0272\0243n>.tar.gz \0304\0221\0341\0273\0203 ch\0303\0251p sang m\0303\0241y kh\0303\0241c
 
-Kiểm thử
-  test [lint|unit|container|e2e|all]   Mặc định: lint + unit. container = chạy bộ test trong image Docker (có ffmpeg).
-  fmt                 Định dạng mã Python (black) và sửa lỗi lint an toàn (ruff); cần: pip install -r requirements-dev.txt
+Ki\0341\0273\0203m th\0341\0273\0255
+  test [lint|unit|container|e2e|all]   M\0341\0272\0267c \0304\0221\0341\0273\0213nh: lint + unit. container = ch\0341\0272\0241y b\0341\0273\0231 test trong image Docker (c\0303\0263 ffmpeg).
+  fmt                 \0304\0220\0341\0273\0213nh d\0341\0272\0241ng m\0303\0243 Python (black) v\0303\0240 s\0341\0273\0255a l\0341\0273\0227i lint an to\0303\0240n (ruff); c\0341\0272\0247n: pip install -r requirements-dev.txt
   version
 
-Chi tiết: README.md và docs/COMMANDS.md
+Chi ti\0341\0272\0277t: README.md v\0303\0240 docs/COMMANDS.md
 HELP
+)"
 }
 
 cmd="${1:-help}"; [ $# -gt 0 ] && shift
@@ -58,7 +59,7 @@ svc_restart() { # svc_restart worker|n8n|agent
   case "$1" in
     worker|n8n) compose restart "$1" ;;
     agent) bash scripts/agent.sh restart ;;
-    *) fail "Không có dịch vụ '$1' (worker, n8n hoặc agent)" ;;
+    *) fail "Kh"$'\303\264'"ng c"$'\303\263'" d"$'\341\273\213'"ch v"$'\341\273\245'" '$1' (worker, n8n ho"$'\341\272\267'"c agent)" ;;
   esac
 }
 
@@ -66,26 +67,26 @@ case "$cmd" in
   help|-h|--help) usage ;;
   version|--version) cat VERSION ;;
   install) exec bash scripts/install.sh "$@" ;;
-  up) compose_up; info "Bảng điều khiển: http://localhost:$(worker_port) · n8n: http://localhost:$(n8n_port)" ;;
+  up) compose_up; info "B"$'\341\272\243'"ng "$'\304\221'"i"$'\341\273\201'"u khi"$'\341\273\203'"n: http://localhost:$(worker_port) · n8n: http://localhost:$(n8n_port)" ;;
   down) need_project; compose down ;;
   restart)
     need_project
     if [ $# -eq 0 ]; then compose restart; bash scripts/agent.sh restart || true; else svc_restart "$1"; fi ;;
   build)
     need_docker
-    case "${1:-}" in "") compose build worker ;; --no-cache) compose build --no-cache worker ;; *) fail "Tham số lạ: $1" ;; esac ;;
+    case "${1:-}" in "") compose build worker ;; --no-cache) compose build --no-cache worker ;; *) fail "Tham s"$'\341\273\221'" l"$'\341\272\241'": $1" ;; esac ;;
   update)
     need_project
-    say "Sinh lại workflow từ mã"; python3 n8n/build.py
-    say "Build và khởi động lại container"; compose_up
+    say "Sinh l"$'\341\272\241'"i workflow t"$'\341\273\253'" m"$'\303\243'""; python3 n8n/build.py
+    say "Build v"$'\303\240'" kh"$'\341\273\237'"i "$'\304\221'""$'\341\273\231'"ng l"$'\341\272\241'"i container"; compose_up
     # every rebuild leaves the previous image of THIS project untagged (~570 MB each): remove those, and only those (by label)
     docker image prune -f --filter "label=org.opencontainers.image.title=trendvn-worker" >/dev/null 2>&1 || true
     # ...and the images of earlier RELEASES of this project (tagged with their old version): docker refuses to remove one a container still uses
     docker images --filter "label=org.opencontainers.image.title=trendvn-worker" --format '{{.Repository}}:{{.Tag}}' 2>/dev/null \
       | while read -r old_image; do [ "$old_image" = "trendvn/worker:$TRENDVN_VERSION" ] || docker rmi "$old_image" >/dev/null 2>&1 || true; done
-    say "Nạp workflow vào n8n"; python3 n8n/manage.py import
-    say "Cập nhật gói Python của agent"; bash scripts/agent.sh venv
-    say "Cài lại và khởi động lại agent"; bash scripts/agent.sh refresh || warn "agent chưa khởi động được (xem ./trendvn agent logs)"
+    say "N"$'\341\272\241'"p workflow v"$'\303\240'"o n8n"; python3 n8n/manage.py import
+    say "C"$'\341\272\255'"p nh"$'\341\272\255'"t g"$'\303\263'"i Python c"$'\341\273\247'"a agent"; bash scripts/agent.sh venv
+    say "C"$'\303\240'"i l"$'\341\272\241'"i v"$'\303\240'" kh"$'\341\273\237'"i "$'\304\221'""$'\341\273\231'"ng l"$'\341\272\241'"i agent"; bash scripts/agent.sh refresh || warn "agent ch"$'\306\260'"a kh"$'\341\273\237'"i "$'\304\221'""$'\341\273\231'"ng "$'\304\221'""$'\306\260'""$'\341\273\243'"c (xem ./trendvn agent logs)"
     python3 scripts/doctor.py || true ;;
   status)
     need_env; need_docker
@@ -95,7 +96,7 @@ case "$cmd" in
     echo
     python3 n8n/manage.py status || true
     echo
-    info "Bảng điều khiển: http://localhost:$(worker_port) · n8n: http://localhost:$(n8n_port)" ;;
+    info "B"$'\341\272\243'"ng "$'\304\221'"i"$'\341\273\201'"u khi"$'\341\273\203'"n: http://localhost:$(worker_port) · n8n: http://localhost:$(n8n_port)" ;;
   doctor) exec python3 scripts/doctor.py "$@" ;;
   open)
     need_env
@@ -107,9 +108,9 @@ case "$cmd" in
     while [ $# -gt 0 ]; do
       case "$1" in
         -f|--follow) follow="-f" ;;
-        -n|--tail) shift; lines="${1:-}"; case "$lines" in ''|*[!0-9]*) fail "-n cần một số" ;; esac ;;
+        -n|--tail) shift; lines="${1:-}"; case "$lines" in ''|*[!0-9]*) fail "-n c"$'\341\272\247'"n m"$'\341\273\231'"t s"$'\341\273\221'"" ;; esac ;;
         worker|n8n|agent|all) svc="$1" ;;
-        *) fail "Không hiểu '$1'. Dùng: ./trendvn logs [worker|n8n|agent|all] [-f] [-n SỐ]" ;;
+        *) fail "Kh"$'\303\264'"ng hi"$'\341\273\203'"u '$1'. D"$'\303\271'"ng: ./trendvn logs [worker|n8n|agent|all] [-f] [-n S"$'\341\273\220'"]" ;;
       esac; shift
     done
     case "$svc" in
@@ -123,16 +124,16 @@ case "$cmd" in
       build) exec python3 n8n/build.py "$@" ;;
       import|activate|deactivate) need_project; exec python3 n8n/manage.py "$sub" "$@" ;;
       status|export) need_env; need_docker; exec python3 n8n/manage.py "$sub" "$@" ;;
-      *) echo "Dùng: ./trendvn n8n build|import|activate|deactivate|status|export"; exit 2 ;;
+      *) echo "D"$'\303\271'"ng: ./trendvn n8n build|import|activate|deactivate|status|export"; exit 2 ;;
     esac ;;
   agent) exec bash scripts/agent.sh "$@" ;;
   tiktok)
     sub="${1:-}"; [ $# -gt 0 ] && shift
     case "$sub" in
       login|trust|status|dry-run|verify|stats)
-        need_env; [ -x .venv/bin/python ] || fail "Chưa có môi trường Python cho agent. Chạy: ./trendvn install"
+        need_env; [ -x .venv/bin/python ] || fail "Ch"$'\306\260'"a c"$'\303\263'" m"$'\303\264'"i tr"$'\306\260'""$'\341\273\235'"ng Python cho agent. Ch"$'\341\272\241'"y: ./trendvn install"
         PYTHONPATH="$ROOT/services/agent/src" exec .venv/bin/python -m trendvn_agent.publisher "$sub" "$@" ;;
-      *) echo "Dùng: ./trendvn tiktok login|trust|dry-run|status|verify|stats"; exit 2 ;;
+      *) echo "D"$'\303\271'"ng: ./trendvn tiktok login|trust|dry-run|status|verify|stats"; exit 2 ;;
     esac ;;
   backup) exec bash scripts/backup.sh "$@" ;;
   restore) exec bash scripts/restore.sh "$@" ;;
@@ -141,5 +142,5 @@ case "$cmd" in
   migrate) exec bash scripts/migrate.sh "$@" ;;
   test) exec bash scripts/test.sh "$@" ;;
   fmt) exec bash scripts/fmt.sh ;;
-  *) echo "Không có lệnh '$cmd'."; echo; usage; exit 2 ;;
+  *) echo "Kh"$'\303\264'"ng c"$'\303\263'" l"$'\341\273\207'"nh '$cmd'."; echo; usage; exit 2 ;;
 esac

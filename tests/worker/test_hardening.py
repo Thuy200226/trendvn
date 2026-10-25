@@ -401,7 +401,7 @@ class ModelOutputGateTests(unittest.TestCase):
         self.assertIn("MAX_TOKENS", str(caught.exception))
         from trendvn_worker.ui.labels import vi_reason
 
-        self.assertIn("quá dài", vi_reason(str(caught.exception)))  # and the owner is told in plain words
+        self.assertIn("qu\u00e1 d\u00e0i", vi_reason(str(caught.exception)))  # and the owner is told in plain words
 
     def test_the_schema_caps_free_text_and_has_no_unused_free_text_field(self):
         from trendvn_worker.ai.prompts import ANALYSIS_SCHEMA, analysis_prompt
@@ -431,9 +431,9 @@ class ModelOutputGateTests(unittest.TestCase):
             ANALYSIS,
             kind="dialogue",
             segments=[
-                {"start": 0, "end": 3, "vi": "Xem tại https://evil.test/x hoặc nhắn @shop 0912 345 678 😂"},
+                {"start": 0, "end": 3, "vi": "Xem t\u1ea1i https://evil.test/x ho\u1eb7c nh\u1eafn @shop 0912 345 678 😂"},
                 {"start": 3, "end": 5, "vi": "😂😂"},  # only an emoji: dropped, the video is still fine
-                {"start": 5, "end": 8, "vi": "Giá 1.000.000 đồng {\\an8}thôi\u202e"},
+                {"start": 5, "end": 8, "vi": "Gi\u00e1 1.000.000 \u0111\u1ed3ng {\\an8}th\u00f4i\u202e"},
             ],
         )
         validate_analysis(a, 10, strict=True)
@@ -450,7 +450,7 @@ ANALYSIS = {
     "confidence": 0.99,
     "topic": "music",
     "sensitive": False,
-    "caption_vi": "Giai điệu hay",
+    "caption_vi": "Giai \u0111i\u1ec7u hay",
     "segments": [],
     "hashtags": ["nhac"],
 }
@@ -460,30 +460,32 @@ class TextCleaningTests(unittest.TestCase):
     def test_contacts_links_and_invisible_characters_never_reach_a_caption(self):
         for dirty, expected_absent in (
             ("Xem https://evil.test/a ngay", "evil"),
-            ("ghé shop.vn/ao nhé", "shop"),
-            ("liên hệ 0912 345 678 nhé", "0912"),
+            ("gh\u00e9 shop.vn/ao nh\u00e9", "shop"),
+            ("li\u00ean h\u1ec7 0912 345 678 nh\u00e9", "0912"),
             ("zalo +84 912 345 678", "912"),
-            ("nhắn @my_shop nhé", "@"),
+            ("nh\u1eafn @my_shop nh\u00e9", "@"),
             ("mail a.b@example.com nha", "example"),
-            ("ẩn\u200b chữ\u202e xấu\ufeff", "\u200b"),
-            ("dòng 1\r\ndòng 2\x00", "\x00"),
+            ("\u1ea9n\u200b ch\u1eef\u202e x\u1ea5u\ufeff", "\u200b"),
+            ("d\u00f2ng 1\r\nd\u00f2ng 2\x00", "\x00"),
         ):
             cleaned = clean_caption(dirty)
             self.assertNotIn(expected_absent, cleaned, dirty)
             self.assertNotIn("  ", cleaned)
-        self.assertEqual(clean_caption("Hơn 1.000.000 lượt xem"), "Hơn 1.000.000 lượt xem")
-        self.assertEqual(clean_caption("Gia đình 👨\u200d👩\u200d👧"), "Gia đình 👨\u200d👩\u200d👧")  # emoji sequences keep their joiners
+        self.assertEqual(clean_caption("H\u01a1n 1.000.000 l\u01b0\u1ee3t xem"), "H\u01a1n 1.000.000 l\u01b0\u1ee3t xem")
+        self.assertEqual(
+            clean_caption("Gia \u0111\u00ecnh 👨\u200d👩\u200d👧"), "Gia \u0111\u00ecnh 👨\u200d👩\u200d👧"
+        )  # emoji sequences keep their joiners
 
     def test_subtitle_lines_get_no_emoji_and_no_ass_markup(self):
-        self.assertEqual(clean_subtitle("Hay quá 😍 {\\an8}ơi <b>nè</b>"), "Hay quá (an8)ơi nè")
+        self.assertEqual(clean_subtitle("Hay qu\u00e1 😍 {\\an8}\u01a1i <b>n\u00e8</b>"), "Hay qu\u00e1 (an8)\u01a1i n\u00e8")
 
     def test_a_caption_from_the_model_is_cleaned_and_always_has_enough_tags(self):
         c = build_caption(
             {
                 "kind": "dialogue",
                 "topic": "news",
-                "caption_vi": "SỐC! Xem https://x.test và @abc",
-                "hashtags": ["Hài Hước", "Hài hước", "#Đời Sống"],
+                "caption_vi": "S\u1ed0C! Xem https://x.test v\u00e0 @abc",
+                "hashtags": ["H\u00e0i H\u01b0\u1edbc", "H\u00e0i h\u01b0\u1edbc", "#\u0110\u1eddi S\u1ed1ng"],
             },
             "t",
         )
@@ -493,11 +495,19 @@ class TextCleaningTests(unittest.TestCase):
         self.assertGreaterEqual(len(tags), 3)
         self.assertLessEqual(len(tags), 5)
         self.assertEqual(len(tags), len(set(tags)))
-        self.assertTrue(all(t == t.lower() and t.isascii() for t in tags), tags)  # "Đời Sống" can never stay accented
+        self.assertTrue(all(t == t.lower() and t.isascii() for t in tags), tags)  # "Life" can never stay accented
         self.assertTrue(lint_caption(c)["ok"], lint_caption(c))
 
     def test_no_model_tags_still_gives_three_including_the_topic(self):
-        c = build_caption({"kind": "dialogue", "topic": "news", "caption_vi": "Một câu mô tả đầy đủ", "hashtags": []}, "t")
+        c = build_caption(
+            {
+                "kind": "dialogue",
+                "topic": "news",
+                "caption_vi": "M\u1ed9t c\u00e2u m\u00f4 t\u1ea3 \u0111\u1ea7y \u0111\u1ee7",
+                "hashtags": [],
+            },
+            "t",
+        )
         self.assertEqual(re.findall(r"#(\w+)", c), ["xuhuong", "tinnong", "viral"])
 
     def test_a_cut_caption_does_not_end_in_half_an_emoji(self):
@@ -511,17 +521,17 @@ class TextGateReviewTests(unittest.TestCase):
 
     def test_ordinary_numbers_and_missing_spaces_are_not_mistaken_for_contacts(self):
         for keep in (
-            "Ngày 01.10.2026",
+            "Ng\u00e0y 01.10.2026",
             "01-10-2026",
-            "Mở cửa 07.00-22.00",
-            "Điểm 09.5 10.0 08.5",
+            "M\u1edf c\u1eeda 07.00-22.00",
+            "\u0110i\u1ec3m 09.5 10.0 08.5",
             "05 06 07 08 09 10",
-            "Hay quá.Top 1",  # a missing space after a full stop is not a web address
-            "Mr.Co nói",
-            "Anh ấy nói.Co",
-            "Tập (1) 2.5",
-            "năm (2026) tháng 10",
-            "Giá 20.000.000đ",
+            "Hay qu\u00e1.Top 1",  # a missing space after a full stop is not a web address
+            "Mr.Co n\u00f3i",
+            "Anh \u1ea5y n\u00f3i.Co",
+            "T\u1eadp (1) 2.5",
+            "n\u0103m (2026) th\u00e1ng 10",
+            "Gi\u00e1 20.000.000\u0111",
             "2 < 3 > 1",
         ):
             self.assertEqual(clean_caption(keep), keep, keep)
@@ -538,25 +548,27 @@ class TextGateReviewTests(unittest.TestCase):
             "1900 1234",
             "+1 555 123 4567",
         ):
-            self.assertEqual(clean_caption("gọi " + number + " nhé"), "gọi nhé", number)
+            self.assertEqual(clean_caption("g\u1ecdi " + number + " nh\u00e9"), "g\u1ecdi nh\u00e9", number)
 
     def test_links_in_every_disguise_go_including_glued_and_split_ones(self):
         for link in ("youtu.be/abc", "linktr.ee/x", "foo.dev", "foo.ai", "evil.com", "www.evil.com/x", "HTTPS://EVIL.TEST/x"):
             self.assertEqual(clean_caption("xem " + link + " nha"), "xem nha", link)
-        self.assertNotIn("evil", clean_caption("Xem tại evil.comhttp://x hay"))  # glued: what is left of one link must not become another
+        self.assertNotIn(
+            "evil", clean_caption("Xem t\u1ea1i evil.comhttp://x hay")
+        )  # glued: what is left of one link must not become another
         self.assertNotIn("evil", clean_subtitle("xem evil.c\\om nha"))  # a backslash used to be removed only after the check
 
     def test_filler_characters_do_not_make_an_empty_caption_look_filled(self):
         for blank in ("\u3164", "\u2800", "\u034f", "\u115f\u1160", "\u200b\u200c\ufeff", "\x85\x9b"):
             self.assertEqual(clean_caption(blank * 5), "", repr(blank))
         self.assertEqual(clean_caption("a\ud800b"), "ab")  # a lone surrogate is invalid text: dropped, never a later UnicodeEncodeError
-        caption = build_caption({"kind": "dialogue", "caption_vi": "\u3164\u3164", "hashtags": []}, "Tiêu đề nguồn")
-        self.assertTrue(caption.startswith("Tiêu đề nguồn"))  # a "blank" caption falls back to the source title
+        caption = build_caption({"kind": "dialogue", "caption_vi": "\u3164\u3164", "hashtags": []}, "Ti\u00eau \u0111\u1ec1 ngu\u1ed3n")
+        self.assertTrue(caption.startswith("Ti\u00eau \u0111\u1ec1 ngu\u1ed3n"))  # a "blank" caption falls back to the source title
 
     def test_subtitles_lose_symbols_their_font_cannot_draw_and_never_end_in_a_space(self):
-        self.assertEqual(clean_subtitle("Hay (c) (r)\u00a9\u00ae\u2122 ▶ ◽ → 😂 quá {"), "Hay (c) (r) quá (")
-        self.assertEqual(clean_subtitle("quá 😂"), "quá")
-        self.assertEqual(clean_subtitle("Giá 1.000.000đ, 50%"), "Giá 1.000.000đ, 50%")  # ordinary characters are kept
+        self.assertEqual(clean_subtitle("Hay (c) (r)\u00a9\u00ae\u2122 ▶ ◽ → 😂 qu\u00e1 {"), "Hay (c) (r) qu\u00e1 (")
+        self.assertEqual(clean_subtitle("qu\u00e1 😂"), "qu\u00e1")
+        self.assertEqual(clean_subtitle("Gi\u00e1 1.000.000\u0111, 50%"), "Gi\u00e1 1.000.000\u0111, 50%")  # ordinary characters are kept
 
     def test_hostile_long_strings_are_cleaned_in_milliseconds(self):
         for evil in (

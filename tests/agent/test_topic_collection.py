@@ -507,7 +507,7 @@ class NothingReturnedTests(unittest.TestCase):
             result = run.run_platform(None, "douyin", {}, False, False, 3)
         self.assertEqual(result["status"], "error")
         self.assertNotIn("CAPTCHA", result["reason"])
-        self.assertNotIn("xác minh", result["reason"])
+        self.assertNotIn("x\u00e1c minh", result["reason"])
         with mock.patch.object(run, "SOURCES", {"douyin": {"scan": lambda ctx, topics: (_ for _ in ()).throw(capture.Blocked("wall"))}}):
             self.assertIn("CAPTCHA", run.run_platform(None, "douyin", {}, False, False, 3)["reason"])  # a real wall still says so
 
@@ -523,7 +523,9 @@ class LoginWindowTests(unittest.TestCase):
         context = mock.MagicMock()
         context.__enter__.return_value = ctx
         context.__exit__.return_value = False
-        answers = iter(["Hồ sơ đang đăng nhập @khac", "Hồ sơ đang đăng nhập @khac", None])
+        answers = iter(
+            ["H\u1ed3 s\u01a1 \u0111ang \u0111\u0103ng nh\u1eadp @khac", "H\u1ed3 s\u01a1 \u0111ang \u0111\u0103ng nh\u1eadp @khac", None]
+        )
         reported = []
         with mock.patch.multiple(
             session,

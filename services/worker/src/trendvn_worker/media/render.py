@@ -230,17 +230,19 @@ def qc(out, source_has_audio):
         info["peak"] = loudness["peak"]
     problems = []
     if v.get("codec_name") != "h264" or v.get("pix_fmt") != "yuv420p":
-        problems.append("Định dạng video không phải H.264 yuv420p")
+        problems.append("\u0110\u1ecbnh d\u1ea1ng video kh\u00f4ng ph\u1ea3i H.264 yuv420p")
     if v["width"] % 2 or v["height"] % 2:
-        problems.append("Kích thước hình lẻ")
+        problems.append("K\u00edch th\u01b0\u1edbc h\u00ecnh l\u1ebb")
     if source_has_audio and not audio:
-        problems.append("Video gốc có tiếng nhưng bản dựng mất tiếng")
+        problems.append("Video g\u1ed1c c\u00f3 ti\u1ebfng nh\u01b0ng b\u1ea3n d\u1ef1ng m\u1ea5t ti\u1ebfng")
     if info["size"] < 20_000:
-        problems.append("File dựng nhỏ bất thường")
+        problems.append("File d\u1ef1ng nh\u1ecf b\u1ea5t th\u01b0\u1eddng")
     if min(v["width"], v["height"]) < 480:
-        info["warning"] = "Độ phân giải thấp (%dx%d)" % (v["width"], v["height"])
+        info["warning"] = "\u0110\u1ed9 ph\u00e2n gi\u1ea3i th\u1ea5p (%dx%d)" % (v["width"], v["height"])
     elif loudness and loudness["lufs"] < QUIET_LUFS:
-        info["warning"] = "Âm thanh rất nhỏ hoặc im lặng (%.0f LUFS)" % loudness["lufs"]  # a silent source is legitimate, so only a warning
+        info["warning"] = (
+            "\u00c2m thanh r\u1ea5t nh\u1ecf ho\u1eb7c im l\u1eb7ng (%.0f LUFS)" % loudness["lufs"]
+        )  # a silent source is legitimate, so only a warning
     return info, problems
 
 

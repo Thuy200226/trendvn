@@ -12,7 +12,7 @@ TLDS = "com|net|org|vn|cn|io|me|ly|tv|co|app|link|xyz|top|site|shop|club|info|bi
 # A link, a handle, an e-mail address or a phone number inside a caption or a subtitle is advertising or an injection: never posted.
 # Every pattern starts only where a token starts (lookbehind) and has bounded or single-pass repetition, so a hostile string cannot make
 # them quadratic (a 32,000-character "a-a-a-..." took 19 s with the first version). A bare domain must be plain ASCII with a lowercase
-# TLD, so "quá.Top" and "Mr.Co" (a missing space after a full stop) are left alone.
+# TLD, so "too.Top" and "Mr.Co" (a missing space after a full stop) are left alone.
 URL = re.compile(
     r"(?i:https?://)\S+|(?<![\w@.-])(?:(?i:www\.)\S+|[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.(?:%s)\b(?:/\S*)?)" % TLDS,
 )

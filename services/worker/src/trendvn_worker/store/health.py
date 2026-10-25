@@ -46,11 +46,12 @@ class HealthMixin:
         for account_id in signed_out:
             self._announce_sign_out(account_id)
         if not ok:
-            names = {"discovery": "Bộ thu thập", "publisher": "Trình đăng TikTok"}
+            names = {"discovery": "B\u1ed9 thu th\u1eadp", "publisher": "Tr\u00ecnh \u0111\u0103ng TikTok"}
             text = detail.get("text") if isinstance(detail, dict) and detail.get("text") else detail
             self.emit(
                 "component",
-                "🔌 %s cần chú ý: %s" % (names[component], text if isinstance(text, str) else json.dumps(text, ensure_ascii=False)[:300]),
+                "🔌 %s c\u1ea7n ch\u00fa \u00fd: %s"
+                % (names[component], text if isinstance(text, str) else json.dumps(text, ensure_ascii=False)[:300]),
                 component,
             )
 
@@ -85,7 +86,7 @@ class HealthMixin:
         if account:
             self.emit(
                 "urgent",
-                "🔑 TikTok @%s chưa đăng nhập hoặc đã bị đăng xuất. Lịch tạm bỏ qua tài khoản này; các tài khoản khác vẫn đăng. Đăng nhập: ./trendvn tiktok login%s"
+                "🔑 TikTok @%s ch\u01b0a \u0111\u0103ng nh\u1eadp ho\u1eb7c \u0111\u00e3 b\u1ecb \u0111\u0103ng xu\u1ea5t. L\u1ecbch t\u1ea1m b\u1ecf qua t\u00e0i kho\u1ea3n n\u00e0y; c\u00e1c t\u00e0i kho\u1ea3n kh\u00e1c v\u1eabn \u0111\u0103ng. \u0110\u0103ng nh\u1eadp: ./trendvn tiktok login%s"
                 % (account["username"], account_flag(account_id)),
                 "login:" + account_id,
             )
@@ -115,7 +116,7 @@ class HealthMixin:
         """The agent (or the `tiktok login` command) found the browser signed in, or not, to one account."""
         account = self.account(account_id)
         if not account:
-            raise ValueError("Không có tài khoản này")
+            raise ValueError("Kh\u00f4ng c\u00f3 t\u00e0i kho\u1ea3n n\u00e0y")
         with self.transaction() as db:
             row = db.execute("SELECT value FROM settings WHERE key='hb_publisher'").fetchone()
             value = json.loads(row["value"]) if row else {"at": time.time(), "ok": True, "detail": None}

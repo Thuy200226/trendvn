@@ -1,79 +1,79 @@
 # API
 
-Mọi lời gọi `POST` (trừ các form của bảng điều khiển) dùng `Authorization: Bearer <TRENDVN_TOKEN>` và JSON. Phản hồi luôn là JSON; lỗi kiểm tra trả `400` kèm `{"error": "..."}`.
+All `POST` calls (except console forms) use `Authorization: Bearer <TRENDVN_TOKEN>` and JSON. The response is always JSON; Check error returns `400` with `{"error": "..."}`.
 
 ## Worker — `http://127.0.0.1:5681`
 
-### Đọc
+### Read
 
-| Phương thức, đường dẫn | Xác thực | Trả về |
+| Method, path | Authentication | Return |
 |---|---|---|
-| `GET /health` | không | `{ok, project, version}` |
-| `GET /api/status` | token hoặc bảng điều khiển nội bộ | Trạng thái gọn: `counts`, `jobs` (100 mới nhất), `discovery`, `publisher`, `published_today`, `daily_limit` (tổng giới hạn của các tài khoản đang bật), `accounts` (từng tài khoản: `id, username, topics, enabled, daily_limit, published_today, logged_in`...), `wanted_topics` (chủ đề có tài khoản nhận: collector tìm đúng các chủ đề này), `thresholds`, `weights`, `unresolved_publishes`... Collector và n8n dùng cái này |
-| `GET /api/dashboard` | như trên | Toàn bộ dữ liệu bảng điều khiển: `review`, `approval`, `pipeline`, `performance`, `events`, `settings`, `by_platform`... |
-| `GET /` | chỉ `Host` cho phép | Bảng điều khiển HTML |
-| `GET /media/<id>/final`, `/source`, `/media/voice-sample` | chỉ `Host` cho phép | Video/âm thanh, hỗ trợ `Range` |
+| `GET /health` | no | `{ok, project, version}` |
+| `GET /api/status` | token or internal control board | Compact status: `counts`, `jobs` (latest 100), `discovery`, `publisher`, `published_today`, `daily_limit` (total limit of active accounts), `accounts` (each account: `id, username, topics, enabled, daily_limit, published_today, logged_in`...), `wanted_topics` (topic with receiving account: collector finds these topics correctly), `thresholds`, `weights`, `unresolved_publishes`... Collector and n8n use this |
+| `GET /api/dashboard` | as above | Complete console data: `review`, `approval`, `pipeline`, `performance`, `events`, `settings`, `by_platform`... |
+| `GET /` | only `Host` enables | HTML console |
+| `GET /media/<id>/final`, `/source`, `/media/voice-sample` | only `Host` allows | Video/audio, supports `Range` |
 
 ### Ghi (token)
 
-| Đường dẫn | Nội dung | Ghi chú |
+| Path | Content | Note |
 |---|---|---|
-| `POST /api/ingest` | `{platform, stream, observed_at, topic?, items:[{source_id, url, country, title, rank, views, evidence_url, meta}]}` | ≤ 100 mục; `topic` (không bắt buộc) là danh mục của chính luồng đó (tab Douyin, chip TikTok), một mã trong thực đơn chủ đề; từ đó và từ từ khóa trong tiêu đề worker suy ra gợi ý chủ đề của từng video. Lần đầu của mỗi luồng là baseline. Trả `{baseline, new, existing, candidates:[{id, source_id}]}` |
-| `POST /api/media/pending` | `{limit, platform?}` | Ứng viên chưa có video, điểm cao nhất trước (lọc theo nền tảng nếu có) |
-| `POST /api/attach` | `{id, filename}` | Gắn file đã tải trong `data/worker/inbox`; trả `queued` hoặc `duplicate` |
-| `POST /api/media/failed` | `{id, reason}` | Ghi tải lỗi (lần thứ 3 thành `failed`) |
-| `POST /api/process` | `{max}` (1–8) | Xử lý tối đa `max` video liên tiếp; dừng khi `disabled`, `blocked`, `idle`, `rate_limited` |
-| `POST /api/housekeeping` | `{}` | Giải phóng việc treo (xử lý quá 30 phút xếp lại hàng đợi, đăng quá 45 phút chờ xác nhận) và dọn đĩa (`pruned`: hết hạn, tệp, lịch sử, tệp mồ côi; xem ARCHITECTURE mục 5) |
-| `POST /api/heartbeat` | `{component: discovery\|publisher, ok, detail}` | Cập nhật tình trạng; `detail` dạng object được **gộp** với lần trước |
-| `POST /api/publish/claim` | `{}` | `{status: claimed\|disabled\|blocked\|wait\|limit\|idle, ...}`; khi `claimed` kèm `id, lease, caption, output_file, output_hash, account` (mã tài khoản, agent dùng để mở đúng hồ sơ Chrome), `target` (tên TikTok), `visibility`. Lịch tự động thử lần lượt các tài khoản (tài khoản đăng lâu nhất trước), mỗi tài khoản theo giờ vàng, giới hạn ngày và giãn cách riêng, và chọn video điểm cao nhất thuộc chủ đề tài khoản đó nhận |
-| `POST /api/publish/finish` | `{id, lease, outcome: published\|failed\|unknown\|duplicate, url, reason}` | `lease` phải đúng; `url` phải là địa chỉ `*.tiktok.com` |
-| `POST /api/publish/peek` | `{}` | Bài kế tiếp (chạy thử, không đổi trạng thái) |
-| `POST /api/publish/unresolved`, `/api/publish/resolve` | `{}` / `{id, outcome: published\|failed, url}` | Bài chưa xác nhận |
-| `POST /api/stats` | `{items:[{video_id, views, likes, comments, shares}]}` | Khớp bài đã đăng theo `/video/<id>` |
-| `POST /api/publisher/challenge` | `{active: bool, account?: string}` | Bật/tắt trạng thái "TikTok đang đòi xác minh": bật thì `publish/claim` trả `blocked` cho tới khi tắt. `account` là mã tài khoản có hồ sơ gặp CAPTCHA: thông báo và lệnh gợi ý nêu đúng `--account`, và tắt cho một tài khoản khác thì không gỡ chặn (không gửi `account` thì tắt được bằng mọi tài khoản) |
+| `POST /api/ingest` | `{platform, stream, observed_at, topic?, items:[{source_id, url, country, title, rank, views, evidence_url, meta}]}` | ≤ 100 entries; `topic` (optional) is the category of the stream itself (Douyin tab, TikTok chip), a code in the theme menu; From that and from the keywords in the worker title, the topic suggestion of each video is deduced. The first pass of each flow is the baseline. Return `{baseline, new, existing, candidates:[{id, source_id}]}` |
+| `POST /api/media/pending` | `{limit, platform?}` | Candidates without a video, highest score first (filter by platform if available) |
+| `POST /api/attach` | `{id, filename}` | Mount the downloaded file in `data/worker/inbox`; Pay `queued` or `duplicate` |
+| `POST /api/media/failed` | `{id, reason}` | Load write error (3rd time to `failed`) |
+| `POST /api/process` | `{max}` (1–8) | Maximum processing `max` consecutive videos; stop when `disabled`, `blocked`, `idle`, `rate_limited` |
+| `POST /api/housekeeping` | `{}` | Release hangs (process over 30 minutes requeue, post over 45 minutes waiting for confirmation) and disk cleanup (`pruned`: expired, files, history, orphan files; see ARCHITECTURE section 5) |
+| `POST /api/heartbeat` | `{component: discovery\|publisher, ok, detail}` | Update status; `detail` object form **merged** with previous |
+| `POST /api/publish/claim` | `{}` | `{status: claimed\|disabled\|blocked\|wait\|limit\|idle, ...}`; when `claimed` comes with `id, lease, caption, output_file, output_hash, account` (account code, agent used to open the correct Chrome profile), `target` (TikTok name), `visibility`. The schedule automatically tries the accounts in turn (the account with the longest posting first), each account according to its golden hour, with its own day limit and spacing, and selects the highest scoring video on that account's topic to receive |
+| `POST /api/publish/finish` | `{id, lease, outcome: published\|failed\|unknown\|duplicate, url, reason}` | `lease` must be true; `url` should be address `*.tiktok.com` |
+| `POST /api/publish/peek` | `{}` | Next article (test run, no change in status) |
+| `POST /api/publish/unresolved`, `/api/publish/resolve` | `{}` / `{id, outcome: published\|failed, url}` | Unconfirmed post |
+| `POST /api/stats` | `{items:[{video_id, views, likes, comments, shares}]}` | Match posted by `/video/<id>` |
+| `POST /api/publisher/challenge` | `{active: bool, account?: string}` | Turn on/off the status "TikTok is asking for verification": when turned on, `publish/claim` returns `blocked` until turned off. `account` is the account code that has a CAPTCHA profile: the message and suggested command correctly state `--account`, and turning it off for another account will not unblock it (if you don't send `account`, you can turn it off for any account) |
 | `POST /api/accounts` | `{}` | `{accounts, wanted_topics}` |
-| `POST /api/accounts/add` | `{username, topics:[...], id?, label?, enabled?, daily_limit?, min_gap?, windows?, visibility?}` | Thêm tài khoản (tối đa 10). Giới hạn bỏ trống/`null` = dùng cài đặt chung |
-| `POST /api/accounts/update` | `{id, ...các trường như trên}` | Sửa; không cho tắt tài khoản cuối cùng đang bật |
-| `POST /api/accounts/login` | `{id, ok: bool}` | Agent báo trình duyệt có đang đăng nhập đúng tài khoản này không (lịch tự động bỏ qua tài khoản đã đăng xuất) |
-| `POST /api/accounts/delete` | `{id}` | Xóa; không xóa tài khoản cuối cùng hoặc tài khoản đang có bài chưa xác nhận |
-| `POST /api/settings` | Một phần của cài đặt (xem `validate_settings`) | Trả `{changed:[...]}` |
-| `POST /api/notify` | `{kind:"summary"}` hoặc `{kind:"text", text}` | Gửi qua các kênh đã cấu hình; trả kênh nào thành công |
+| `POST /api/accounts/add` | `{username, topics:[...], id?, label?, enabled?, daily_limit?, min_gap?, windows?, visibility?}` | Add account (maximum 10). Limit blank/`null` = use general setting |
+| `POST /api/accounts/update` | `{id, ...c\u00e1c tr\u01b0\u1eddng nh\u01b0 tr\u00ean}` | Edit; Don't disable the last active account |
+| `POST /api/accounts/login` | `{id, ok: bool}` | Agent tells the browser if the correct account is logged in (the calendar automatically ignores logged out accounts) |
+| `POST /api/accounts/delete` | `{id}` | Delete; Do not delete the last account or account with unconfirmed posts |
+| `POST /api/settings` | Part of the installation (see `validate_settings`) | Return `{changed:[...]}` |
+| `POST /api/notify` | `{kind:"summary"}` or `{kind:"text", text}` | Send via configured channels; which channel is successful |
 
-### Tác vụ nền (nút trên bảng điều khiển)
+### Background task (control panel button)
 
-| Đường dẫn | Nội dung | Ghi chú |
+| Path | Content | Note |
 |---|---|---|
-| `POST /api/tasks/start` (token) | `{kind: update\|collect\|process\|publish\|dryrun\|stats, job_id?}` | Trả `{id}`; `409`-tương-đương là lỗi 400 "Đang có một việc dùng trình duyệt..." khi trùng khóa |
-| `GET /api/tasks` (token hoặc giao diện nội bộ) | | `{running, tasks:[{id, kind, state, steps, result, error}]}` |
-| `GET /fragment/tasks` | | HTML bảng tiến độ (giao diện dùng để cập nhật trực tiếp) |
-| `POST /api/publish/claim`, `/api/publish/peek` | `{job_id?}` | Có `job_id`: nhận/xem đúng video đó (đăng thủ công: bỏ qua công tắc, giờ vàng, giới hạn, giãn cách; các chốt bảo vệ vẫn giữ) |
-| `POST /api/publish/finish` | `outcome: published\|failed\|deferred\|unknown\|duplicate` | `failed` được đếm (3 lần thì chuyển Cần xem, nghỉ 1 giờ giữa các lần); `deferred` không đếm (TikTok đòi xác minh, trùng mô tả khi đăng tay) |
-| `GET /media/<id>/final\|source\|poster`, `/media/shot/<shot_*.png>` | | Video, ảnh xem trước, ảnh chụp lần xem thử |
+| `POST /api/tasks/start` (token) | `{kind: update\|collect\|process\|publish\|dryrun\|stats, job_id?}` | Pay `{id}`; `409`-equivalent to error 400 "There is a browser session in progress..." when duplicate key |
+| `GET /api/tasks` (token or internal interface) | | `{running, tasks:[{id, kind, state, steps, result, error}]}` |
+| `GET /fragment/tasks` | | Progress table HTML (interface for live updates) |
+| `POST /api/publish/claim`, `/api/publish/peek` | `{job_id?}` | Yes `job_id`: receive/watch the correct video (post manually: ignore switches, golden hours, limits, spacing; security guards remain) |
+| `POST /api/publish/finish` | `outcome: published\|failed\|deferred\|unknown\|duplicate` | `failed` is counted (3 times, switch to Watch, rest 1 hour between times); `deferred` does not count (TikTok requires verification, duplicate description when posting) |
+| `GET /media/<id>/final\|source\|poster`, `/media/shot/<shot_*.png>` | | Video, preview photo, preview photo |
 
-## Agent — `http://<TRENDVN_AGENT_BIND>:5682` (mặc định `172.20.0.1`)
+## Agent — `http://<TRENDVN_AGENT_BIND>:5682` (default `172.20.0.1`)
 
-Chỉ một việc trình duyệt tại một thời điểm; đang bận trả `409`.
+Only one browser at a time; busy paying `409`.
 
-| Đường dẫn | Nội dung | Việc làm |
+| Link | Content | Job |
 |---|---|---|
-| `GET /health` | không xác thực | `{ok, busy}` |
-| `POST /api/collect` | `{platforms?: [...], download?: bool}` | Quét, chấm điểm, nhập vào worker, tải video mới. Trả báo cáo theo nguồn |
-| `POST /api/publish` | `{job_id?}` | Xin worker `claim` (có `job_id` = đăng đúng video đó theo nút bấm); nếu được thì mở Chrome đăng, xác nhận trên hồ sơ, báo `finish`. Không bao giờ ném lỗi: lỗi trước khi bấm Đăng là `failed`, sau khi bấm là `unknown` |
-| `POST /api/dry-run` | `{job_id?}` | Tải video (kế tiếp hoặc được chọn) lên TikTok Studio, điền mô tả, chụp ảnh vào `data/worker/exports/shot_*.png` rồi dừng, **không bấm Đăng** |
-| `POST /api/session` | `{}` | Kiểm tra đã đăng nhập TikTok chưa, gửi heartbeat |
-| `POST /api/verify` | `{}` | Đối chiếu bài "chưa xác nhận" với hồ sơ công khai |
-| `POST /api/stats` | `{}` | Đọc lượt xem/tim từ hồ sơ công khai, gửi worker |
+| `GET /health` | not authenticated | `{ok, busy}` |
+| `POST /api/collect` | `{platforms?: [...], download?: bool}` | Scan, score, import into worker, download new videos. Return report by source |
+| `POST /api/publish` | `{job_id?}` | Please worker `claim` (yes `job_id` = post that exact video according to the button); If possible, open Chrome to post, confirm on profile, report `finish`. Never throw errors: error before clicking Post is `failed`, after clicking is `unknown` |
+| `POST /api/dry-run` | `{job_id?}` | Upload video (next or selected) to TikTok Studio, fill in description, take photo in `data/worker/exports/shot_*.png` then stop, **don't click Post** |
+| `POST /api/session` | `{}` | Check if you are logged in to TikTok, send heartbeat |
+| `POST /api/verify` | `{}` | Check "unconfirmed" post with public profile |
+| `POST /api/stats` | `{}` | Read views/hearts from public profile, send worker |
 
-## Dòng lệnh
+## Command line
 
-| Lệnh | Tác dụng |
+| Command | Effect |
 |---|---|
-| `PYTHONPATH=services/agent/src .venv/bin/python -m trendvn_agent.collector [douyin kuaishou tiktok instagram]` | Quét thật và nhập vào worker |
-| `./trendvn tiktok login\|trust\|status\|dry-run\|verify\|stats` | Đăng nhập, giải xác minh một lần, kiểm tra phiên, chạy thử, đối chiếu, đọc lượt xem |
-| `./trendvn doctor` | Chẩn đoán |
-| `./trendvn n8n build && ./trendvn n8n import` | Sinh lại và nạp lại workflow |
+| `PYTHONPATH=services/agent/src .venv/bin/python -m trendvn_agent.collector [douyin kuaishou tiktok instagram]` | Real scan and import into worker |
+| `./trendvn tiktok login\|trust\|status\|dry-run\|verify\|stats` | Login, solve one-time verification, check session, test run, compare, read views |
+| `./trendvn doctor` | Diagnostics |
+| `./trendvn n8n build && ./trendvn n8n import` | Regenerate and reload workflow |
 
-## Ví dụ
+## Example
 
 ```bash
 TOKEN=$(grep '^TRENDVN_TOKEN=' .env | cut -d= -f2)

@@ -19,7 +19,10 @@ class SubtitleTests(unittest.TestCase):
     def test_long_sentence_is_split_not_rejected(self):
         from trendvn_worker.media.subtitles import ass_subtitles
 
-        seg = [{"start": 1.0, "end": 9.0, "vi": "Đây là một câu rất dài " * 8}, {"start": 9.5, "end": 11.0, "vi": "Ngắn thôi"}]
+        seg = [
+            {"start": 1.0, "end": 9.0, "vi": "\u0110\u00e2y l\u00e0 m\u1ed9t c\u00e2u r\u1ea5t d\u00e0i " * 8},
+            {"start": 9.5, "end": 11.0, "vi": "Ng\u1eafn th\u00f4i"},
+        ]
         with tempfile.TemporaryDirectory() as d:
             out = Path(d) / "a.ass"
             ass_subtitles(seg, out, 720, 1280)
@@ -46,7 +49,7 @@ class GeometryAndQualityTests(unittest.TestCase):
         self.assertFalse(geometry.layout(1080, 1350)["reframe"] is False)  # 4:5 goes on the canvas too
 
     def test_subtitles_sit_in_the_band_when_reframed(self):
-        seg = [{"start": 0.5, "end": 3.0, "vi": "Xin chào các bạn"}]
+        seg = [{"start": 0.5, "end": 3.0, "vi": "Xin ch\u00e0o c\u00e1c b\u1ea1n"}]
         with tempfile.TemporaryDirectory() as d:
             a, b = Path(d) / "a.ass", Path(d) / "b.ass"
             subtitle_mod.ass_subtitles(seg, a, 1080, 1920)
@@ -72,7 +75,10 @@ class GeometryAndQualityTests(unittest.TestCase):
                 subprocess.run(cmd, check=True)
                 return out
 
-            analysis = {"kind": "dialogue", "segments": [{"start": 0.5, "end": 3.0, "vi": "Xin chào các bạn, đây là bản thử"}]}
+            analysis = {
+                "kind": "dialogue",
+                "segments": [{"start": 0.5, "end": 3.0, "vi": "Xin ch\u00e0o c\u00e1c b\u1ea1n, \u0111\u00e2y l\u00e0 b\u1ea3n th\u1eed"}],
+            }
             for name, size, audio, rate, expect_wh in (
                 ("p.mp4", "720x1280", True, 30, (720, 1280)),
                 ("w.mp4", "1920x1080", True, 60, (1080, 1920)),
@@ -124,7 +130,7 @@ class HardSubtitleRenderTests(unittest.TestCase):
     def render(self, src, tag, route="vietsub", band=None, segments=((0.0, 3.0),), mask="auto"):
         folder = self.dir / tag
         folder.mkdir()
-        analysis = {"kind": "dialogue", "segments": [{"start": a, "end": b, "vi": "Xin chào"} for a, b in segments]}
+        analysis = {"kind": "dialogue", "segments": [{"start": a, "end": b, "vi": "Xin ch\u00e0o"} for a, b in segments]}
         if band:
             analysis["hard_subtitles"] = {"present": True, "top": band[0], "bottom": band[1]}
         return render_mod.render(src, folder, analysis, route, ffmpeg_mod.probe(src)[0], mask=mask)
@@ -415,8 +421,8 @@ class VoiceoverTests(StoreCase):
             "confidence": 0.95,
             "topic": "entertainment",
             "sensitive": False,
-            "narration_vi": "Xin chào các bạn",
-            "segments": [{"start": 1.0, "end": 5.0, "vi": "Xin chào các bạn"}],
+            "narration_vi": "Xin ch\u00e0o c\u00e1c b\u1ea1n",
+            "segments": [{"start": 1.0, "end": 5.0, "vi": "Xin ch\u00e0o c\u00e1c b\u1ea1n"}],
         }
 
         def voice_of(seconds):
@@ -449,9 +455,9 @@ class VoiceoverTests(StoreCase):
             speech.tts = fresh_voice(20.0)  # voice far longer than the speech window: refuse, subtitles remain
             with self.assertRaises(ai_errors.VoiceoverUnfit):
                 speech.make_voice(self.s, self.s.settings(), analysis, folder)
-            long_text = dict(analysis, narration_vi="x" * 150, segments=[{"start": 1.0, "end": 14.0, "vi": "Xin chào"}])
+            long_text = dict(analysis, narration_vi="x" * 150, segments=[{"start": 1.0, "end": 14.0, "vi": "Xin ch\u00e0o"}])
             speech.tts = fresh_voice(4.0)  # 37 characters a second: a voice that skipped words to hurry
-            with self.assertRaisesRegex(ai_errors.VoiceoverUnfit, "bỏ sót"):
+            with self.assertRaisesRegex(ai_errors.VoiceoverUnfit, "b\u1ecf s\u00f3t"):
                 speech.make_voice(self.s, self.s.settings(), long_text, folder)
             speech.tts = fresh_voice(15.0)  # 10 characters a second is the natural pace and passes
             self.assertEqual(speech.make_voice(self.s, self.s.settings(), long_text, folder)["delay"], 1.0)

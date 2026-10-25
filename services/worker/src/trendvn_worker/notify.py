@@ -45,12 +45,12 @@ def _safe_https(url):
     try:
         u.port  # noqa: B018  (raises ValueError for ":abc" and ":99999")
     except ValueError:
-        raise ValueError("Cần địa chỉ https hợp lệ") from None
+        raise ValueError("C\u1ea7n \u0111\u1ecba ch\u1ec9 https h\u1ee3p l\u1ec7") from None
     host = (u.hostname or "").lower()
     if u.scheme != "https" or not host or u.username or u.password or len(url) > 400 or any(c.isspace() or c == "\\" for c in url):
-        raise ValueError("Cần địa chỉ https hợp lệ")
+        raise ValueError("C\u1ea7n \u0111\u1ecba ch\u1ec9 https h\u1ee3p l\u1ec7")
     if not DNS_NAME.fullmatch(host) or host == "localhost" or host.endswith(INTERNAL_SUFFIXES):
-        raise ValueError("Không dùng địa chỉ nội bộ")
+        raise ValueError("Kh\u00f4ng d\u00f9ng \u0111\u1ecba ch\u1ec9 n\u1ed9i b\u1ed9")
     return url
 
 
@@ -59,10 +59,10 @@ def _public_only(url):
     host = urlsplit(url).hostname
     infos = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
     if not infos:
-        raise ValueError("Không phân giải được địa chỉ")
+        raise ValueError("Kh\u00f4ng ph\u00e2n gi\u1ea3i \u0111\u01b0\u1ee3c \u0111\u1ecba ch\u1ec9")
     for info in infos:
         if not _is_public(info[4][0]):
-            raise ValueError("Địa chỉ nội bộ")
+            raise ValueError("\u0110\u1ecba ch\u1ec9 n\u1ed9i b\u1ed9")
 
 
 NAT64 = ipaddress.ip_network("64:ff9b::/96")
@@ -86,9 +86,9 @@ def validate(cfg):
     out = {}
     if cfg.get("telegram_token") or cfg.get("telegram_chat"):
         if not re.fullmatch(r"\d{6,12}:[A-Za-z0-9_-]{30,60}", cfg.get("telegram_token", "")):
-            raise ValueError("Telegram token không đúng định dạng")
+            raise ValueError("Telegram token kh\u00f4ng \u0111\u00fang \u0111\u1ecbnh d\u1ea1ng")
         if not re.fullmatch(r"-?\d{4,20}|@[A-Za-z0-9_]{4,40}", cfg.get("telegram_chat", "")):
-            raise ValueError("Telegram chat id không đúng định dạng")
+            raise ValueError("Telegram chat id kh\u00f4ng \u0111\u00fang \u0111\u1ecbnh d\u1ea1ng")
         out["telegram_token"], out["telegram_chat"] = cfg["telegram_token"], cfg["telegram_chat"]
     for key in ("webhook", "ntfy"):
         if cfg.get(key):

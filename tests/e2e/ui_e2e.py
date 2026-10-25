@@ -69,8 +69,11 @@ class FakeAgent(BaseHTTPRequestHandler):
                                 "media": {"downloaded": 1},
                             },
                         },
-                        "tiktok": {"status": "skipped", "reason": "Cần IP US để lấy xu hướng đúng quốc gia; IP hiện tại: VN."},
-                        "instagram": {"status": "skipped", "reason": "Cần IP US"},
+                        "tiktok": {
+                            "status": "skipped",
+                            "reason": "C\u1ea7n IP US \u0111\u1ec3 l\u1ea5y xu h\u01b0\u1edbng \u0111\u00fang qu\u1ed1c gia; IP hi\u1ec7n t\u1ea1i: VN.",
+                        },
+                        "instagram": {"status": "skipped", "reason": "C\u1ea7n IP US"},
                     }
                 },
             )
@@ -101,9 +104,14 @@ def seed(root):
     (Path(root) / "gemini.key").write_text("x" * 30)
     s.update_settings({"processing_enabled": True, "visibility": "self"})
     s.heartbeat(
-        "discovery", True, {"douyin": {"jingxuan": {"seen": 47}}, "tiktok": "Cần IP US để lấy xu hướng đúng quốc gia; IP hiện tại: VN."}
+        "discovery",
+        True,
+        {
+            "douyin": {"jingxuan": {"seen": 47}},
+            "tiktok": "C\u1ea7n IP US \u0111\u1ec3 l\u1ea5y xu h\u01b0\u1edbng \u0111\u00fang qu\u1ed1c gia; IP hi\u1ec7n t\u1ea1i: VN.",
+        },
     )
-    s.heartbeat("publisher", True, "Đã đăng nhập TikTok, sẵn sàng")
+    s.heartbeat("publisher", True, "\u0110\u00e3 \u0111\u0103ng nh\u1eadp TikTok, s\u1eb5n s\u00e0ng")
 
     def add(state, platform, title, **kw):
         jid = kw.get("id") or uuid.uuid4().hex
@@ -127,9 +135,9 @@ def seed(root):
 
     ids = []
     titles = [
-        "舅舅别睡了，给我闺蜜也泡一杯奶奶 #舅舅带娃 một tiêu đề rất rất dài để thử việc xuống dòng không làm vỡ thẻ trên màn hình điện thoại nhỏ",
-        "Khoảnh khắc thú vị",
-        "Bài hát hay nhất tuần",
+        "舅舅别睡了，给我闺蜜也泡一杯奶奶 #舅舅带娃 m\u1ed9t ti\u00eau \u0111\u1ec1 r\u1ea5t r\u1ea5t d\u00e0i \u0111\u1ec3 th\u1eed vi\u1ec7c xu\u1ed1ng d\u00f2ng kh\u00f4ng l\u00e0m v\u1ee1 th\u1ebb tr\u00ean m\u00e0n h\u00ecnh \u0111i\u1ec7n tho\u1ea1i nh\u1ecf",
+        "Kho\u1ea3nh kh\u1eafc th\u00fa v\u1ecb",
+        "B\u00e0i h\u00e1t hay nh\u1ea5t tu\u1ea7n",
     ]
     for n, title in enumerate(titles):
         jid = uuid.uuid4().hex
@@ -142,7 +150,11 @@ def seed(root):
                 shutil.copy(poster, folder / "poster.jpg")
         analysis = {
             "kind": "dialogue" if n < 2 else "music",
-            "caption_vi": ["Lập luận đòi lương khiến ông bố cạn lời", "Khoảnh khắc thú vị", "Giai điệu nghe là nghiện"][n],
+            "caption_vi": [
+                "L\u1eadp lu\u1eadn \u0111\u00f2i l\u01b0\u01a1ng khi\u1ebfn \u00f4ng b\u1ed1 c\u1ea1n l\u1eddi",
+                "Kho\u1ea3nh kh\u1eafc th\u00fa v\u1ecb",
+                "Giai \u0111i\u1ec7u nghe l\u00e0 nghi\u1ec7n",
+            ][n],
             "hashtags": ["haihuoc", "giadinh", "tinhhuonghai"] if n == 0 else (["vui"] if n == 1 else []),
         }
         info = {
@@ -169,7 +181,7 @@ def seed(root):
             )
         )
     for i in range(3):
-        add("queued", "douyin", "Video chờ xử lý %d" % i, meta=json.dumps({"score": 1000 * (i + 1)}))
+        add("queued", "douyin", "Video ch\u1edd x\u1eed l\u00fd %d" % i, meta=json.dumps({"score": 1000 * (i + 1)}))
     src = Path(root) / "inbox" / "r.mp4"
     src.parent.mkdir(exist_ok=True)
     if SAMPLE:
@@ -177,14 +189,14 @@ def seed(root):
     add(
         "needs_review",
         "kuaishou",
-        "Video bị giữ lại xem xét",
+        "Video b\u1ecb gi\u1eef l\u1ea1i xem x\u00e9t",
         source_file=str(src),
         reason="Sensitive content (politics, violence, tragedy, adult or medical claims) needs review",
     )
     add(
         "published",
         "douyin",
-        "Bài đã đăng thứ nhất",
+        "B\u00e0i \u0111\u00e3 \u0111\u0103ng th\u1ee9 nh\u1ea5t",
         publish_url="https://www.tiktok.com/@u/video/7690000000000000001",
         published_at=now - 86400,
         route="vietsub",
@@ -378,7 +390,7 @@ def main():
                 "Start: agent was called exactly once for collect",
                 [c for c in FakeAgent.calls if c[0] == "/api/collect"] and len([c for c in FakeAgent.calls if c[0] == "/api/collect"]) == 1,
             )
-            check("Start: process step ran (no Gemini in the test, so it reports the state)", "Xử lý" in panel)
+            check("Start: process step ran (no Gemini in the test, so it reports the state)", "X\u1eed l\u00fd" in panel)
 
             # double click protection
             FakeAgent.calls.clear()
@@ -397,9 +409,14 @@ def main():
             pg.click('#control button[value="collect"]')
             pg.wait_for_selector('#queue .taskpanel[data-running="0"]', timeout=15000)
             pg.wait_for_timeout(800)
-            check("Collect button lands on the Hàng đợi tab and shows its result there", pg.evaluate("() => location.hash") == "#queue")
             check(
-                "Agent busy: clear message, no crash", "bận" in pg.inner_text("#queue .taskpanel"), pg.inner_text("#queue .taskpanel")[:120]
+                "Collect button lands on the H\u00e0ng \u0111\u1ee3i tab and shows its result there",
+                pg.evaluate("() => location.hash") == "#queue",
+            )
+            check(
+                "Agent busy: clear message, no crash",
+                "b\u1eadn" in pg.inner_text("#queue .taskpanel"),
+                pg.inner_text("#queue .taskpanel")[:120],
             )
             FakeAgent.mode = "ok"
             # agent down
@@ -421,7 +438,10 @@ def main():
             go(pg, base + "/#publish")
             cards = pg.query_selector_all("#publish form.ready")
             check("Publish tab lists every processed video", len(cards) == 3, str(len(cards)))
-            check("Each card has Đăng ngay, Xem thử, Lưu, Bỏ", all(len(c.query_selector_all("button")) >= 4 for c in cards))
+            check(
+                "Each card has \u0110\u0103ng ngay, Xem th\u1eed, L\u01b0u, B\u1ecf",
+                all(len(c.query_selector_all("button")) >= 4 for c in cards),
+            )
             first_id = cards[0].get_attribute("data-id")
             ta = cards[0].query_selector("textarea")
             check(
@@ -430,19 +450,19 @@ def main():
                 ta.input_value(),
             )
             FakeAgent.calls.clear()
-            ta.fill("Mô tả sửa tay để kiểm tra #kiemtra #haihuoc #vui")
+            ta.fill("M\u00f4 t\u1ea3 s\u1eeda tay \u0111\u1ec3 ki\u1ec3m tra #kiemtra #haihuoc #vui")
             cards[0].query_selector('button[value="publish"]').click()
             pg.wait_for_selector("#publish .taskpanel", timeout=8000)
             check(
                 "Post now: progress is shown on the Publish tab itself",
-                "Đăng video" in pg.inner_text("#publish .taskpanel"),
+                "\u0110\u0103ng video" in pg.inner_text("#publish .taskpanel"),
                 pg.inner_text("#publish .taskpanel")[:100],
             )
             pg.wait_for_selector('#publish .taskpanel[data-running="0"]', timeout=20000)
             pg.wait_for_timeout(800)
             check(
                 "Post now: success message with link is visible there",
-                "Đã đăng" in pg.inner_text("#publish .taskpanel"),
+                "\u0110\u00e3 \u0111\u0103ng" in pg.inner_text("#publish .taskpanel"),
                 pg.inner_text("#publish .taskpanel")[:160],
             )
             pub = [c for c in FakeAgent.calls if c[0] == "/api/publish"]
@@ -451,11 +471,14 @@ def main():
             edited = [j for j in st.ready_list() if j["id"] == first_id][0]
             check(
                 "Post now: edited caption saved before posting",
-                edited["caption"].startswith("Mô tả sửa tay") and edited["caption_edited"],
+                edited["caption"].startswith("M\u00f4 t\u1ea3 s\u1eeda tay") and edited["caption_edited"],
                 edited["caption"],
             )
             go(pg, base + "/#publish")
-            check('Edited caption persists and shows "đã sửa tay"', "đã sửa tay" in pg.inner_text('form.ready[data-id="%s"]' % first_id))
+            check(
+                'Edited caption persists and shows "\u0111\u00e3 s\u1eeda tay"',
+                "\u0111\u00e3 s\u1eeda tay" in pg.inner_text('form.ready[data-id="%s"]' % first_id),
+            )
             FakeAgent.calls.clear()
             pg.query_selector('form.ready[data-id="%s"] button[value="dryrun"]' % first_id).click()
             pg.wait_for_timeout(2500)
@@ -474,7 +497,7 @@ def main():
             pg.query_selector('form.ready[data-id="%s"] button[formaction="/decide"]' % ids[1]).click()
             pg.wait_for_timeout(800)
             check("Discard removes the video from the list", ids[1] not in [j["id"] for j in Store(tmp).ready_list()])
-            # ---------------- Hàng đợi tab (the Start flow above has processed the seeded queue, so put three videos back in it)
+            # ---------------- Tab queue (the Start flow above has processed the seeded queue, so put three videos back in it)
             store = Store(tmp)
             for i in range(3):
                 jid = uuid.uuid4().hex
@@ -487,7 +510,7 @@ def main():
                             jid[:10],
                             "https://x/" + jid,
                             "CN",
-                            "Video chờ xử lý %d" % i,
+                            "Video ch\u1edd x\u1eed l\u00fd %d" % i,
                             time.time() - 600 + i,
                             time.time(),
                             "queued",
@@ -499,9 +522,13 @@ def main():
             rows = pg.evaluate(
                 "() => [...document.querySelectorAll('#queue .tablewrap')][0] ? [...document.querySelectorAll('#queue .tablewrap')][0].innerText : ''"
             )
-            check("Hàng đợi tab lists the waiting videos", all("Video chờ xử lý %d" % i in rows for i in range(3)), rows[:120])
             check(
-                "Bottom nav has six entries and Hàng đợi carries the waiting count",
+                "H\u00e0ng \u0111\u1ee3i tab lists the waiting videos",
+                all("Video ch\u1edd x\u1eed l\u00fd %d" % i in rows for i in range(3)),
+                rows[:120],
+            )
+            check(
+                "Bottom nav has six entries and H\u00e0ng \u0111\u1ee3i carries the waiting count",
                 pg.evaluate("() => document.querySelectorAll('.bottomnav a').length") == 6
                 and pg.inner_text('.bottomnav a[data-go="queue"] i') == "3",
             )
@@ -530,19 +557,20 @@ def main():
             pg.wait_for_timeout(900)
             go(pg, base + "/#queue")
             check(
-                "Processing OFF: Hàng đợi explains it and offers the switch",
-                "đang TẮT" in pg.inner_text("#queue") and pg.is_visible('#queue button:has-text("Bật xử lý video")'),
+                "Processing OFF: H\u00e0ng \u0111\u1ee3i explains it and offers the switch",
+                "\u0111ang T\u1eaeT" in pg.inner_text("#queue")
+                and pg.is_visible('#queue button:has-text("B\u1eadt x\u1eed l\u00fd video")'),
                 pg.inner_text("#queue")[:900].replace(chr(10), " / "),
             )
-            pg.click('#queue button:has-text("Bật xử lý video")')
+            pg.click('#queue button:has-text("B\u1eadt x\u1eed l\u00fd video")')
             pg.wait_for_timeout(900)
             check(
-                "The switch turns processing on and returns to Hàng đợi",
+                "The switch turns processing on and returns to H\u00e0ng \u0111\u1ee3i",
                 Store(tmp).settings()["processing_enabled"] is True and pg.evaluate("() => location.hash") == "#queue",
             )
             check(
                 "Then the process button is live and counts the waiting videos",
-                pg.is_enabled('#queue button:has-text("Xử lý 3 video chờ")'),
+                pg.is_enabled('#queue button:has-text("X\u1eed l\u00fd 3 video ch\u1edd")'),
             )
 
             # publish tab with nothing processed: it must say why, not just be empty
@@ -553,10 +581,10 @@ def main():
             if SHOTS:
                 pg.screenshot(path=str(SHOTS / "375x812_publish_empty.png"), full_page=True)
             check(
-                "Empty Đăng bài explains what is going on and how to continue",
-                "Chưa có video nào xử lý xong" in guide
-                and "3 video đang chờ xử lý" in guide
-                and pg.is_visible('#publish button:has-text("Xử lý ngay (3)")'),
+                "Empty \u0110\u0103ng b\u00e0i explains what is going on and how to continue",
+                "Ch\u01b0a c\u00f3 video n\u00e0o x\u1eed l\u00fd xong" in guide
+                and "3 video \u0111ang ch\u1edd x\u1eed l\u00fd" in guide
+                and pg.is_visible('#publish button:has-text("X\u1eed l\u00fd ngay (3)")'),
                 guide[:200],
             )
 
@@ -601,7 +629,7 @@ def main():
                 "The topics the accounts take are listed for the collector",
                 {"food", "gaming"} <= set(Store(tmp).wanted_topics()),
             )
-            pg.click(card + ' button:has-text("Xóa")')
+            pg.click(card + ' button:has-text("X\u00f3a")')
             pg.wait_for_timeout(900)
             check("Deleting removes the account", Store(tmp).account("kenh_meo") is None)
             pg.fill('#accounts form[action="/account-add"] input[name="username"]', "no_topics")

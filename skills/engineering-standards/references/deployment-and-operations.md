@@ -27,7 +27,7 @@ Stages in order, fast first, each blocking: format/lint -> unit tests -> build -
 
 ## 5. Observability
 - **Structured logs** (JSON or key=value) with request/trace ids, levels, no secrets or PII; one log line per significant event; log rotation or a collector.
-- **Metrics** for RED/USE and business KPIs; **traces** with OpenTelemetry (traces, metrics and logs are stable across major SDKs; continuous profiling is still alpha, don't depend on it for critical production use); propagate trace context across services.
+- **Metrics**for RED/USE and business KPIs;**traces** with OpenTelemetry (traces, metrics and logs are stable across major SDKs; continuous profiling is still alpha, don't depend on it for critical production use); propagate trace context across services.
 - **Alerts on symptoms** (SLO burn, error rate, latency, queue age, failed jobs), not on every cause; every alert has a runbook link and an owner; delete alerts nobody acts on.
 - A `doctor`/diagnostics command that reports every prerequisite with the exact fix command and distinguishes required from advisory.
 

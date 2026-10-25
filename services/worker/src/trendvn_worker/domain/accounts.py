@@ -20,7 +20,7 @@ def account_flag(account_id):
 def clean_username(value):
     name = str(value or "").strip().lstrip("@")
     if not USERNAME_RX.fullmatch(name):
-        raise ValueError("Tên tài khoản TikTok không hợp lệ")
+        raise ValueError("T\u00ean t\u00e0i kho\u1ea3n TikTok kh\u00f4ng h\u1ee3p l\u1ec7")
     return name
 
 
@@ -28,14 +28,14 @@ def slug(value):
     """An account id from free text: lower case letters, digits, '_' and '-'."""
     value = re.sub(r"[^a-z0-9_-]+", "-", str(value or "").strip().lower()).strip("-_")[:24]
     if not ID_RX.fullmatch(value):
-        raise ValueError("Mã tài khoản không hợp lệ")
+        raise ValueError("M\u00e3 t\u00e0i kho\u1ea3n kh\u00f4ng h\u1ee3p l\u1ec7")
     return value
 
 
 def validate_account(data, creating=False):
     """The fields of a create or update request, checked and cleaned. Updates may carry any subset of them."""
     if not isinstance(data, dict):
-        raise ValueError("Tài khoản phải là một đối tượng")
+        raise ValueError("T\u00e0i kho\u1ea3n ph\u1ea3i l\u00e0 m\u1ed9t \u0111\u1ed1i t\u01b0\u1ee3ng")
     out = {}
     if creating or "username" in data:
         out["username"] = clean_username(data.get("username"))
@@ -45,7 +45,7 @@ def validate_account(data, creating=False):
         out["topics"] = topics.valid_topics(data.get("topics"))
     if "enabled" in data:
         if not isinstance(data["enabled"], bool):
-            raise ValueError("enabled phải là true hoặc false")
+            raise ValueError("enabled ph\u1ea3i l\u00e0 true ho\u1eb7c false")
         out["enabled"] = data["enabled"]
     for field in OVERRIDES:
         if field in data:

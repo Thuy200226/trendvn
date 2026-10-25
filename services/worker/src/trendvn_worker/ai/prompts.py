@@ -63,13 +63,13 @@ CAPTION_RULES = {
     # "hook": written to stop the scroll; still tied to what the video really shows (no invented facts or claims about real people)
     "hook": """ONE punchy Vietnamese hook line, 35-90 characters, written to stop the scroll the way a viral TikTok creator would:
    open a curiosity gap or provoke a strong feeling (shock, laughter, outrage, awe, "no way"); a question, a surprising fact, a
-   dramatic turn ("không ngờ", "cái kết", "sốc") and one or two emojis are welcome, and one WORD in capitals for emphasis.
+   dramatic turn ("kh\u00f4ng ng\u1edd", "c\u00e1i k\u1ebft", "s\u1ed1c") and one or two emojis are welcome, and one WORD in capitals for emphasis.
    It must stay true to what is actually in the video: never invent events, numbers, quotes or claims about named real people,
    no hashtags in the text, never claim the video is yours.""",
     # "factual": the earlier calm style
     "factual": """ONE complete, natural, spoken-style Vietnamese sentence (not a literal translation) that names what actually happens
    and makes a viewer curious, 40-90 characters. Factual: describe only what is in the video. No cliffhanger filler such as
-   "và cái kết", "bạn sẽ bất ngờ", no ALL CAPS, at most one emoji, no hashtags, never claim the video is yours.""",
+   "v\u00e0 c\u00e1i k\u1ebft", "b\u1ea1n s\u1ebd b\u1ea5t ng\u1edd", no ALL CAPS, at most one emoji, no hashtags, never claim the video is yours.""",
 }
 CAPTION_STYLES = tuple(CAPTION_RULES)
 
@@ -134,4 +134,4 @@ ANALYSIS_SCHEMA = {
 # There is no TTS prompt any more: the current TTS models read the text VERBATIM, an instruction before it is spoken aloud (found
 # 2026-10-02). Voice, tone and pace go in the request's style field (ai/tts.py, domain/voices.py).
 
-VOICE_SAMPLE = "Xin chào, đây là giọng đọc thử của kênh. Hôm nay có một video rất thú vị dành cho bạn."
+VOICE_SAMPLE = "Xin ch\u00e0o, \u0111\u00e2y l\u00e0 gi\u1ecdng \u0111\u1ecdc th\u1eed c\u1ee7a k\u00eanh. H\u00f4m nay c\u00f3 m\u1ed9t video r\u1ea5t th\u00fa v\u1ecb d\u00e0nh cho b\u1ea1n."

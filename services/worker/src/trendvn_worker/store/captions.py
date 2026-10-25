@@ -16,13 +16,13 @@ class CaptionMixin:
         caption = unicodedata.normalize("NFC", str(caption)).replace("\r\n", "\n").replace("\r", "\n")
         caption = "\n".join(line.rstrip() for line in re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", caption).split("\n")).strip()
         if not caption:
-            raise ValueError("Mô tả không được để trống")
+            raise ValueError("M\u00f4 t\u1ea3 kh\u00f4ng \u0111\u01b0\u1ee3c \u0111\u1ec3 tr\u1ed1ng")
         if len(caption) > 2200:
-            raise ValueError("Mô tả quá dài (tối đa 2200 ký tự)")
+            raise ValueError("M\u00f4 t\u1ea3 qu\u00e1 d\u00e0i (t\u1ed1i \u0111a 2200 k\u00fd t\u1ef1)")
         with self.transaction() as db:
             row = db.execute("SELECT state FROM jobs WHERE id=?", (jid,)).fetchone()
             if not row or row["state"] not in ("ready", "awaiting_approval"):
-                raise ValueError("Chỉ sửa được mô tả của video sẵn sàng đăng")
+                raise ValueError("Ch\u1ec9 s\u1eeda \u0111\u01b0\u1ee3c m\u00f4 t\u1ea3 c\u1ee7a video s\u1eb5n s\u00e0ng \u0111\u0103ng")
             cur = db.execute("SELECT caption_user,analysis,title FROM jobs WHERE id=?", (jid,)).fetchone()
             effective = cur["caption_user"] or build_caption(loads(cur["analysis"], {}), cur["title"])
             if caption == effective:

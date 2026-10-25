@@ -15,9 +15,7 @@ Each phase: (1) do it, (2) **review 1 - static**, (3) **review 2 - dynamic (real
 Baseline numbers / facts (measured, date, conditions):
 Design:
 Done:
-**Review 1 - static.** findings -> fixes
-**Review 2 - dynamic.** what was run on the real system, numbers
-**Review 3 - independent.** what the reviewer tried (counts), bugs found, how fixed, risks accepted and why
+**Review 1 - static.**findings -> fixes**Review 2 - dynamic.**what was run on the real system, numbers**Review 3 - independent.** what the reviewer tried (counts), bugs found, how fixed, risks accepted and why
 
 ## Not verified (say it plainly)
 - <thing> - <why it could not be verified>

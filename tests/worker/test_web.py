@@ -132,7 +132,9 @@ class LocalServerTests(unittest.TestCase):
         status, headers, _ = self.post("/settings", {"daily_limit": "99"})
         self.assertEqual(status, 303)
         shown = unquote_plus(headers["location"])
-        self.assertIn("Số bài tối đa mỗi ngày", shown)  # (the wiring in handler.py: a mutant that dropped vi_error survived the suite)
+        self.assertIn(
+            "S\u1ed1 b\u00e0i t\u1ed1i \u0111a m\u1ed7i ng\u00e0y", shown
+        )  # (the wiring in handler.py: a mutant that dropped vi_error survived the suite)
         self.assertNotIn("daily_limit", shown)
 
     def test_a_page_left_open_across_an_update_gets_a_plain_vietnamese_answer_not_json(self):
@@ -141,7 +143,7 @@ class LocalServerTests(unittest.TestCase):
         self.assertEqual(status, 403)  # still refused: nothing was changed
         self.assertIn("text/html", headers["content-type"])
         text = body.decode()
-        self.assertIn("Trang đã cũ", text)
+        self.assertIn("Trang \u0111\u00e3 c\u0169", text)
         self.assertNotIn('"error"', text)
         self.assertIn('href="/"', text)
 
@@ -249,13 +251,13 @@ class AccountWebTests(unittest.TestCase):
         self.assertEqual(store.account("meo_kenh")["topics"], ["pets", "food"])  # in menu order
         status, headers, _ = self.post_pairs(
             "/account-save",
-            [("id", "meo_kenh"), ("topic", "pets"), ("label", "Kênh mèo"), ("enabled", "true"), ("daily_limit", "3"), ("gap_hours", "1.5"),
+            [("id", "meo_kenh"), ("topic", "pets"), ("label", "K\u00eanh m\u00e8o"), ("enabled", "true"), ("daily_limit", "3"), ("gap_hours", "1.5"),
              ("post_windows", "9-11"), ("visibility", "friends")],
         )  # fmt: skip
         self.assertIn("ok=account_saved", headers["location"])
         saved = store.account("meo_kenh")
         self.assertEqual((saved["topics"], saved["label"], saved["daily_limit"], saved["min_gap"], saved["windows"], saved["visibility"]),
-                         (["pets"], "Kênh mèo", 3, 5400, [[9, 11]], "friends"))  # fmt: skip
+                         (["pets"], "K\u00eanh m\u00e8o", 3, 5400, [[9, 11]], "friends"))  # fmt: skip
         self.post_pairs(
             "/account-save",
             [("id", "meo_kenh"), ("topic", "pets"), ("daily_limit", ""), ("gap_hours", ""), ("post_windows", ""), ("visibility", "")],
@@ -320,7 +322,7 @@ class RemoteAccessTests(unittest.TestCase):
                 "POST", "/login", urlencode({"password": "nope"}), {"Content-Type": "application/x-www-form-urlencoded"}, host=remote
             )
             self.assertEqual(bad[0], 200)
-            self.assertIn("chưa đúng".encode(), bad[2])
+            self.assertIn("ch\u01b0a \u0111\u00fang".encode(), bad[2])
             self.assertNotIn("set-cookie", bad[1])
             good = srv.req(
                 "POST",
@@ -424,7 +426,7 @@ class RemoteAccessTests(unittest.TestCase):
             )
             self.assertEqual(locked[0], 200)
             self.assertNotIn("set-cookie", locked[1])
-            self.assertIn("quá nhiều".encode(), locked[2])
+            self.assertIn("qu\u00e1 nhi\u1ec1u".encode(), locked[2])
         finally:
             srv.stop()
 
@@ -469,17 +471,17 @@ class NonAsciiTests(unittest.TestCase):
     """hmac.compare_digest raises TypeError for non-ASCII str: a Vietnamese password must log in, and odd headers must not crash a request."""
 
     def test_vietnamese_password_logs_in_and_odd_headers_are_rejected_cleanly(self):
-        password = "mật-khẩu-rất-dài-123"
+        password = "m\u1eadt-kh\u1ea9u-r\u1ea5t-d\u00e0i-123"
         srv = Server(lambda p: {"TRENDVN_UI_HOSTS": "box.test:%d" % p, "TRENDVN_UI_PASSWORD": password})
         try:
             remote = "box.test:%d" % srv.port
             form = {"Content-Type": "application/x-www-form-urlencoded"}
-            self.assertEqual(srv.req("POST", "/login", urlencode({"password": "sai-mật-khẩu"}), form, host=remote)[0], 200)
+            self.assertEqual(srv.req("POST", "/login", urlencode({"password": "sai-m\u1eadt-kh\u1ea9u"}), form, host=remote)[0], 200)
             good = srv.req("POST", "/login", urlencode({"password": password}), form, host=remote)
             self.assertEqual(good[0], 303)
             cookie = good[1]["set-cookie"].split(";")[0]
             self.assertEqual(srv.req("GET", "/", headers={"Cookie": cookie}, host=remote)[0], 200)
-            for headers in ({"Authorization": "Bearer " + "é" * 40}, {"Cookie": "tv_session=" + "é" * 20}):
+            for headers in ({"Authorization": "Bearer " + "\u00e9" * 40}, {"Cookie": "tv_session=" + "\u00e9" * 20}):
                 status = srv.req("GET", "/api/status", headers=headers, host=remote)[0]
                 self.assertIn(status, (401, 403, 404, 303), (headers, status))  # answered, not a 500 or a dropped connection
             self.assertEqual(srv.req("GET", "/health")[0], 200)

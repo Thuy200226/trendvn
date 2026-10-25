@@ -41,7 +41,9 @@ def pick_subnet():
         net = ipaddress.ip_network("172.%d.0.0/16" % second)
         if not any(net.overlaps(t) for t in taken):
             return str(net), str(net[1])
-    raise SystemExit("Không tìm được dải mạng Docker trống trong 172.20-172.31; đặt TRENDVN_SUBNET và TRENDVN_GATEWAY thủ công trong .env")
+    raise SystemExit(
+        "Kh\u00f4ng t\u00ecm \u0111\u01b0\u1ee3c d\u1ea3i m\u1ea1ng Docker tr\u1ed1ng trong 172.20-172.31; \u0111\u1eb7t TRENDVN_SUBNET v\u00e0 TRENDVN_GATEWAY th\u1ee7 c\u00f4ng trong .env"
+    )
 
 
 env = root / ".env"
@@ -80,11 +82,14 @@ if new:
     with open(env, "a") as f:
         if fresh:
             f.write(
-                "# Cấu hình của máy này, do ./trendvn install tạo. KHÔNG chia sẻ, KHÔNG đưa vào git.\n"
-                "# Các tùy chọn khác (proxy Mỹ, mật khẩu truy cập từ xa, thông báo...) xem .env.example.\n"
+                "# C\u1ea5u h\u00ecnh c\u1ee7a m\u00e1y n\u00e0y, do ./trendvn install t\u1ea1o. KH\u00d4NG chia s\u1ebb, KH\u00d4NG \u0111\u01b0a v\u00e0o git.\n"
+                "# C\u00e1c t\u00f9y ch\u1ecdn kh\u00e1c (proxy M\u1ef9, m\u1eadt kh\u1ea9u truy c\u1eadp t\u1eeb xa, th\u00f4ng b\u00e1o...) xem .env.example.\n"
             )
         else:
             f.write("\n")
         f.write("\n".join(format_line(k, v) for k, v in new.items()) + "\n")
     env.chmod(0o600)
-print("TrendVN: cấu hình sẵn sàng (%s). Bí mật không được hiển thị." % ("đã thêm %d mục" % len(new) if new else "không đổi"))
+print(
+    "TrendVN: c\u1ea5u h\u00ecnh s\u1eb5n s\u00e0ng (%s). B\u00ed m\u1eadt kh\u00f4ng \u0111\u01b0\u1ee3c hi\u1ec3n th\u1ecb."
+    % ("\u0111\u00e3 th\u00eam %d m\u1ee5c" % len(new) if new else "kh\u00f4ng \u0111\u1ed5i")
+)

@@ -34,7 +34,7 @@ def wait_for_upload_ui(page, seconds=150):
         if has_challenge(page):
             challenge_since = challenge_since or time.time()
             if time.time() - challenge_since > CHALLENGE_GRACE:
-                raise Challenge("TikTok yêu cầu xác minh (CAPTCHA)")
+                raise Challenge("TikTok y\u00eau c\u1ea7u x\u00e1c minh (CAPTCHA)")
         else:
             challenge_since = None
         page.wait_for_timeout(1500)

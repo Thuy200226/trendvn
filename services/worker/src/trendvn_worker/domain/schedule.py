@@ -25,4 +25,4 @@ def window_state(windows, timezone, now=None):
         return True, ""
     later = sorted(start for start, _ in windows if start > hour)
     opening = later[0] if later else sorted(start for start, _ in windows)[0]
-    return False, "%02d:00 %s" % (opening, "hôm nay" if later else "ngày mai")
+    return False, "%02d:00 %s" % (opening, "h\u00f4m nay" if later else "ng\u00e0y mai")

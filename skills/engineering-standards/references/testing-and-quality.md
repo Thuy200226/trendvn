@@ -9,11 +9,11 @@ Why: the expensive bugs are rarely in logic the unit tests already cover. They h
 4. **End-to-end** against a real browser/process for the critical flows; for UIs assert layout rules (no overlap, no horizontal scroll, tap targets >= 44 px), accessibility basics, and every button flow; wait for the page to be at rest before measuring (a flaky layout check is usually a measurement bug).
 
 Add where invariants matter:
-- **Property-based / model-based tests** for state machines (queues, payments, publishing, permissions): drive the real implementation with random operation sequences, recompute the expected result in an independent model, assert invariants after every step (never claimed twice, counters never include another tenant's data, at most one in-flight). **Mutation-check the harness** (inject a bug; confirm it is caught).
+- **Property-based / model-based tests**for state machines (queues, payments, publishing, permissions): drive the real implementation with random operation sequences, recompute the expected result in an independent model, assert invariants after every step (never claimed twice, counters never include another tenant's data, at most one in-flight).**Mutation-check the harness** (inject a bug; confirm it is caught).
 - **Fuzz/matrix tests** for anything that builds external commands or parses input: combinations of options x geometry x routes, plus degenerate values (NaN, huge ints, empty lists, range edges, unicode, very long strings).
 - **Concurrency stress**: many items, 1..N workers, injected failures; assert exactly-once processing, nothing left half-done, no deadlock (use timeouts).
 - **Contract tests** between services and for every plugin/variant interface.
-- **Differential tests** old-vs-new for refactors; **golden/snapshot tests** for rendered output with reviewed updates.
+- **Differential tests**old-vs-new for refactors;**golden/snapshot tests** for rendered output with reviewed updates.
 - **Security tests** (see `security-standard.md`): authorization, injection payloads, error-path leaks, CSRF/Origin in a real browser.
 
 ## Rules

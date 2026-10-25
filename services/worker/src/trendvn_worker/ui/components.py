@@ -15,7 +15,7 @@ ICONS = {
     "list": '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>',
     "menu": '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>',
 }
-TASK_ICON = {"running": '<span class="spin" aria-label="Đang chạy"></span>', "done": "✓", "error": "✗"}
+TASK_ICON = {"running": '<span class="spin" aria-label="\u0110ang ch\u1ea1y"></span>', "done": "✓", "error": "✗"}
 STALE_TASK_SECONDS = 900  # a finished task older than this is not news on a tab you only just opened
 PLAIN_INPUT = 'autocapitalize="none" autocorrect="off" spellcheck="false"'
 
@@ -115,13 +115,15 @@ def task_panel(tasks, now=None, kinds=None):
     ):
         return ""
     if not tasks:
-        return '<div class="taskpanel idle" data-running="0"><p class="muted">Chưa chạy việc nào từ nút bấm. Bấm "Bắt đầu" để cập nhật.</p></div>'
+        return '<div class="taskpanel idle" data-running="0"><p class="muted">Ch\u01b0a ch\u1ea1y vi\u1ec7c n\u00e0o t\u1eeb n\u00fat b\u1ea5m. B\u1ea5m "B\u1eaft \u0111\u1ea7u" \u0111\u1ec3 c\u1eadp nh\u1eadt.</p></div>'
     task = tasks[0]
     running = task["state"] == "running"
 
     def link(text):  # only our own screenshot file names become links
         return re.sub(
-            r"/media/shot/(shot_\d{9,12}\.png)", r'<a href="/media/shot/\1" target="_blank" rel="noopener">mở ảnh chụp</a>', E(text)
+            r"/media/shot/(shot_\d{9,12}\.png)",
+            '<a href="/media/shot/\\1" target="_blank" rel="noopener">m\u1edf \u1ea3nh ch\u1ee5p</a>',
+            E(text),
         )
 
     steps = "".join(
@@ -131,9 +133,13 @@ def task_panel(tasks, now=None, kinds=None):
     )
     if not steps and task.get("error"):
         steps = '<li class="error"><span class="ti">✗</span><div><b>%s</b></div></li>' % E(task["error"])
-    state_chip_ = chip("Đang chạy…", "info") if running else (chip("Xong", "good") if task["state"] == "done" else chip("Có lỗi", "bad"))
+    state_chip_ = (
+        chip("\u0110ang ch\u1ea1y…", "info")
+        if running
+        else (chip("Xong", "good") if task["state"] == "done" else chip("C\u00f3 l\u1ed7i", "bad"))
+    )
     return (
-        '<div class="taskpanel %s" data-running="%d"><div class="row"><b>%s</b>%s</div><ul class="steps">%s</ul><small class="muted">Bắt đầu %s%s</small></div>'
+        '<div class="taskpanel %s" data-running="%d"><div class="row"><b>%s</b>%s</div><ul class="steps">%s</ul><small class="muted">B\u1eaft \u0111\u1ea7u %s%s</small></div>'
         % (
             E(task["state"]),
             1 if running else 0,
@@ -141,6 +147,6 @@ def task_panel(tasks, now=None, kinds=None):
             state_chip_,
             steps,
             ago(task["started"], now),
-            " · chạy nền, bạn có thể rời trang" if running else "",
+            " · ch\u1ea1y n\u1ec1n, b\u1ea1n c\u00f3 th\u1ec3 r\u1eddi trang" if running else "",
         )
     )

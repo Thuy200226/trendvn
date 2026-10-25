@@ -16,7 +16,7 @@ class CaptionTests(StoreCase):
         for bad in ("", "   ", "x" * 2201):
             with self.assertRaises(ValueError):
                 self.s.set_caption("a", bad)
-        self.s.set_caption("a", "Mô tả mới #a #b #c")
+        self.s.set_caption("a", "M\u00f4 t\u1ea3 m\u1edbi #a #b #c")
         self.assertTrue(self.s.ready_list()[0]["caption_edited"])
         self.s.reset_caption("a")
         self.assertFalse(self.s.ready_list()[0]["caption_edited"])
@@ -34,17 +34,27 @@ class CaptionTests(StoreCase):
             self.s.set_caption("p", "x")
 
     def test_caption_quality_rules(self):
-        self.assertTrue(lint_caption("Khoảnh khắc thú vị của bé #vui #haihuoc #giadinh")["ok"])
-        self.assertIn("Nên có 3–5 hashtag", lint_caption("Khoảnh khắc thú vị của bé #vui")["issues"])
-        self.assertIn("Quá nhiều hashtag (nên tối đa 5)", lint_caption("Mô tả dài đủ dùng #a1 #b2 #c3 #d4 #e5 #f6")["issues"])
-        self.assertIn("Có hashtag bị lặp", lint_caption("Mô tả dài đủ dùng #Vui #vui #c3")["issues"])
-        self.assertIn("Mô tả quá ngắn", lint_caption("Hi #a1 #b2 #c3")["issues"])
-        self.assertTrue(lint_caption("Nhạc #nhac #xuhuong #hay với tiếng Việt có dấu đầy đủ")["tags"] == 3)
+        self.assertTrue(lint_caption("Kho\u1ea3nh kh\u1eafc th\u00fa v\u1ecb c\u1ee7a b\u00e9 #vui #haihuoc #giadinh")["ok"])
+        self.assertIn(
+            "N\u00ean c\u00f3 3–5 hashtag", lint_caption("Kho\u1ea3nh kh\u1eafc th\u00fa v\u1ecb c\u1ee7a b\u00e9 #vui")["issues"]
+        )
+        self.assertIn(
+            "Qu\u00e1 nhi\u1ec1u hashtag (n\u00ean t\u1ed1i \u0111a 5)",
+            lint_caption("M\u00f4 t\u1ea3 d\u00e0i \u0111\u1ee7 d\u00f9ng #a1 #b2 #c3 #d4 #e5 #f6")["issues"],
+        )
+        self.assertIn(
+            "C\u00f3 hashtag b\u1ecb l\u1eb7p", lint_caption("M\u00f4 t\u1ea3 d\u00e0i \u0111\u1ee7 d\u00f9ng #Vui #vui #c3")["issues"]
+        )
+        self.assertIn("M\u00f4 t\u1ea3 qu\u00e1 ng\u1eafn", lint_caption("Hi #a1 #b2 #c3")["issues"])
+        self.assertTrue(
+            lint_caption("Nh\u1ea1c #nhac #xuhuong #hay v\u1edbi ti\u1ebfng Vi\u1ec7t c\u00f3 d\u1ea5u \u0111\u1ea7y \u0111\u1ee7")["tags"]
+            == 3
+        )
 
     def test_build_caption_properties(self):
-        long = "Một mô tả rất dài " * 20
+        long = "M\u1ed9t m\u00f4 t\u1ea3 r\u1ea5t d\u00e0i " * 20
         c = build_caption(
-            {"kind": "dialogue", "caption_vi": long, "hashtags": ["Hài", "#vui vẻ", "x", "haihuoc", "haihuoc", "a" * 40]}, "t"
+            {"kind": "dialogue", "caption_vi": long, "hashtags": ["H\u00e0i", "#vui v\u1ebb", "x", "haihuoc", "haihuoc", "a" * 40]}, "t"
         )
         text = c.split(" #")[0]
         self.assertLessEqual(len(text), 110)
@@ -54,14 +64,16 @@ class CaptionTests(StoreCase):
         self.assertLessEqual(len(tags), 5)
         self.assertIn("#xuhuong", tags)
         self.assertTrue(lint_caption(c)["tags"] <= 5)
-        self.assertEqual(build_caption({"kind": "music", "caption_vi": "Hay quá", "hashtags": []}, "t"), "Hay quá #xuhuong #nhac #viral")
-        self.assertNotIn("##", build_caption({"caption_vi": "#a #b nội dung", "hashtags": ["#c"]}, "t"))
+        self.assertEqual(
+            build_caption({"kind": "music", "caption_vi": "Hay qu\u00e1", "hashtags": []}, "t"), "Hay qu\u00e1 #xuhuong #nhac #viral"
+        )
+        self.assertNotIn("##", build_caption({"caption_vi": "#a #b n\u1ed9i dung", "hashtags": ["#c"]}, "t"))
 
     def test_platform_names_never_become_hashtags_but_reach_tags_do(self):
         c = build_caption(
             {
                 "kind": "dialogue",
-                "caption_vi": "Một câu mô tả đầy đủ",
+                "caption_vi": "M\u1ed9t c\u00e2u m\u00f4 t\u1ea3 \u0111\u1ea7y \u0111\u1ee7",
                 "hashtags": ["tiktokgiaitri", "douyinvn", "fyp", "viral", "haihuoc", "giadinh"],
             },
             "t",
@@ -72,7 +84,7 @@ class CaptionTests(StoreCase):
 
     def test_caption_with_emoji_and_diacritics_survives(self):
         self.ready("a")
-        self.s.set_caption("a", "Cười xỉu với cô bé này 😂😂 #hàihước #vui #xuhuong")
+        self.s.set_caption("a", "C\u01b0\u1eddi x\u1ec9u v\u1edbi c\u00f4 b\u00e9 n\u00e0y 😂😂 #h\u00e0ih\u01b0\u1edbc #vui #xuhuong")
         self.assertIn("😂", self.s.ready_list()[0]["caption"])
 
 

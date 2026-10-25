@@ -128,7 +128,7 @@ def validate_analysis(a, duration, confidence=0.90, strict=False, lenient=False,
     if not lenient and a.get("topic") == OTHER:
         raise ValueError("Off-topic: not entertaining content")
     if not lenient and accepted_topics is not None and a.get("topic") in TOPIC_IDS and a["topic"] not in accepted_topics:
-        raise ValueError("Chủ đề «%s» chưa có tài khoản nào nhận" % label(a["topic"]))
+        raise ValueError("Ch\u1ee7 \u0111\u1ec1 «%s» ch\u01b0a c\u00f3 t\u00e0i kho\u1ea3n n\u00e0o nh\u1eadn" % label(a["topic"]))
     segments = a.get("segments", [])
     if not isinstance(segments, list) or len(segments) > 500:
         raise ValueError("Invalid segments")

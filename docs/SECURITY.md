@@ -1,86 +1,86 @@
-# Bảo mật, quyền riêng tư và rủi ro cần biết
+# Security, privacy and risks to know
 
-## 1. Rủi ro lớn nhất không nằm ở phần mềm
+## 1. The biggest risk is not in the software
 
-**Bản quyền và tài khoản.** Hệ thống lấy video do người khác tạo và đăng lại trên kênh của bạn. Không có bước xin phép tác giả, và không phần mềm nào xác nhận được bản quyền hay quyền sử dụng. Hậu quả có thể gặp: video bị gỡ, gậy bản quyền, giảm phân phối, khóa kênh; với video có nhạc thương mại (nhóm dễ bị nhất), nhạc có thể bị TikTok tắt tiếng hoặc chặn. Việc đăng lại còn phụ thuộc điều khoản của từng nền tảng nguồn và luật nơi bạn ở. Bạn chịu trách nhiệm về nội dung đăng. Gợi ý giảm rủi ro:
+**Copyright and account.** The system takes videos created by others and reposts them on your channel. There is no step to ask for permission from the author, and no software claims copyright or usage rights. Possible consequences: video removed, copyright removal, reduced distribution, channel blocking; For videos with commercial music (the most vulnerable group), the music may be muted or blocked by TikTok. Reposting depends on the terms of each source platform and the laws of your location. You are responsible for the content posted. Suggestions to reduce risk:
 
-- Bật "Duyệt tay trước khi đăng" trong thời gian đầu và xem từng video.
-- Ưu tiên video có âm nhạc gốc của chính người làm hoặc giải trí không dùng nhạc thương mại; hạ "Số bài mỗi ngày" xuống thấp.
-- Chỉ chạm "giới hạn cứng" (tình dục, trẻ em gặp nguy, máu me thật, thù ghét, tự hại/tội phạm, lời khuyên nguy hiểm, đời tư) mới bị chặn chờ bạn; chính trị, drama, xung đột, tin nóng được đăng bình thường. Nội dung càng gây tranh cãi thì rủi ro bị gỡ/giảm phân phối càng cao, đó là đánh đổi bạn đã chọn.
+- Turn on "Verify before posting" for the first time and watch each video.
+- Priority is given to videos with the creator's own original music or entertainment without commercial music; lower "Number of posts per day" to low.
+- Only hitting the "hard limit" (sex, children in danger, real blood, hatred, self-harm/crime, dangerous advice, private life) will be blocked waiting for you; Politics, drama, conflict, hot news are posted normally. The more controversial the content, the higher the risk of it being taken down/reduced in distribution, which is the trade-off you've chosen.
 
-**Cách làm dựa trên trình duyệt** (không API) phụ thuộc giao diện các trang; các nền tảng có thể đổi giao diện hoặc chặn tự động hóa. Hệ thống được thiết kế để khi gặp bất thường thì *dừng và báo*, không cố vượt.
+**Browser-based method** (no API) depends on the page interface; Platforms can change the interface or block automation. The system is designed so that when you encounter an abnormality, you *stop and report*, do not try to overtake.
 
-## 2. Những gì hệ thống tự cấm
+## 2. What the system prohibits itself
 
-| Hành vi | Cách đảm bảo |
+| Behavior | How to ensure |
 |---|---|
-| Nhập mật khẩu thay bạn | Không có mã nào làm việc này; đăng nhập chỉ qua cửa sổ Chrome bạn tự thao tác (`./trendvn tiktok login`) |
-| Giấu việc tự động hóa với trang web | Không dùng: không tắt cờ `AutomationControlled`, không sửa User-Agent, không giả lập thao tác người. Trình duyệt tự khai đúng là Chrome do chương trình điều khiển |
-| Vượt CAPTCHA/xác minh | `looks_blocked` (thu thập) và `has_challenge` (trình đăng) phát hiện, báo lỗi và **tạm dừng đăng** cho tới khi chính bạn giải (`./trendvn tiktok trust`); không có mã giải hay né |
-| Gắn nhãn nhầm nguồn Mỹ | Từ chối quét TikTok/Instagram nếu IP thoát ≠ Mỹ (`exit_country`); `ingest` cũng từ chối `country` không khớp nền tảng |
-| Đăng khi không chắc | `publish_unknown` chặn mọi lần đăng sau đó; không tự thử lại bài đã bấm Đăng |
-| Đăng ngoài luật | Lịch tự động: công tắc, giờ vàng, giới hạn ngày, giãn cách đều kiểm tra ở worker trong một giao dịch. **Đăng thủ công** (nút Đăng ngay) bỏ qua các luật đó vì bạn đã bấm, nhưng vẫn bị chặn khi có một bài đang đăng, có bài chưa xác nhận, hoặc TikTok đang đòi xác minh; mỗi lần bấm chỉ đăng đúng video đã chọn (bấm đúp không đăng hai lần) |
-| Đăng file bị đổi | Hash SHA-256 của `final.mp4` phải khớp lúc dựng |
-| Tin lời trong video | Prompt coi video là dữ liệu không đáng tin và nhắc lại ngay sau video; đầu ra Gemini bị kiểm tra cứng lại: từ chối khóa JSON lặp, nhiều đối tượng, mô tả không phải chuỗi; mô tả và phụ đề bị lọc liên kết, @tên, số điện thoại, email, ký tự ẩn/đảo chiều (`domain/text.py`) |
+| Enter your password | There is no code to do this; Sign in only through your own Chrome window (`./trendvn tiktok login`) |
+| Hide automation from website | Do not use: do not disable flag `AutomationControlled`, do not edit User-Agent, do not simulate human operations. The browser correctly declares itself as Chrome because of the control program |
+| CAPTCHA bypass/verification | `looks_blocked` (collect) and `has_challenge` (poster) detect, report errors and **pause posting** until you solve it yourself (`./trendvn tiktok trust`); There is no decode or dodge code |
+| Mislabeled US source | Refuse to scan TikTok/Instagram if exit IP ≠ US (`exit_country`); `ingest` also rejects `country` platform mismatch |
+| Post when in doubt | `publish_unknown` block all subsequent postings; do not try again the clicked Post |
+| Posted outside the law | Automatic calendar: switches, golden hours, day limits, spacing are all checked at workers in a transaction. **Manual Post** (Post Now button) bypasses those rules because you clicked, but is still blocked when there is a post in progress, there is an unconfirmed post, or TikTok is asking for verification; Each click only posts the selected video (double click does not post twice) |
+| Post changed file | SHA-256 hash of `final.mp4` must match when building |
+| Believe the words in the video | Prompt considers the video to be unreliable data and repeats it immediately after the video; Gemini output is hard-checked: duplicate JSON key rejected, multiple objects, non-string description; Description and subtitles are filtered for links, @name, phone number, email, hidden/inverted characters (`domain/text.py`) |
 
-## 3. Bề mặt tấn công và biện pháp
+## 3. Attack surface and measures
 
-| Bề mặt | Biện pháp |
+| Surface | Measure |
 |---|---|
-| **Cổng dịch vụ** | Mặc định chỉ `127.0.0.1`. Agent chỉ nghe trên địa chỉ cầu nối Docker của dự án, không lộ ra LAN |
-| **API worker và agent** | Bearer token 256-bit (`TRENDVN_TOKEN`), so sánh thời gian hằng (`hmac.compare_digest`) |
-| **Bảng điều khiển** | Mở không mật khẩu chỉ khi `Host` là localhost **và** kết nối đến từ chính máy này (127.0.0.1, `::1` hoặc cổng cầu nối Docker của dự án); một `Host` giả từ mạng không đủ; yêu cầu mang tiêu đề của reverse proxy (`X-Forwarded-For`, `X-Real-IP`, `Forwarded`...) không bao giờ được coi là cục bộ. Mọi `Host` khác trong `TRENDVN_UI_HOSTS` bắt buộc `TRENDVN_UI_PASSWORD` (phiên lưu **trên máy chủ** (mã ngẫu nhiên, hiệu lực 7 ngày, tối đa 64 phiên): `/logout` và hết hạn vô hiệu hóa mã đó thật, khởi động lại worker (cũng là cách đổi mật khẩu) đăng xuất tất cả; cookie HttpOnly SameSite=Strict; khóa 1 phút sau 5 lần sai), không đặt mật khẩu thì bị từ chối. Chỉ trả lời `Host` trong danh sách cho phép; mọi form kiểm tra `Origin` và token CSRF; CSP không còn `script-src 'unsafe-inline'` (script duy nhất được phép theo mã băm, không có `onclick` trong HTML), `base-uri 'none'`, `Permissions-Policy`, `X-Frame-Options: DENY`, `nosniff`; mọi giá trị hiển thị đều được escape (có test chống chèn mã) |
-| **Kết nối HTTP** | Hết hạn socket 30 giây **cho mỗi lần đọc** (chặn client đứng im; **không** chặn kiểu nhỏ giọt từng byte: giới hạn 48 luồng cùng lúc, dư thì trả 503, là chốt chặn, và cổng mặc định chỉ nghe localhost), hàng đợi nghe 64, thân yêu cầu tối đa 2 MiB (worker) / 1 MiB (agent), `Content-Length` âm hoặc lạ bị từ chối, không lộ phiên bản Python; log làm sạch ký tự điều khiển (kể cả C1), và ghi địa chỉ nguồn của mọi 401/403 |
-| **Phát video xem trước** | Chỉ đường dẫn nằm trong `data/worker/`, id phải là 32 ký tự hex, hỗ trợ Range, chỉ từ giao diện nội bộ |
-| **Cài đặt** | Mỗi khóa cho phép đổi có kiểu và khoảng giá trị chặt; khóa lạ bị từ chối (`validate_settings`) |
-| **Tải video** | Chỉ HTTPS, cú pháp URL chặt (không `\`, không `@`, không cổng, không địa chỉ IP, không khoảng trắng/ký tự điều khiển), chỉ tên miền CDN của chính nền tảng (`CDN` trong từng file nguồn), **mỗi lần chuyển hướng cũng bị kiểm tra trước khi gọi** (`fetch_media`), giới hạn 250 MB, phải là MP4 thật (kiểm tra `ftyp` trên 12 byte đầu), ghi qua file `.part` rồi đổi tên. Proxy của yt-dlp đi qua biến môi trường, không nằm trên dòng lệnh (`ps` không thấy mật khẩu) |
-| **Đường dẫn file** | `attach` chỉ nhận tên file an toàn trong `inbox/`; chống `..` |
-| **Thông báo** | Webhook/ntfy chỉ nhận `https` trên tên miền công khai (không IP dưới mọi dạng, không `localhost`/`.local`/`.internal`), lúc gửi tên phải phân giải ra địa chỉ công khai, không đi theo chuyển hướng 3xx, tin nhắn không bao giờ @everyone (`allowed_mentions`); bí mật lưu `data/worker/notify.json` mode 0600, không bao giờ trả về qua API |
-| **Khóa Gemini** | `data/worker/gemini.key` mode 0600; không ghi log, không gửi vào n8n; khóa chỉ đi trong header gửi tới Google. Khi lỗi, chỉ hiển thị dòng `message` do Google trả về (không bao giờ chứa khóa) |
-| **Nội dung đầu vào (n8n webhook 10)** | Bắt buộc xác thực; JSON không thể ra lệnh đăng: chỉ đưa video vào hàng đợi sau khi qua mọi kiểm tra |
-| **n8n** | `N8N_ENCRYPTION_KEY` riêng cho dự án, tắt telemetry, tài khoản chủ do bạn tạo, workflow xuất không chứa bí mật |
-| **Cô lập** | n8n, volume, mạng, container, thông tin xác thực đều riêng, không đọc gì từ dự án khác |
-| **Container** | worker chạy bằng uid của bạn (không root), root filesystem chỉ đọc; cả hai container bỏ mọi Linux capability, `no-new-privileges`, giới hạn RAM (worker 4 GB, n8n 2 GB) và số tiến trình (512); log tự xoay vòng nên không đầy đĩa |
+| **Service Port** | Default is only `127.0.0.1`. Agent only listens on the project's Docker bridge address, does not expose LAN |
+| **API worker and agent** | Bearer token 256-bit (`TRENDVN_TOKEN`), constant time comparison (`hmac.compare_digest`) |
+| **Control panel** | Open without password only if `Host` is localhost **and**connect to from this machine (127.0.0.1, `::1` or the project's Docker bridge port); a fake `Host` from the network is not enough; Requests carrying reverse proxy headers (`X-Forwarded-For`, `X-Real-IP`, `Forwarded`...) are never considered local. All other `Host` in `TRENDVN_UI_HOSTS` required `TRENDVN_UI_PASSWORD` (session saved** on server** (random code, valid for 7 days, maximum 64 sessions): `/logout` and expires disable that code for real, restart the worker (also how to change password) log out all; cookie HttpOnly SameSite=Strict; locked 1 minute after 5 incorrect attempts), if you don't set a password, it will be rejected. Only answer `Host` in the whitelist; all check forms `Origin` and CSRF token; CSP no longer has `script-src 'unsafe-inline'` (only script allowed by hash, no `onclick` in HTML), `base-uri 'none'`, `Permissions-Policy`, `X-Frame-Options: DENY`, `nosniff`; All displayed values are escaped (with anti-code injection test) |
+| **HTTP connection**| Socket expiration 30 seconds**for each read**(prevent idle client;**no** block slow drip bytes: limit 48 threads at the same time, return 503 for excess, is a blocking, and default port only listens to localhost), listen queue 64, maximum request body 2 MiB (worker) / 1 MiB (agent), negative or strange `Content-Length` rejected, does not reveal Python version; log cleans control characters (including C1), and logs the source address of all 401/403 |
+| **Play preview video** | Only path is in `data/worker/`, id must be 32 hex characters, supports Range, only from internal interface |
+| **Installation** | Each exchange key has a strict type and range; strange key rejected (`validate_settings`) |
+| **Download video**| HTTPS only, strict URL syntax (no `\`, no `@`, no port, no IP address, no spaces/control characters), platform's own CDN domain only (`CDN` in each source file),** is also checked for each redirect before calling ** (`fetch_media`), limited to 250 MB, must be a real MP4 (checks `ftyp` on the first 12 bytes), writes to file `.part` and then renames. yt-dlp's proxy goes through environment variables, not on the command line (`ps` doesn't see password) |
+| **File path** | `attach` only receives safe file names in `inbox/`; anti `..` |
+| **Notice** | Webhook/ntfy only receives `https` on public domain (no IP of any kind, no `localhost`/`.local`/`.internal`), at send name must resolve to public address, no 3xx redirects, message never @everyone (`allowed_mentions`); secretly save `data/worker/notify.json` mode 0600, never return via API |
+| **Gemini key** | `data/worker/gemini.key` mode 0600; Do not log, do not send to n8n; The key just goes in the header sent to Google. On error, display only the line `message` returned by Google (which never contains the key) |
+| **Input content (n8n webhook 10)** | Authentication required; JSON cannot command post: queue video only after passing all checks |
+| **n8n** | `N8N_ENCRYPTION_KEY` project-specific, telemetry off, master account created by you, export workflow contains no secrets |
+| **Isolate** | n8n, volume, network, container, credentials all private, read nothing from other project |
+| **Container** | worker runs using your uid (not root), root filesystem is read-only; both containers drop all Linux capabilities, `no-new-privileges`, RAM limits (worker 4 GB, n8n 2 GB), and number of processes (512); log rotates automatically so it doesn't fill disk |
 
-## 4. Bí mật ở đâu, cách bảo vệ
+## 4. Where is the secret, how to protect it
 
-| Bí mật | Vị trí | Ghi chú |
+| Confidential | Location | Note |
 |---|---|---|
-| `N8N_ENCRYPTION_KEY`, `TRENDVN_TOKEN`, proxy, token thông báo | `.env` (0600, trong `.gitignore`) | Sao lưu cùng dữ liệu; không đưa lên git |
-| Khóa Gemini | `data/worker/gemini.key` (0600) | |
-| Kênh thông báo | `data/worker/notify.json` (0600) | |
-| Phiên TikTok | `data/agent/profiles/publisher` (tài khoản `main`) và `publisher-<mã>` (mỗi tài khoản thêm một thư mục) | Ai có thư mục này là đăng nhập được kênh của bạn. Không sao lưu mặc định (`--with-session` mới kèm) |
-| Bản sao lưu | `data/backups/*.tar.gz` (0600) | Chứa bí mật; mã hóa hoặc cất nơi an toàn |
+| `N8N_ENCRYPTION_KEY`, `TRENDVN_TOKEN`, proxy, notification token | `.env` (0600, in `.gitignore`) | Back up the same data; do not post to git |
+| Gemini Key | `data/worker/gemini.key` (0600) | |
+| Message channel | `data/worker/notify.json` (0600) | |
+| TikTok session | `data/agent/profiles/publisher` (account `main`) and `publisher-<id>` (each account adds a folder) | Whoever has this folder can log in to your channel. No default backup (new included `--with-session`) |
+| Backup | `data/backups/*.tar.gz` (0600) | Contains secret; Encrypt or store in a safe place |
 
-Nếu nghi ngờ lộ `TRENDVN_TOKEN`: sửa giá trị trong `.env`, chạy `./trendvn up`, `./trendvn n8n import` (cập nhật credential n8n) rồi `./trendvn agent restart`.
+If suspected of exposing `TRENDVN_TOKEN`: edit the value in `.env`, run `./trendvn up`, `./trendvn n8n import` (update credential n8n) then `./trendvn agent restart`.
 
-## 5. Dữ liệu rời khỏi máy bạn
+## 5. Data leaves your device
 
-| Đích | Dữ liệu | Khi nào |
+| Destination | Data | When |
 |---|---|---|
-| Google Gemini | Bản xem trước 384px của video cần phân tích; văn bản lời thoại để tạo giọng đọc | Chỉ khi bạn bật "Xử lý video" và có video trong hàng đợi |
-| Nền tảng nguồn | Truy cập trang như một trình duyệt bình thường (qua proxy nếu bạn đặt) | Mỗi lần quét |
-| TikTok | Video và mô tả khi đăng; đọc hồ sơ công khai của bạn để xác nhận và lấy lượt xem | Khi đăng và khi chốt ngày |
-| Telegram/Discord/Slack/ntfy | Nội dung thông báo (tiêu đề video, lý do, đường dẫn bài đăng) | Chỉ khi bạn cấu hình kênh |
-| Không đâu khác | Không telemetry; n8n tắt chẩn đoán | |
+| Google Gemini | 384px preview of the video to analyze; speech text to create voiceover | Only if you enable "Video processing" and have video in queue |
+| Source platform | Access the page as a normal browser (via proxy if you set it) | Per scan |
+| TikTok | Video and description when posting; read your public profile to confirm and get views | On posting and on closing date |
+| Telegram/Discord/Slack/ntfy | Notification content (video title, reason, post path) | Only if you configure channel |
+| None other than | No telemetry; n8n disable diagnostics | |
 
-## 6. Điều hệ thống **không** làm được
+## 6. System thing **Are not** can do it
 
-- Không xác nhận bản quyền hoặc tính đúng của nội dung; độ chắc chắn của Gemini không phải sự cho phép.
-- Không kiểm soát việc TikTok đổi giao diện (trình đăng có thể hỏng; khi hỏng, bài không bị đăng nhầm).
-- Không thay thế giới hạn chi phí của Google; hạn mức 12 lần/24 giờ chỉ là chốt chặn cục bộ.
+- Does not endorse copyright or correctness of content; Gemini's certainty is not a license.
+- Can't control TikTok changing the interface (poster may be broken; when it's broken, the post will not be mistakenly posted).
+- Does not override Google's cost limit; The limit of 12 times/24 hours is only a local blocking point.
 
-## 7. Rủi ro đã biết và được chấp nhận (cập nhật 2026-10-02)
+## 7. Known and accepted risks (updated 2026-10-02)
 
-| Rủi ro | Vì sao chấp nhận | Giảm thiểu |
+| Risk | Why accept | Minimize |
 |---|---|---|
-| Một token dùng chung cho n8n, worker và agent | Hệ thống một chủ, một máy; tách quyền cần thêm bộ cấp phát và sẽ làm phức tạp việc cài đặt | Token 256-bit trong `.env` (0600); cổng chỉ nghe localhost và cầu nối riêng; lộ token thì đổi theo mục 4 |
-| Người có token có thể bấm "đăng ngay" qua API, bỏ qua lịch tự động | Đó chính là nút đăng thủ công; vẫn bị chặn khi có bài đang đăng/chưa xác nhận/đang bị xác minh | Chỉ chủ có token |
-| yt-dlp không ghim phiên bản | Instagram đổi liên tục, bản cũ hỏng trong vài tuần | Chỉ chạy với URL đã qua kiểm tra miền, kết quả vẫn phải là MP4 thật; cập nhật chủ động bằng `./trendvn update` |
-| Phân giải DNS lúc gửi thông báo và lúc kết nối là hai bước (DNS rebinding) | Kênh chỉ do chủ cấu hình; chặn hoàn toàn cần tự kết nối theo IP | Tên miền công khai bắt buộc, không IP, không theo chuyển hướng, kiểm tra lại địa chỉ ngay trước khi gửi |
-| `style-src 'unsafe-inline'` còn trong CSP | Giao diện dùng thuộc tính `style` ở nhiều nơi; thay bằng lớp CSS là việc lớn, lợi ích nhỏ vì script đã bị khóa | Mọi giá trị hiển thị được escape; không có script nội tuyến ngoài file đã băm |
-| Không có TLS giữa trình duyệt và bảng điều khiển ở localhost | Cùng máy; TLS cần chứng chỉ | Khi mở ra ngoài, dùng đường hầm SSH hoặc proxy TLS và đặt `TRENDVN_UI_HTTPS=1` |
-| Docker Desktop (macOS/Windows) có thể trình địa chỉ nguồn khác cổng cầu nối | Chưa kiểm chứng trên máy thật | Nếu bảng điều khiển báo "không phải máy này", thêm địa chỉ đó vào `TRENDVN_TRUSTED_PEERS` (thông báo có ghi sẵn địa chỉ) |
-| yt-dlp đọc proxy từ biến môi trường `HTTP(S)_PROXY`/`ALL_PROXY` | Đã kiểm chứng bằng test rằng mật khẩu không còn trên dòng lệnh; **chưa** chạy với một proxy thật (chưa có proxy Mỹ) | Khi có proxy, chạy thử một reel và xem `./trendvn doctor` |
-| Bộ lọc văn bản (`domain/text.py`) là heuristic | Có thể còn lọt một dạng liên kết/số điện thoại lạ, hoặc cắt nhầm một cụm hiếm (tên miền ASCII viết thường, số 10-11 chữ số bắt đầu bằng 0) | Mô tả vẫn do chủ xem được trước khi đăng; lọc cuối cùng nằm ở `build_caption` |
-| `PrivateTmp` cho dịch vụ agent | Chrome có cửa sổ cần ổ cắm X11 trong `/tmp`; cô lập `/tmp` làm hỏng nó | `NoNewPrivileges=true`; agent chỉ nghe cầu nối riêng |
+| A shared token for n8n, worker and agent | One master, one machine system; Permission separation requires additional allocators and will complicate the installation of | 256-bit Token in `.env` (0600); port listens only to localhost and private bridge; To reveal the token, exchange it according to section 4 |
+| Token holders can click "post now" via API, bypassing the automatic schedule | That is the manual post button; still blocked when there is a post being posted/unconfirmed/being verified | Only owner has token |
+| yt-dlp doesn't pin version | Instagram keeps changing, old version broke within a few weeks | Only runs with URLs that have passed domain checks, the result should still be real MP4; Proactive updates using `./trendvn update` |
+| DNS resolution at message sending and connection time is two steps (DNS rebinding) | Channel is only configured by the master; Completely blocked, need to manually connect by IP | Required public domain, no IP, no redirects, double check the address just before sending |
+| `style-src 'unsafe-inline'` still in CSP | The interface uses the `style` attribute in many places; Replacing it with a CSS class is a big deal, but the benefit is small because the script is locked. | All displayed values are escaped; There is no inline script other than hashed file |
+| No TLS between browser and console at localhost | Same machine; TLS needs certificate | When opening out, use SSH tunnel or TLS proxy and set `TRENDVN_UI_HTTPS=1` |
+| Docker Desktop (macOS/Windows) can present a source address other than the bridge port | Not tested on real machine | If the console says "not this machine", add that address to `TRENDVN_TRUSTED_PEERS` (notice with address already written) |
+| yt-dlp reads proxy from environment variable `HTTP(S)_PROXY`/`ALL_PROXY` | Verified by testing that the password is no longer on the command line; **yet** runs with a real proxy (no US proxy yet) | With a proxy, run a test reel and see `./trendvn doctor` |
+| The text filter (`domain/text.py`) is heuristic | There may also be a strange link/phone number, or a rare cluster cut off (lowercase ASCII domain name, 10-11 digit number starting with 0) | Description can still be viewed by the owner before posting; The final filter is located at `build_caption` |
+| `PrivateTmp` for agent service | Chrome with windows needs X11 socket in `/tmp`; isolate `/tmp` damage it | `NoNewPrivileges=true`; agent only listens to private bridge |

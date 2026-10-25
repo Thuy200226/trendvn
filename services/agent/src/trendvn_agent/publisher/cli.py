@@ -42,7 +42,10 @@ def main(argv=None):
     command = argv[0] if argv else "status"
     known, username = _account_username(account) if command in ("login", "trust", "status") else (True, None)
     if not known:
-        raise SystemExit("Không có tài khoản có mã %r. Thêm nó ở bảng điều khiển → Thêm → Tài khoản TikTok và chủ đề." % account)
+        raise SystemExit(
+            "Kh\u00f4ng c\u00f3 t\u00e0i kho\u1ea3n c\u00f3 m\u00e3 %r. Th\u00eam n\u00f3 \u1edf b\u1ea3ng \u0111i\u1ec1u khi\u1ec3n → Th\u00eam → T\u00e0i kho\u1ea3n TikTok v\u00e0 ch\u1ee7 \u0111\u1ec1."
+            % account
+        )
     if command == "login":
         print("OK" if login(_minutes(argv, 10), account, expected=username) else "TIMEOUT")
     elif command == "trust":

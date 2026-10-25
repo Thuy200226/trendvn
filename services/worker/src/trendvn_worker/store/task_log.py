@@ -51,7 +51,7 @@ class TaskLogMixin:
         """After a restart nothing is really running: mark leftovers as interrupted so the buttons become usable again."""
         with self.transaction() as db:
             db.execute(
-                "UPDATE tasks SET state='error',finished=?,error='Bị gián đoạn (worker khởi động lại)' WHERE state='running'",
+                "UPDATE tasks SET state='error',finished=?,error='B\u1ecb gi\u00e1n \u0111o\u1ea1n (worker kh\u1edfi \u0111\u1ed9ng l\u1ea1i)' WHERE state='running'",
                 (time.time(),),
             )
             db.execute("DELETE FROM tasks WHERE started<?", (time.time() - 14 * 86400,))

@@ -28,7 +28,7 @@ def dismiss_popups(page):
 
 
 def wait_uploaded(page, seconds=240):
-    """The upload status block reads 'Đã tải lên (size)' when TikTok has received the whole file."""
+    """The upload status block reads 'Uploaded (size)' when TikTok has received the whole file."""
     deadline = time.time() + seconds
     while time.time() < deadline:
         try:

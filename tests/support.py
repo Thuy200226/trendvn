@@ -56,7 +56,7 @@ class StoreCase(unittest.TestCase):
             source_id=job_id,
             url="https://www.douyin.com/video/" + job_id,
             country="CN",
-            title="Tiêu đề " + job_id,
+            title="Ti\u00eau \u0111\u1ec1 " + job_id,
             first_seen=1,
             last_seen=1,
             state=state,
@@ -68,5 +68,5 @@ class StoreCase(unittest.TestCase):
 
     def ready(self, job_id, **fields):
         """A rendered video waiting to be posted."""
-        analysis = {"kind": "dialogue", "caption_vi": "Mô tả " + job_id, "hashtags": ["a", "b", "c"]}
+        analysis = {"kind": "dialogue", "caption_vi": "M\u00f4 t\u1ea3 " + job_id, "hashtags": ["a", "b", "c"]}
         self.job(job_id, "ready", output_file="/d/%s.mp4" % job_id, output_hash="h", analysis=json.dumps(analysis), **fields)

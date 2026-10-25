@@ -43,8 +43,8 @@ def collect(platforms=None, download_media=True, ingest=True, thresholds=None, l
                     if SOURCES[platform]["geo_locked"] and exit_c != country:
                         report[platform] = {
                             "status": "skipped",
-                            "reason": "Cần IP %s để lấy xu hướng đúng quốc gia; IP hiện tại: %s. Đặt TRENDVN_%s_PROXY."
-                            % (country, exit_c or "không xác định", country),
+                            "reason": "C\u1ea7n IP %s \u0111\u1ec3 l\u1ea5y xu h\u01b0\u1edbng \u0111\u00fang qu\u1ed1c gia; IP hi\u1ec7n t\u1ea1i: %s. \u0110\u1eb7t TRENDVN_%s_PROXY."
+                            % (country, exit_c or "kh\u00f4ng x\u00e1c \u0111\u1ecbnh", country),
                         }
                         continue
                     report[platform] = run_platform(ctx, platform, thresholds, download_media, ingest, limit, topics)
@@ -65,12 +65,15 @@ def run_platform(ctx, platform, thresholds, download_media, ingest, limit, topic
     except NoVideos:
         return {
             "status": "error",
-            "reason": "Trang không trả về video nào (có thể bị giới hạn tốc độ hoặc đổi giao diện); thử lại ở lần quét sau.",
+            "reason": "Trang kh\u00f4ng tr\u1ea3 v\u1ec1 video n\u00e0o (c\u00f3 th\u1ec3 b\u1ecb gi\u1edbi h\u1ea1n t\u1ed1c \u0111\u1ed9 ho\u1eb7c \u0111\u1ed5i giao di\u1ec7n); th\u1eed l\u1ea1i \u1edf l\u1ea7n qu\u00e9t sau.",
         }
     except Blocked as e:
-        return {"status": "error", "reason": "Trang yêu cầu xác minh/đăng nhập (%s); không vượt qua CAPTCHA." % e}
+        return {
+            "status": "error",
+            "reason": "Trang y\u00eau c\u1ea7u x\u00e1c minh/\u0111\u0103ng nh\u1eadp (%s); kh\u00f4ng v\u01b0\u1ee3t qua CAPTCHA." % e,
+        }
     except Exception as e:
-        return {"status": "error", "reason": "Lỗi thu thập: " + str(e)[:160]}
+        return {"status": "error", "reason": "L\u1ed7i thu th\u1eadp: " + str(e)[:160]}
     summary = {}
     downloads = []
     weights = thresholds.get("weights") or {}
@@ -123,7 +126,11 @@ def run_platform(ctx, platform, thresholds, download_media, ingest, limit, topic
     return {
         "status": "ok" if any(s.get("seen") for s in summary.values() if isinstance(s, dict)) else "error",
         "summary": summary,
-        "reason": None if any(s.get("seen") for s in summary.values() if isinstance(s, dict)) else "Không đọc được video nào",
+        "reason": (
+            None
+            if any(s.get("seen") for s in summary.values() if isinstance(s, dict))
+            else "Kh\u00f4ng \u0111\u1ecdc \u0111\u01b0\u1ee3c video n\u00e0o"
+        ),
     }
 
 
@@ -134,7 +141,8 @@ def fetch_pending(ctx, platform, seen_now, limit, wanted=()):
             "downloaded": 0,
             "failed": 0,
             "waiting": 0,
-            "note": "Ổ đĩa chỉ còn %d MB trống; chưa tải thêm (dọn ổ đĩa rồi quét lại)" % (free >> 20),
+            "note": "\u1ed4 \u0111\u0129a ch\u1ec9 c\u00f2n %d MB tr\u1ed1ng; ch\u01b0a t\u1ea3i th\u00eam (d\u1ecdn \u1ed5 \u0111\u0129a r\u1ed3i qu\u00e9t l\u1ea1i)"
+            % (free >> 20),
         }
     status = worker_get("/api/status")
     # the worker's own figure leaves out rendered videos no account takes; the raw counts are the fallback for an older worker
@@ -144,7 +152,12 @@ def fetch_pending(ctx, platform, seen_now, limit, wanted=()):
     room = max(0, status["thresholds"].get("max_backlog", 4) - backlog)
     limit = min(limit, room)
     if limit == 0:
-        return {"downloaded": 0, "failed": 0, "waiting": 0, "note": "Hàng chờ đã đủ; chưa tải thêm"}
+        return {
+            "downloaded": 0,
+            "failed": 0,
+            "waiting": 0,
+            "note": "H\u00e0ng ch\u1edd \u0111\u00e3 \u0111\u1ee7; ch\u01b0a t\u1ea3i th\u00eam",
+        }
     # the worker lists this platform's candidates best score first, so the newest 100 of other platforms cannot push the best ones out
     pending = [p for p in worker("/api/media/pending", {"limit": 100, "platform": platform})["items"] if p["source_id"] in seen_now]
     scores = {sid: item.get("score", 0) for sid, item in seen_now.items()}

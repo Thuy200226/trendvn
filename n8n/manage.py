@@ -34,7 +34,7 @@ N8N_CLI = [
 
 
 def die(msg, code=1):
-    print("Lỗi: " + msg, file=sys.stderr)
+    print("L\u1ed7i: " + msg, file=sys.stderr)
     sys.exit(code)
 
 
@@ -59,7 +59,7 @@ def compose(*args, check=True, capture=False, timeout=180, stdin=None):
     )
     if check and p.returncode != 0:
         detail = ((p.stderr or "") + (p.stdout or "")).strip()[-400:] if capture else ""
-        die("lệnh docker compose %s thất bại.%s" % (" ".join(args[:3]), ("\n" + detail) if detail else ""))
+        die("l\u1ec7nh docker compose %s th\u1ea5t b\u1ea1i.%s" % (" ".join(args[:3]), ("\n" + detail) if detail else ""))
     return p
 
 
@@ -70,7 +70,7 @@ def n8n_cli(*args, check=True):
 def require_n8n():
     p = compose("ps", "--status", "running", "--services", check=False, capture=True, timeout=60)
     if "n8n" not in (p.stdout or "").split():
-        die("n8n chưa chạy. Chạy ./trendvn up trước.")
+        die("n8n ch\u01b0a ch\u1ea1y. Ch\u1ea1y ./trendvn up tr\u01b0\u1edbc.")
 
 
 def guard():
@@ -88,8 +88,9 @@ def guard():
     here = {str(ROOT), str(ROOT.resolve())}
     if label and label not in here:
         die(
-            "n8n đang chạy từ thư mục khác (%s). Không thay đổi nó từ đây. Xem docs/DEPLOY.md mục 11, "
-            "hoặc đặt COMPOSE_PROJECT_NAME và cổng riêng trong .env của thư mục này." % label
+            "n8n \u0111ang ch\u1ea1y t\u1eeb th\u01b0 m\u1ee5c kh\u00e1c (%s). Kh\u00f4ng thay \u0111\u1ed5i n\u00f3 t\u1eeb \u0111\u00e2y. Xem docs/DEPLOY.md m\u1ee5c 11, "
+            "ho\u1eb7c \u0111\u1eb7t COMPOSE_PROJECT_NAME v\u00e0 c\u1ed5ng ri\u00eang trong .env c\u1ee7a th\u01b0 m\u1ee5c n\u00e0y."
+            % label
         )
 
 
@@ -111,19 +112,22 @@ def restart_n8n():
         ):
             return
         time.sleep(3)
-    die("n8n không khởi động lại kịp. Xem: ./trendvn logs n8n")
+    die("n8n kh\u00f4ng kh\u1edfi \u0111\u1ed9ng l\u1ea1i k\u1ecbp. Xem: ./trendvn logs n8n")
 
 
 def cmd_status(_args):
     require_n8n()
     everything, active = workflows()
     if not everything:
-        print("Chưa có workflow nào. Chạy: ./trendvn n8n import")
+        print("Ch\u01b0a c\u00f3 workflow n\u00e0o. Ch\u1ea1y: ./trendvn n8n import")
     for wid, name in sorted(everything):
-        print("%s  %-18s %s" % ("BẬT " if wid in active else "tắt ", wid, name))
+        print("%s  %-18s %s" % ("B\u1eacT " if wid in active else "t\u1eaft ", wid, name))
     missing = [w for w in SCHEDULES if w not in active]
     if everything and missing:
-        print("\nLịch tự động chưa bật đủ (thiếu: %s). Chạy: ./trendvn n8n activate" % ", ".join(missing))
+        print(
+            "\nL\u1ecbch t\u1ef1 \u0111\u1ed9ng ch\u01b0a b\u1eadt \u0111\u1ee7 (thi\u1ebfu: %s). Ch\u1ea1y: ./trendvn n8n activate"
+            % ", ".join(missing)
+        )
     return 0
 
 
@@ -133,14 +137,14 @@ def cmd_import(_args):
     env = read_env()
     token = env.get("TRENDVN_TOKEN", "")
     if len(token) < 32:
-        die("Thiếu TRENDVN_TOKEN trong .env. Chạy ./trendvn install.")
+        die("Thi\u1ebfu TRENDVN_TOKEN trong .env. Ch\u1ea1y ./trendvn install.")
     if not list((ROOT / "n8n" / "workflows").glob("*.json")):
-        die("Chưa có workflow. Chạy: ./trendvn n8n build")
+        die("Ch\u01b0a c\u00f3 workflow. Ch\u1ea1y: ./trendvn n8n build")
     _, was_active = workflows()
     credential = [
         {
             "id": "trendvnWorkerAuth",
-            "name": "TrendVN · Worker riêng",
+            "name": "TrendVN · Worker ri\u00eang",
             "type": "httpHeaderAuth",
             "data": {"name": "Authorization", "value": "Bearer " + token},
         }
@@ -154,11 +158,11 @@ def cmd_import(_args):
         n8n_cli("import:workflow", "--separate", "--input=/import")
     finally:
         compose("exec", "-T", "n8n", "rm", "-f", remote, check=False, capture=True)
-    print("Đã nạp workflow TrendVN vào n8n (không in bí mật).")
+    print("\u0110\u00e3 n\u1ea1p workflow TrendVN v\u00e0o n8n (kh\u00f4ng in b\u00ed m\u1eadt).")
     ours = [w for w in was_active if w.startswith("trendvn")]
     if ours:  # importing replaces a workflow and switches it off; put back exactly what was on before
         return activate(sorted(ours), quiet=True)
-    print("Các lịch tự động đang TẮT. Bật bằng: ./trendvn n8n activate")
+    print("C\u00e1c l\u1ecbch t\u1ef1 \u0111\u1ed9ng \u0111ang T\u1eaeT. B\u1eadt b\u1eb1ng: ./trendvn n8n activate")
     return 0
 
 
@@ -171,9 +175,13 @@ def activate(ids, quiet=False):
     restart_n8n()  # n8n only registers new schedules at start-up
     _, active = workflows()
     ok = [w for w in ids if w in active]
-    print("Đã bật: %s" % (", ".join(ok) or "không có"))
+    print("\u0110\u00e3 b\u1eadt: %s" % (", ".join(ok) or "kh\u00f4ng c\u00f3"))
     if failed or len(ok) != len(ids):
-        print("Không bật được: %s. Bật tay trong n8n (mở workflow → Publish)." % ", ".join(sorted(set(ids) - set(ok))), file=sys.stderr)
+        print(
+            "Kh\u00f4ng b\u1eadt \u0111\u01b0\u1ee3c: %s. B\u1eadt tay trong n8n (m\u1edf workflow → Publish)."
+            % ", ".join(sorted(set(ids) - set(ok))),
+            file=sys.stderr,
+        )
         return 1
     return 0
 
@@ -186,7 +194,10 @@ def cmd_activate(args):
     ids = args or SCHEDULES
     unknown = [w for w in ids if w not in known]
     if unknown:
-        die("Không có workflow: %s. Chạy ./trendvn n8n import trước, hoặc xem ./trendvn n8n status." % ", ".join(unknown))
+        die(
+            "Kh\u00f4ng c\u00f3 workflow: %s. Ch\u1ea1y ./trendvn n8n import tr\u01b0\u1edbc, ho\u1eb7c xem ./trendvn n8n status."
+            % ", ".join(unknown)
+        )
     return activate(ids)
 
 
@@ -199,7 +210,7 @@ def cmd_deactivate(args):
         n8n_cli("unpublish:workflow", "--id=" + wid)
     if ids:
         restart_n8n()
-    print("Đã tắt: %s" % (", ".join(ids) or "không có workflow nào đang bật"))
+    print("\u0110\u00e3 t\u1eaft: %s" % (", ".join(ids) or "kh\u00f4ng c\u00f3 workflow n\u00e0o \u0111ang b\u1eadt"))
     return 0
 
 
@@ -216,8 +227,10 @@ def cmd_export(args):
         mine = sorted(Path(td).glob("trendvn*.json"))  # never copy workflows that are not TrendVN's own
         for f in mine:
             shutil.copyfile(f, dest / f.name)
-    print("Đã xuất %d workflow TrendVN vào %s" % (len(mine), dest))
-    print("Đây là bản đang chạy trong n8n. Nguồn chuẩn vẫn là n8n/build.py: chuyển thay đổi cần giữ vào đó.")
+    print("\u0110\u00e3 xu\u1ea5t %d workflow TrendVN v\u00e0o %s" % (len(mine), dest))
+    print(
+        "\u0110\u00e2y l\u00e0 b\u1ea3n \u0111ang ch\u1ea1y trong n8n. Ngu\u1ed3n chu\u1ea9n v\u1eabn l\u00e0 n8n/build.py: chuy\u1ec3n thay \u0111\u1ed5i c\u1ea7n gi\u1eef v\u00e0o \u0111\u00f3."
+    )
     return 0
 
 
@@ -230,4 +243,4 @@ if __name__ == "__main__":
     try:
         sys.exit(COMMANDS[sys.argv[1]](sys.argv[2:]))
     except subprocess.TimeoutExpired:
-        die("lệnh chạy quá lâu. Kiểm tra ./trendvn logs n8n")
+        die("l\u1ec7nh ch\u1ea1y qu\u00e1 l\u00e2u. Ki\u1ec3m tra ./trendvn logs n8n")

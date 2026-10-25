@@ -56,9 +56,9 @@ class RetentionMixin:
             ).fetchall()
             for row in stale:
                 why = (
-                    "Quá %d ngày không được tải" % CANDIDATE_EXPIRY_DAYS
+                    "Qu\u00e1 %d ng\u00e0y kh\u00f4ng \u0111\u01b0\u1ee3c t\u1ea3i" % CANDIDATE_EXPIRY_DAYS
                     if row["state"] == "candidate"
-                    else ("Quá %d ngày không ai quyết định" % UNDECIDED_EXPIRY_DAYS)
+                    else ("Qu\u00e1 %d ng\u00e0y kh\u00f4ng ai quy\u1ebft \u0111\u1ecbnh" % UNDECIDED_EXPIRY_DAYS)
                 )
                 db.execute(
                     "UPDATE jobs SET state='rejected',reason=?,updated=? WHERE id=? AND state=?", (why, now, row["id"], row["state"])

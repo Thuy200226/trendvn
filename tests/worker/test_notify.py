@@ -48,7 +48,7 @@ class NotifyTests(StoreCase):
             self.job("q", "queued", source_file="/x", title="Video X")
             job = self.s.claim()
             self.s.finish("q", job["lease"], "needs_review", reason="Off-topic")
-            self.assertTrue(any("Cần bạn duyệt" in m and "Video X" in m for m in sent))
+            self.assertTrue(any("C\u1ea7n b\u1ea1n duy\u1ec7t" in m and "Video X" in m for m in sent))
         finally:
             notify.send, notify.load_config = real_send, real_load
 

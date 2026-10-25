@@ -20,7 +20,7 @@ from .media.geometry import display_size, layout
 from .media.render import covered_hard_subtitles, make_poster, qc, render
 
 REASON_LIMIT = 700
-PACE_NAMES = {"slow": "nói chậm", "normal": "tốc độ tự nhiên", "fast": "nói nhanh"}
+PACE_NAMES = {"slow": "n\u00f3i ch\u1eadm", "normal": "t\u1ed1c \u0111\u1ed9 t\u1ef1 nhi\u00ean", "fast": "n\u00f3i nhanh"}
 VOICE_RETRIES = 4  # times a voice-over may be put off because Google is busy before the video goes out with subtitles
 MIN_FREE_BYTES = 512 << 20  # below this much free disk nothing new is processed: a render needs room, and a full disk stops the database
 MIN_SIDE = 64  # pixels: a 1x1 or 2x2 "video" (a tracking pixel, a broken download) cannot become a post
@@ -82,7 +82,11 @@ def process_one(store):
         return {"status": "blocked", "reason": "Gemini API key missing"}
     free = free_bytes(store.root)
     if free < MIN_FREE_BYTES:
-        return {"status": "blocked", "reason": "Ổ đĩa chỉ còn %d MB trống; chưa dựng thêm (dọn ổ đĩa rồi chạy lại)" % (free >> 20)}
+        return {
+            "status": "blocked",
+            "reason": "\u1ed4 \u0111\u0129a ch\u1ec9 c\u00f2n %d MB tr\u1ed1ng; ch\u01b0a d\u1ef1ng th\u00eam (d\u1ecdn \u1ed5 \u0111\u0129a r\u1ed3i ch\u1ea1y l\u1ea1i)"
+            % (free >> 20),
+        }
     job = store.claim()
     if not job:
         return {"status": "idle", "reason": "No staged media in queue"}
@@ -93,7 +97,10 @@ def process_one(store):
         return _settle(job, "rate_limited", reason, lambda: store.release(job["id"], job["lease"], reason))
     except KeyRejected as e:
         # every video would fail the same way: stop here, keep this one waiting, and tell the owner once (not once per video)
-        reason = "Khóa Gemini bị Google từ chối (sai, đã thu hồi hoặc thiếu quyền). Vào Cài đặt đổi khóa rồi chạy lại: " + str(e)[:160]
+        reason = (
+            "Kh\u00f3a Gemini b\u1ecb Google t\u1eeb ch\u1ed1i (sai, \u0111\u00e3 thu h\u1ed3i ho\u1eb7c thi\u1ebfu quy\u1ec1n). V\u00e0o C\u00e0i \u0111\u1eb7t \u0111\u1ed5i kh\u00f3a r\u1ed3i ch\u1ea1y l\u1ea1i: "
+            + str(e)[:160]
+        )
         store.set_key_rejected(True)  # the dashboard shows it (the phone alert is optional and throttled to one per 6 hours)
         store.emit("urgent", "🔑 " + reason, "gemini_key")
         return _settle(job, "blocked", reason, lambda: store.release(job["id"], job["lease"], reason))
@@ -128,7 +135,9 @@ def _process(store, cfg, job):
         return {"id": jid, "status": "needs_review"}
     a, route = analyze(store, path, duration, cfg, folder, lenient=approved)
     if not approved and not str(a.get("caption_vi") or "").strip():
-        raise ValueError("Gemini không soạn được mô tả tiếng Việt; cần bạn xem lại")
+        raise ValueError(
+            "Gemini kh\u00f4ng so\u1ea1n \u0111\u01b0\u1ee3c m\u00f4 t\u1ea3 ti\u1ebfng Vi\u1ec7t; c\u1ea7n b\u1ea1n xem l\u1ea1i"
+        )
     a["segments"], fastest = fit_reading_speed(a["segments"], duration)
     if (
         route != "original" and fastest > CONDENSE_ABOVE
@@ -144,7 +153,7 @@ def _process(store, cfg, job):
     if route != "original" and a["segments"]:
         info["max_cps"] = fastest
         if fastest > TOO_FAST:
-            info["warning"] = info.get("warning") or "Phụ đề hơi nhanh (%.0f ký tự/giây)" % fastest
+            info["warning"] = info.get("warning") or "Ph\u1ee5 \u0111\u1ec1 h\u01a1i nhanh (%.0f k\u00fd t\u1ef1/gi\u00e2y)" % fastest
     digest = file_hash(out)
     _write_manifest(folder, job, cfg, a, route, digest, info)
     approval = cfg["require_approval"] and not approved
@@ -161,7 +170,12 @@ def _process(store, cfg, job):
         fingerprint=json.dumps(fp),
         duration=duration,
         output_info=json.dumps(info),
-        reason=("Đã dựng, chờ bạn duyệt" if approval else "Đã dựng, sẵn sàng đăng") + note,
+        reason=(
+            "\u0110\u00e3 d\u1ef1ng, ch\u1edd b\u1ea1n duy\u1ec7t"
+            if approval
+            else "\u0110\u00e3 d\u1ef1ng, s\u1eb5n s\u00e0ng \u0111\u0103ng"
+        )
+        + note,
     )
     return {"id": jid, "status": state, "route": route}
 
@@ -185,7 +199,9 @@ def _source(job, cfg):
         raise ValueError("Video duration outside configured limits")
     video = next(s for s in meta["streams"] if s["codec_type"] == "video")
     if min(video.get("width") or 0, video.get("height") or 0) < MIN_SIDE:
-        raise ValueError("Video quá nhỏ (%sx%s): không dựng được" % (video.get("width"), video.get("height")))
+        raise ValueError(
+            "Video qu\u00e1 nh\u1ecf (%sx%s): kh\u00f4ng d\u1ef1ng \u0111\u01b0\u1ee3c" % (video.get("width"), video.get("height"))
+        )
     return path, duration
 
 
@@ -208,11 +224,16 @@ def _voice_or_subtitles(store, cfg, a, route, folder, duration=None):
         tries = _count_try(folder / "voice_retries")
         if tries <= VOICE_RETRIES:
             raise
-        return None, "vietsub", REASONS["voice_failed"], " (lồng tiếng bỏ qua: Google bận %d lần, %s)" % (tries, str(e)[:80])
+        return (
+            None,
+            "vietsub",
+            REASONS["voice_failed"],
+            " (l\u1ed3ng ti\u1ebfng b\u1ecf qua: Google b\u1eadn %d l\u1ea7n, %s)" % (tries, str(e)[:80]),
+        )
     except RateLimited:
         raise  # our own daily budget is used up: it refills, the video waits (not counted against the voice)
     except Exception as e:
-        return None, "vietsub", REASONS["voice_failed"], " (lồng tiếng bỏ qua: %s)" % str(e)[:120]
+        return None, "vietsub", REASONS["voice_failed"], " (l\u1ed3ng ti\u1ebfng b\u1ecf qua: %s)" % str(e)[:120]
 
 
 def _count_try(marker):
@@ -233,7 +254,7 @@ def _checked_output(out, source, route, folder, duration):
     _, src_meta = probe(source)
     info, problems = qc(out, any(s["codec_type"] == "audio" for s in src_meta["streams"]))
     if problems:
-        raise ValueError("Kiểm tra chất lượng video dựng: " + "; ".join(problems))
+        raise ValueError("Ki\u1ec3m tra ch\u1ea5t l\u01b0\u1ee3ng video d\u1ef1ng: " + "; ".join(problems))
     info["route"] = route
     geo = layout(*display_size(next(s for s in src_meta["streams"] if s["codec_type"] == "video")))
     info["reframed"] = geo["reframe"]

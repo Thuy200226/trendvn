@@ -21,7 +21,7 @@ class View:
         self.now = now or time.time()
         self.cfg = data["settings"]
         self.counts = data["counts"]
-        self.ready = data.get("ready", [])  # the best 30 rendered videos (what the Đăng bài tab lists)
+        self.ready = data.get("ready", [])  # the best 30 rendered videos (what the Post tab lists)
         self.ready_total = self.counts.get("ready", 0) + self.counts.get("awaiting_approval", 0)  # how many there really are
         self.tasks = data.get("tasks", [])
         running = [t for t in self.tasks if t["state"] == "running"]
@@ -31,7 +31,7 @@ class View:
         self.challenge_on = bool(data.get("publisher_challenge"))
         who = next((a for a in data.get("accounts", []) if a["id"] == data.get("publisher_challenge_account")), None)
         self.challenge_command = "./trendvn tiktok trust" + account_flag(data.get("publisher_challenge_account"))
-        self.challenge_who = " ở @" + who["username"] if who else ""
+        self.challenge_who = " \u1edf @" + who["username"] if who else ""
         self.attention = (
             max(len(data["review"]), self.counts.get("needs_review", 0))
             + len(data["unresolved"])
@@ -52,7 +52,7 @@ class View:
         return [a for a in self.d.get("accounts", []) if a["enabled"] and (topic is None or topic in a["topics"])]
 
     def destination(self, topic):
-        """Where the 'Đăng ngay' button sends a video of this topic. Same rule as the worker: of the accounts that take the topic the one
+        """Where the 'Post now' button sends a video of this topic. Same rule as the worker: of the accounts that take the topic the one
         with the fewest posts today, and when none does, the default account (the first enabled one)."""
         takers = self.takers(topic)
         if takers:
@@ -75,22 +75,22 @@ class View:
         """One tap to switch video processing on (or, without a Gemini key, the way to get one)."""
         if not self.d["gemini_configured"]:
             return (
-                '<p class="note warn">Chưa có khóa Gemini nên chưa bật được. <a href="#settings">Dán khóa ở Thêm → Cài đặt</a>, '
-                "rồi quay lại bật xử lý video.</p>"
+                '<p class="note warn">Ch\u01b0a c\u00f3 kh\u00f3a Gemini n\u00ean ch\u01b0a b\u1eadt \u0111\u01b0\u1ee3c. <a href="#settings">D\u00e1n kh\u00f3a \u1edf Th\u00eam → C\u00e0i \u0111\u1eb7t</a>, '
+                "r\u1ed3i quay l\u1ea1i b\u1eadt x\u1eed l\u00fd video.</p>"
             )
         return (
             '<form method="post" action="/settings"><input type="hidden" name="csrf" value="%s"><input type="hidden" name="next" value="%s">'
             '<input type="hidden" name="processing_enabled" value="true"><button class="go big" '
-            'data-confirm="Bật xử lý video? Video sẽ được gửi tới Google Gemini để phân tích.">✔ Bật xử lý video</button></form>'
+            'data-confirm="B\u1eadt x\u1eed l\u00fd video? Video s\u1ebd \u0111\u01b0\u1ee3c g\u1eedi t\u1edbi Google Gemini \u0111\u1ec3 ph\u00e2n t\u00edch.">✔ B\u1eadt x\u1eed l\u00fd video</button></form>'
         ) % (self.csrf, next_tab)
 
     def funnel(self):
         """The four steps a video goes through, each linking to the tab that shows it."""
         steps = (
-            ("Ứng viên", self.counts.get("candidate", 0), "queue"),
-            ("Chờ xử lý", self.waiting, "queue"),
-            ("Sẵn sàng", self.ready_total, "publish"),
-            ("Đã đăng", self.counts.get("published", 0), "posted"),
+            ("\u1ee8ng vi\u00ean", self.counts.get("candidate", 0), "queue"),
+            ("Ch\u1edd x\u1eed l\u00fd", self.waiting, "queue"),
+            ("S\u1eb5n s\u00e0ng", self.ready_total, "publish"),
+            ("\u0110\u00e3 \u0111\u0103ng", self.counts.get("published", 0), "posted"),
         )
         items = "".join('<a class="step" href="#%s"><b>%d</b><small>%s</small></a>' % (tab, n, E(label)) for label, n, tab in steps)
         return '<div class="funnel">%s</div>' % items

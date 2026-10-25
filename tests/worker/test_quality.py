@@ -31,7 +31,7 @@ class RouteTests(unittest.TestCase):
     def test_music_keeps_the_original_sound_and_says_why(self):
         chosen, reason = route.choose_route("music", False)
         self.assertEqual(chosen, route.ORIGINAL)
-        self.assertIn("giữ nguyên", reason)
+        self.assertIn("gi\u1eef nguy\u00ean", reason)
 
 
 class ReadabilityTests(unittest.TestCase):
@@ -50,7 +50,7 @@ class ReadabilityTests(unittest.TestCase):
     def test_extension_is_capped_and_short_captions_are_left_alone(self):
         fitted, _ = fit_reading_speed([seg(0, 0.5, "x" * 200)], 60)
         self.assertEqual(fitted[0]["end"], 0.5 + MAX_EXTENSION)
-        fitted, _ = fit_reading_speed([seg(0, 3, "ngắn")], 10)
+        fitted, _ = fit_reading_speed([seg(0, 3, "ng\u1eafn")], 10)
         self.assertEqual(fitted[0]["end"], 3)
 
     def test_input_is_not_modified_and_timing_never_shrinks(self):

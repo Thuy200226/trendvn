@@ -9,15 +9,15 @@ escape = html.escape
 
 
 def ago(timestamp, now=None):
-    """'3 giờ trước' for a Unix time; '—' when unknown."""
+    """'3 hours ago' for a Unix time; '—' when unknown."""
     if not timestamp:
         return "—"
     seconds = int((now or time.time()) - timestamp)
     if seconds < 60:
-        return "vừa xong"
-    for divisor, unit in ((86400, "ngày"), (3600, "giờ"), (60, "phút")):
+        return "v\u1eeba xong"
+    for divisor, unit in ((86400, "ng\u00e0y"), (3600, "gi\u1edd"), (60, "ph\u00fat")):
         if seconds >= divisor:
-            return "%d %s trước" % (seconds // divisor, unit)
+            return "%d %s tr\u01b0\u1edbc" % (seconds // divisor, unit)
     return "—"
 
 
@@ -35,12 +35,16 @@ def meta_of(job):
 
 
 def left_text(seconds):
-    """'2 giờ 50 phút', '35 phút', 'dưới 1 phút': how long a wait still has to run."""
+    """'2 hours 50 minutes', '35 minutes', 'less than 1 minute': how long a wait still has to run."""
     minutes = max(0, int(seconds)) // 60
     if minutes < 1:
-        return "dưới 1 phút"
+        return "d\u01b0\u1edbi 1 ph\u00fat"
     hours, minutes = divmod(minutes, 60)
-    return ("%d giờ %d phút" % (hours, minutes)) if hours and minutes else ("%d giờ" % hours if hours else "%d phút" % minutes)
+    return (
+        ("%d gi\u1edd %d ph\u00fat" % (hours, minutes))
+        if hours and minutes
+        else ("%d gi\u1edd" % hours if hours else "%d ph\u00fat" % minutes)
+    )
 
 
 def shown_of(shown, total):

@@ -20,7 +20,7 @@ def profile_name(account):
     if account in (None, "", "main"):
         return MAIN_PROFILE
     if not ACCOUNT_ID.fullmatch(str(account)):
-        raise ValueError("Mã tài khoản không hợp lệ")
+        raise ValueError("M\u00e3 t\u00e0i kho\u1ea3n kh\u00f4ng h\u1ee3p l\u1ec7")
     return MAIN_PROFILE + "-" + account
 
 
@@ -57,7 +57,10 @@ def wrong_account(ctx, expected):
     """A Vietnamese message when the profile is signed in as someone other than `expected`, else None (including when unreadable)."""
     who = signed_in_as(ctx)
     if who and who.lower() != str(expected).lower():
-        return "Hồ sơ Chrome đang đăng nhập @%s, không phải @%s. Đăng nhập lại đúng tài khoản." % (who, expected)
+        return (
+            "H\u1ed3 s\u01a1 Chrome \u0111ang \u0111\u0103ng nh\u1eadp @%s, kh\u00f4ng ph\u1ea3i @%s. \u0110\u0103ng nh\u1eadp l\u1ea1i \u0111\u00fang t\u00e0i kho\u1ea3n."
+            % (who, expected)
+        )
     return None
 
 

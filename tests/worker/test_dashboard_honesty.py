@@ -51,7 +51,7 @@ class HeadlineEscapingTests(unittest.TestCase):
             self.assertNotIn("</script>", shown)
             self.assertNotIn("<b>", shown)
         self.assertEqual(headline({"title": "x" * 500}), "x" * 90)
-        self.assertNotIn("#tag", headline({"title": "t", "caption_vi": "Mô tả #tag #khac"}))
+        self.assertNotIn("#tag", headline({"title": "t", "caption_vi": "M\u00f4 t\u1ea3 #tag #khac"}))
 
 
 class KeyRejectedTests(StoreCase):
@@ -65,11 +65,14 @@ class KeyRejectedTests(StoreCase):
     def test_the_banner_the_attention_tab_and_its_count_all_say_so(self):
         self.s.set_key_rejected(True)
         html = self.render()
-        self.assertRegex(html, r'class="banner warn"><b>Chưa tự động hoàn toàn\.</b> Khóa Gemini bị Google từ chối')
-        self.assertIn("Khóa Gemini bị Google từ chối", html.split("<h2>Cần xem</h2>")[1][:900])
-        self.assertRegex(html, r"Cần xem</small><b>1</b>")
+        self.assertRegex(
+            html,
+            'class="banner warn"><b>Ch\u01b0a t\u1ef1 \u0111\u1ed9ng ho\xe0n to\xe0n\\.</b> Kh\xf3a Gemini b\u1ecb Google t\u1eeb ch\u1ed1i',
+        )
+        self.assertIn("Kh\u00f3a Gemini b\u1ecb Google t\u1eeb ch\u1ed1i", html.split("<h2>C\u1ea7n xem</h2>")[1][:900])
+        self.assertRegex(html, "C\u1ea7n xem</small><b>1</b>")
         self.s.key_accepted()
-        self.assertNotIn("Khóa Gemini bị Google từ chối", self.render().split("<h2>Cần xem</h2>")[1][:900])
+        self.assertNotIn("Kh\u00f3a Gemini b\u1ecb Google t\u1eeb ch\u1ed1i", self.render().split("<h2>C\u1ea7n xem</h2>")[1][:900])
 
 
 class NewKeyTests(StoreCase):
@@ -93,26 +96,26 @@ class CountsTests(StoreCase):
         for n in range(45):
             self.job("%032d" % n, "queued", title="video %d" % n)
         html = self.render()
-        self.assertIn("Đang chờ xử lý (30 trong 45)", html)
-        self.job("%032d" % 99, "candidate", title="một ứng viên")
-        self.assertIn("Ứng viên chưa tải về (1)", self.render())  # nothing is cut here: the plain number
+        self.assertIn("\u0110ang ch\u1edd x\u1eed l\u00fd (30 trong 45)", html)
+        self.job("%032d" % 99, "candidate", title="m\u1ed9t \u1ee9ng vi\u00ean")
+        self.assertIn("\u1ee8ng vi\u00ean ch\u01b0a t\u1ea3i v\u1ec1 (1)", self.render())  # nothing is cut here: the plain number
 
     def test_the_needs_attention_number_counts_every_held_video_not_just_the_cards_shown(self):
         for n in range(35):
             self.job("%032d" % n, "needs_review", title="v%d" % n, reason="Audio needs review")
         html = self.render()
-        self.assertRegex(html, r"Cần xem</small><b>35</b>")
+        self.assertRegex(html, "C\u1ea7n xem</small><b>35</b>")
 
     def test_the_needs_attention_tab_says_when_it_shows_only_part_of_what_is_held(self):
         for n in range(35):
             self.job("%032d" % n, "needs_review", title="v%d" % n, reason="Audio needs review")
         html = self.render()
-        self.assertIn("30 trong 35", html.split("<h2>Cần xem</h2>")[1][:600])
+        self.assertIn("30 trong 35", html.split("<h2>C\u1ea7n xem</h2>")[1][:600])
 
     def test_views_that_were_never_read_are_a_dash_not_a_zero(self):
         self.job("p" * 32, "published", title="x", published_at=1.0, publish_url="https://www.tiktok.com/@a/video/1")
         html = self.render()
-        self.assertRegex(html, r"Lượt xem \(30 bài gần nhất\)</small><b>—</b>")
+        self.assertRegex(html, "L\u01b0\u1ee3t xem \\(30 b\xe0i g\u1ea7n nh\u1ea5t\\)</small><b>\u2014</b>")
 
 
 if __name__ == "__main__":

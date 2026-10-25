@@ -1,108 +1,108 @@
-# Nhật ký rà soát phiên bản 1.3 (đóng gói để bàn giao)
+# Review log version 1.3 (packaged for handover)
 
-Bản 1.3 không đổi hành vi hệ thống; nó đổi cách bố trí, đóng gói và vận hành. Vì vậy phần rà soát tập trung vào: cài đặt từ bản đóng gói có chạy đúng không,
-mọi lệnh có làm đúng điều tài liệu nói không, và có gì có thể làm mất dữ liệu hoặc ảnh hưởng hệ thống khác trên cùng máy không.
-Ba vòng: (1) tự rà tĩnh, (2) tự kiểm thử động trên bản cài sạch, (3) ba người rà soát độc lập, mỗi người một góc nhìn, chỉ đọc mã.
+Version 1.3 does not change system behavior; it changes the layout, packaging and operation. So the review focuses on: does the installation from the package run correctly,
+Do all the commands do what the documentation says, and is there anything that could cause data loss or affect other systems on the same machine.
+Three rounds: (1) static self-test, (2) dynamic self-test on a clean install, (3) three independent reviewers, each with their own perspective, reading only the code.
 
-## Vòng 1 — Rà tĩnh (tự động hóa thành `./trendvn test lint`)
+## Round 1 — Static screening (automated to `./trendvn test lint`)
 
-Cách làm: những gì rà bằng tay một lần thì dễ hỏng lại, nên mỗi phát hiện được biến thành một phép kiểm tra chạy mỗi lần.
+How to do it: anything that is checked by hand once is easily damaged again, so each discovery is turned into a test that runs each time.
 
-| Kiểm tra | Bắt được gì |
+| Test | What to catch |
 |---|---|
-| `n8n/build.py --check` | File workflow trong repo lệch mã sinh |
-| Cú pháp Python và shell, mẫu cấm cho bash 3.2/BSD (macOS) | `declare -A`, `mapfile`, `sed -i`, `readlink -f`... |
-| `shellcheck` (mức style) | Lỗi trích dẫn, biến chưa đặt, `cd` không kiểm tra |
-| Mẫu dịch vụ nền trỏ tới file có thật | **Lỗi thật:** sau khi đổi thư mục, mẫu systemd/launchd vẫn trỏ tới `agent/server.py` và `agent_data/` cũ, nên dịch vụ nền sẽ không bao giờ chạy được. Bản cài thử dùng `--no-service` nên không phát hiện; chỉ lộ ra khi in mẫu ra xem. Nay có kiểm tra (đã thử phá cố ý để chắc kiểm tra bắt được) |
-| `scripts/doclint.py` | Lệnh `./trendvn …` trong tài liệu không tồn tại (bắt được `agent venv` có trong mã nhưng thiếu trong trợ giúp), liên kết tương đối hỏng, tàn dư đường dẫn/tên script của bố cục cũ |
+| `n8n/build.py --check` | The file workflow in the repo has the wrong generation code |
+| Python syntax and shell, forbidden pattern for bash 3.2/BSD (macOS) | `declare -A`, `mapfile`, `sed -i`, `readlink -f`... |
+| `shellcheck` (style level) | Quote error, unset variable, `cd` unchecked |
+| The background service template points to the real file | **True error: ** after changing the directory, the systemd/launchd template still points to the old `agent/server.py` and `agent_data/`, so the background service will never run. The trial installation uses `--no-service` so it is not detected; Only visible when printing the sample to view. Now there is a test (tried to destroy it intentionally to make sure the test caught it) |
+| `scripts/doclint.py` | Command `./trendvn …` in the documentation does not exist (catch `agent venv` present in code but missing in help), relative link broken, path/scriptname remnant of old layout |
 
-Sửa trong vòng này ngoài các mục trên: 5 chỗ tài liệu còn ghi lệnh/đường dẫn cũ, thông báo lỗi trong giao diện và agent trỏ tới `./trendvn tiktok trust`, kiểm tra phiên bản `docker compose` ≥ 2.20 khi cài, từ chối cài vào đường dẫn có dấu cách hoặc ký tự đặc biệt (dịch vụ nền không xử lý được), worker ghi log có ích (khởi động, từng lệnh gọi API, lỗi kèm traceback; không ghi token, cookie, thân yêu cầu, chuỗi truy vấn).
+Edited in this round in addition to the above items: 5 places in the document also record old commands/paths, error messages in the interface and agent pointing to `./trendvn tiktok trust`, check `docker compose` version ≥ 2.20 when installing, refuse to install on paths with spaces or special characters (background service cannot handle it), workers write useful logs (startup, each call API, error with traceback; does not record token, cookie, request body, query string).
 
-## Vòng 2 — Kiểm thử động trên bản cài sạch
+## Round 2 — Dynamic testing on a clean install
 
-Cách làm: `./trendvn package` → giải nén vào thư mục trống → project Docker và cổng riêng → cài thật. Lặp lại sau mỗi lần sửa.
+Instructions: `./trendvn package` → extract into an empty folder → Docker project and private port → install for real. Repeat after each correction.
 
-| Việc | Kết quả |
+| Job | Result |
 |---|---|
-| `install` từ bản đóng gói (build image, sinh + nạp workflow, bật lịch) | thành công, 2 container `healthy` |
-| Chạy `install` lần hai | thành công, không phá dữ liệu |
-| Container bị siết (root filesystem chỉ đọc, bỏ mọi capability, `no-new-privileges`, uid người dùng) | worker vẫn `healthy`, bảng điều khiển đủ 6 tab |
-| `n8n deactivate / activate 01 / import / export / status` | đúng; **nạp lại không làm tắt lịch đang bật** |
-| `agent start / status / logs / stop` (tiến trình nền) | đúng |
-| `backup --keep`, `restore` bản sao lưu do chính nó tạo | đúng |
-| `restore` một bản sao lưu của **1.2** thật (dữ liệu và n8n của hệ thống thật) | đúng: dữ liệu đọc được, bảng điều khiển hiện đúng hàng đợi, khóa mạng của máy giữ nguyên |
-| `restart`, `down`, `up`, `update`, `uninstall`, `uninstall --purge` | đúng; `--purge` xóa sạch `data/`, `.venv`, volume |
-| `test container`: toàn bộ test trong image có ffmpeg + dựng video thật | 159/159 |
-| `test e2e`: Chrome thật, 7 kích thước × 6 tab, mọi luồng bấm nút | 76/76 |
+| `install` from packaging (build image, generate + load workflow, enable schedule) | successful, 2 containers `healthy` |
+| Run `install` a second time | successfully, no data destroyed |
+| Container tightened (read-only root filesystem, removed all capabilities, `no-new-privileges`, user uid) | worker still `healthy`, full panel with 6 tabs |
+| `n8n deactivate / activate 01 / import / export / status` | correct; **Reloading does not turn off active calendar** |
+| `agent start / status / logs / stop` (background process) | true |
+| `backup --keep`, `restore` backup created by itself | correct |
+| `restore` a backup copy of **1.2** real (real system data and n8n) | correct: data readable, console shows correct queue, machine's network lock remains intact |
+| `restart`, `down`, `up`, `update`, `uninstall`, `uninstall --purge` | correct; `--purge` wipe `data/`, `.venv`, volume |
+| `test container`: all tests in the image have ffmpeg + real video editing | 159/159 |
+| `test e2e`: Real Chrome, 7 sizes × 6 tabs, all button threads | 76/76 |
 
-### Sự cố trong lúc kiểm thử: tôi làm dừng nhầm hệ thống thật trong vài phút
+### Problem during testing: I mistakenly stopped the real system for a few minutes
 
-Bước `restore` bản sao lưu 1.2 lần đầu chạy trong thư mục thử với cấu hình **gộp sai**: `.env` lấy từ bản sao lưu nên mất `COMPOSE_PROJECT_NAME` của thư mục thử,
-Docker quay về tên mặc định `trendvn` — trùng tên với hệ thống 1.2 đang chạy thật. Lệnh `docker compose down` rồi khôi phục volume n8n đã chạy lên **hệ thống thật**:
-hai container bị xóa (khoảng 3 phút), volume n8n bị ghi đè bằng bản sao lưu lúc 10:45. Dữ liệu worker (`runtime/`, hàng đợi, video, khóa) nằm ngoài volume nên không bị đụng.
-Khắc phục ngay: `docker compose up -d` ở thư mục 1.2 và nạp lại 6 workflow; lịch tự động vốn đang tắt nên không mất bài, không đăng nhầm.
+Step `restore` backup 1.2 first run in test folder with configuration **wrong inclusion**: `.env` taken from backup so `COMPOSE_PROJECT_NAME` of test folder is lost,
+Docker returns to the default name `trendvn` — the same name as the real running 1.2 system. Command `docker compose down` and then restore volume n8n run to **real system**:
+two containers deleted (about 3 minutes), volume n8n overwritten by backup at 10:45. The worker data (`runtime/`, queues, videos, keys) is outside the volume so it is not touched.
+Fix now: `docker compose up -d` in folder 1.2 and reload 6 workflows; The automatic calendar is already turned off so no posts are lost or mistakes are posted.
 
-Sửa tận gốc (đều có kiểm thử, đã thử với một project giả `guardtest`, không đụng hệ thống thật):
-1. **`guard_project`**: mọi lệnh làm thay đổi (`up`, `down`, `restart`, `update`, `backup`, `restore`, `uninstall`, `n8n import/activate/deactivate`) từ chối chạy nếu project Docker này đang chạy từ **thư mục khác**, và nói rõ cách chuyển hoặc chạy song song. Bỏ qua được bằng `TRENDVN_ALLOW_TAKEOVER=1`.
-2. **Gộp `.env` khi khôi phục** đổi thành: giá trị của máy hiện tại luôn thắng; bản sao lưu chỉ đóng góp hai khóa bí mật bắt buộc (`N8N_ENCRYPTION_KEY`, `TRENDVN_TOKEN`) và các tùy chọn máy này chưa đặt.
-3. Trước khi ghi đè, `restore` in rõ project và volume sẽ bị ghi đè.
-4. Mọi thử nghiệm phá hủy về sau đặt tên project riêng, và so sánh mã container của hệ thống thật trước/sau (không đổi).
+Completely fixed (all tested, tried with a fake project `guardtest`, did not touch the real system):
+1. **`guard_project`**: all commands that change (`up`, `down`, `restart`, `update`, `backup`, `restore`, `uninstall`, `n8n import/activate/deactivate`) refuses to run if this Docker project is running from **directory other than**, and clearly states how to switch or run in parallel. Can be bypassed with `TRENDVN_ALLOW_TAKEOVER=1`.
+2. **Incorporate `.env` when restoring** changes to: the value of the current machine always wins; The backup only contributes the two required private keys (`N8N_ENCRYPTION_KEY`, `TRENDVN_TOKEN`) and these machine options are not set.
+3. Before overwriting, `restore` clearly prints the project and volume to be overwritten.
+4. All subsequent destructive tests give their own project name, and compare the real system's container code before/after (unchanged).
 
-## Vòng 3 — Ba người rà soát độc lập
+## Round 3 — Three independent reviewers
 
-Ba tác tử chỉ đọc mã (không được chạy Docker hay dịch vụ), mỗi người một góc: (A) shell/CLI và macOS, (B) Docker, n8n, đóng gói, bảo mật, (C) tài liệu và hành trình của người dùng mới trên Mac.
-Họ báo tổng cộng 38 phát hiện thật (một vài mục trùng nhau; không tính các mục "đã đúng"). Tất cả được xử lý, hoặc ghi rõ lý do nếu không sửa. Đáng chú ý nhất, theo mức ảnh hưởng tới lần cài trên Mac của bạn:
+Three agents that only read code (cannot run Docker or services), one each: (A) shell/CLI and macOS, (B) Docker, n8n, packaging, security, (C) documentation and new user journey on Mac.
+They reported a total of 38 true findings (some duplicate entries; not counting "correct" entries). All are handled, or the reason is clearly stated if not corrected. Most notably, in order of impact on your Mac installation:
 
-| Phát hiện | Vì sao quan trọng | Xử lý |
+| Detect | Why is it important | Treat |
 |---|---|---|
-| **Python 3.9 của macOS không cài được agent**: `playwright` và `yt-dlp` đều yêu cầu Python ≥ 3.10 (kiểm tra trên PyPI), còn tài liệu và `install.sh` chỉ đòi 3.9 | Cài trên Mac mới sẽ dừng ở bước 3 với lỗi pip khó hiểu (lỗi này có từ bản 1.2) | `install` đòi Python 3.10+ cho agent, tự chọn bản mới nhất trên máy (`python3.13` … `python3.10`, Homebrew), hướng dẫn `brew install python@3.12`; `.venv` dựng bằng Python cũ được dựng lại; `doctor` kiểm tra; lint kiểm tra công cụ máy chủ vẫn chạy được trên cú pháp 3.9 |
-| **Chuyển từ 1.2 sẽ làm n8n không khởi động**: cài mới sinh khóa mã hóa mới, còn volume n8n cũ chỉ đọc được bằng khóa cũ (đã thử thật: "Mismatching encryption keys") | Mất n8n sau khi chuyển thư mục | `install` từ chối sinh khóa mới khi còn volume cũ; hướng dẫn chuyển đã sửa (chép `.env` cũ trước) |
-| **Cài dịch vụ nền hỏng trên Linux dùng Wayland** (`sed` gặp xuống dòng, để lại file dịch vụ rỗng) | Cài dừng ở bước 8 | Dịch vụ nền sinh bằng Python (`scripts/render_service.py`), có kiểm tra tự động, thử với Wayland/X11/không có/ký tự lạ |
-| **Kiểm tra Chrome sai**: nhận Chromium/snap và `~/Applications`, trong khi Playwright chỉ dùng Google Chrome ở vị trí chuẩn | Cài "thành công" nhưng mọi việc trình duyệt hỏng | `install` và `doctor` kiểm tra đúng chỗ; `doctor` mở thử Chrome bằng Playwright |
-| **Dry-run của người mới không có gì để chạy** (lần quét đầu chỉ ghi mốc) và **ảnh chụp không nằm ở chỗ tài liệu nói** | Người mới tưởng hỏng | Tài liệu và thông báo cuối `install` viết lại thành 5 việc, có bước đặt "Tài khoản TikTok đích" |
-| **Chuyển máy có thể đăng trùng**: dữ liệu n8n khôi phục nhớ lịch đang bật | Hai máy cùng đăng một kênh | `restore` tắt lịch trong dữ liệu n8n **trước khi** n8n khởi động; quy trình chuyển máy sắp lại thứ tự |
-| `restore` gộp `.env` trước khi kiểm tra bản sao lưu, thông báo "chưa thay đổi gì" sai | `.env` mang khóa lạ, n8n không lên | Kiểm tra bản sao lưu trước; chỉ lấy khóa bí mật khi bản sao lưu có dữ liệu n8n đi kèm |
-| `docker compose cp` tạo file root 0600 mà người dùng n8n không đọc được; token có thể nằm lại trong container | Nạp credential hỏng trên Mac (uid 501); lộ token | Token đi qua stdin vào file 0600 do chính người dùng n8n tạo, xóa sau khi dùng; đã chạy workflow 00 thật để chứng minh credential dùng được |
-| `hmac.compare_digest` ném lỗi với ký tự có dấu | Mật khẩu tiếng Việt không đăng nhập được; header lạ gây 500 | So sánh theo bytes ở worker và agent, có test (đã chứng minh test hỏng khi hoàn nguyên bản sửa) |
-| `cp .env.example .env` khiến bí mật bị coi là "đã có" (chú thích cuối dòng bị đọc thành giá trị); các bộ đọc `.env` mỗi nơi một kiểu | Khóa rỗng, n8n và agent không chạy | Một bộ đọc chung `scripts/envfile.py` theo quy tắc của Compose; dòng bí mật trong ví dụ để dạng chú thích; có test |
-| `--purge` xóa cả `data/backups`; hỏi xác nhận sau khi đã gỡ dịch vụ | Mất bản sao lưu; gỡ dở dang | Hỏi trước, giữ `data/backups` và `.env` |
-| `logs agent` không hiện lỗi khi khởi động (file chưa tồn tại) | Không thấy nguyên nhân agent chết | Hiện mọi file log có, hoặc journal của systemd |
-| Sao lưu chép volume n8n lúc n8n đang chạy; file tgz dở dang vẫn bị đóng gói | Bản sao lưu n8n có thể hỏng | Dừng n8n vài giây khi chép, luôn bật lại; xóa file dở; `restore` kiểm tra trước khi xóa |
-| `doctor` chỉ kiểm tra agent từ máy chủ | Tường lửa chặn container tới agent mà vẫn báo xanh | Thêm kiểm tra từ bên trong container và cách mở cổng cho ufw |
-| macOS không cho dịch vụ nền đọc Documents/Desktop/Downloads; đường dẫn có dấu cách/ký tự đặc biệt làm hỏng file dịch vụ | Agent không chạy sau khi cài | `install` từ chối và chỉ chuyển vào `~/trendvn` |
-| Tệp kiểu `.env.bak` có thể lọt vào bản đóng gói; bản đóng gói không tái tạo được | Rò bí mật; khó đối chiếu | Loại mọi `.env*` trừ `.env.example`; đóng gói xác định (cùng mã cho cùng sha256) |
-| Tài liệu: thời gian cài 15 phút (thực tế 30–60 phút), lời khuyên Gatekeeper cũ (macOS 15+), `brew` cask đổi tên, lệnh n8n thủ công thiếu biến, cron thiếu PATH, số phút chờ sai (15 → 45), tên workflow, lời khẳng định "kiểm chứng trọn vẹn" quá lời | Người dùng mới bị kẹt hoặc hiểu sai | Sửa từng mục; phần "chưa kiểm chứng trên Mac" viết lại chính xác |
+| **Python 3.9 of macOS cannot install agent**: `playwright` and `yt-dlp` both require Python ≥ 3.10 (checked on PyPI), while the documentation and `install.sh` only require 3.9 | Installation on a new Mac will stop at step 3 with a confusing pip error (this error is from version 1.2) | `install` requires Python 3.10+ for the agent, manually select the latest version on the machine (`python3.13` … `python3.10`, Homebrew), instructions `brew install python@3.12`; `.venv` old Python build rebuilt; `doctor` test; lint check server engine still runs on syntax 3.9 |
+| **Switching from 1.2 will cause n8n to not boot**: New installation generates a new encryption key, but the old n8n volume can only be read with the old key (tried: "Mismatching encryption keys") | Lost n8n after switching folders | `install` refuse to generate new keys while the old volume is still available; Edited transfer instructions (copy `.env` old first) |
+| **Installing a broken background service on Linux using Wayland** (`sed` encountered a line break, leaving an empty service file) | Installation stopped at step 8 | Background service created in Python (`scripts/render_service.py`), with automatic test, try with Wayland/X11/none/strange character |
+| **Chrome test is wrong**: receives Chromium/snap and `~/Applications`, while Playwright only uses Google Chrome in standard position | Installed "successfully" but everything in the browser is broken | `install` and `doctor` check in the right place; `doctor` try opening Chrome with Playwright |
+| **Dry-run of a newbie has nothing to run**(first scan only records landmarks) and**shots are not where the documentation says** | Newbie thinks it's broken | Documents and information Last notice `install` rewritten into 5 tasks, with step to set "Destination TikTok Account" |
+| **Switching devices can double post **: n8n data restore remember schedule is on | Two devices post same channel | `restore` turn off schedule in n8n data **prev when** n8n starts; Machine transfer process reorders |
+| `restore` merged `.env` before checking the backup, the message "no changes" is wrong | `.env` carries a strange key, n8n doesn't come up | Check the backup first; Get the private key only when the backup has n8n data included |
+| `docker compose cp` creates root file 0600 that cannot be read by user n8n; token may stay in container | Load credential corrupted on Mac (uid 501); expose token | Token goes through stdin into file 0600 created by user n8n, deleted after use; ran real workflow 00 to prove that credential can use |
+| `hmac.compare_digest` throws error with accented characters | Vietnamese password cannot log in; Strange header causes 500 | Comparison by bytes in worker and agent, with test (proved broken test when reverting fix) |
+| `cp .env.example .env` causes the secret to be considered "given" (end of line comment read as value); readers `.env` one each type | Empty key, n8n and agent not running | One common reader `scripts/envfile.py` according to Compose rules; secret line in example as comment; Have test |
+| `--purge` delete also `data/backups`; ask for confirmation after removing service | Lost backup; Uninstall unfinished | Ask first, keep `data/backups` and `.env` |
+| `logs agent` does not show error when starting (file does not exist) | Does not see the reason the agent died | Shows all available log files, or systemd journals |
+| Backup and copy volume n8n while n8n is running; unfinished tgz file is still packaged | N8n backup may be corrupted | Stop n8n for a few seconds when copying, always turn it back on; delete bad files; `restore` check before deleting |
+| `doctor` only checks agents from the server | Firewall blocks containers from reaching agents but still shows green | Adds checks from inside the container and how to open ports for ufw |
+| macOS prevents background services from reading Documents/Desktop/Downloads; Paths with spaces/special characters corrupt the service file | Agent does not run after installation | `install` refused and just moved in `~/trendvn` |
+| File of type `.env.bak` may be included in the packaging; non-renewable packaging | Secret leak; hard to compare | Eliminate all `.env*` except `.env.example`; defined packaging (same code for same sha256) |
+| Documentation: 15 minute install time (actual 30–60 minutes), old Gatekeeper advice (macOS 15+), `brew` cask name change, manual n8n command missing variables, cron missing PATH, wrong wait minutes (15 → 45), workflow name, exaggerated "fully tested" claim | New user stuck or misunderstood | Fix each item; The "not tested on Mac" section correctly rewrites |
 
-Không sửa (ghi nhận): `pick_subnet` chỉ nhìn mạng Docker chứ không nhìn route của VPN (trùng dải chỉ hiện ra như một lỗi Docker rõ ràng khi `up`; có thể đặt `TRENDVN_SUBNET` thủ công).
+No fix (noted): `pick_subnet` only looks at the Docker network and not the VPN route (duplicate ranges only show up as an obvious Docker error when `up`; `TRENDVN_SUBNET` can be set manually).
 
-## Kết quả cuối (trên bản đóng gói cuối cùng, cài vào thư mục trống với project và cổng riêng)
+## Final result (on final package, install into empty folder with separate project and port)
 
-| Kiểm tra | Kết quả |
+| Test | Result |
 |---|---|
-| `./trendvn test lint` (workflow khớp mã, Python/shell, bash 3.2, mẫu dịch vụ nền, tài liệu khớp mã) | OK |
-| Bộ test trên máy / trong image Docker có ffmpeg / dựng video thật | 167 / 167 / đạt |
-| Chrome thật, 7 kích thước × 6 tab, mọi luồng nút | 76/76 |
-| `install` từ bản đóng gói, bật lịch, workflow 00 chạy thật với credential vừa nạp | thành công |
-| `doctor`: 15 mục xanh (gồm gọi agent từ container, Python 3.10, mở thử Chrome) | đạt; mục vàng còn lại là việc của người dùng |
-| `backup` → `restore`: lịch tự động được tắt trước khi n8n lên | đúng |
-| `export`, `update`, `uninstall`, `uninstall --purge` | đúng |
-| Container: root filesystem chỉ đọc, bỏ mọi capability, `no-new-privileges`, init | đúng khi chạy thật |
-| Hệ thống thật (1.2) đang chạy: mã container trước và sau mọi bước thử | không đổi |
-| Bản đóng gói tạo hai lần | cùng sha256 |
+| `./trendvn test lint` (code matching workflow, Python/shell, bash 3.2, background service sample, code matching documentation) | OK |
+| Test suite on machine / in Docker image with ffmpeg / real video editing | 167 / 167 / passed |
+| True Chrome, 7 sizes × 6 tabs, all button threads | 76/76 |
+| `install` from the package, turn on the calendar, workflow 00 runs for real with just loaded credential | successfully |
+| `doctor`: 15 green entries (including calling agent from container, Python 3.10, test opening Chrome) | passed; The remaining gold item is the work of user |
+| `backup` → `restore`: automatic calendar is turned off before n8n goes up | correct |
+| `export`, `update`, `uninstall`, `uninstall --purge` | true |
+| Container: read-only root filesystem, remove all capabilities, `no-new-privileges`, init | correct when running real |
+| Real system (1.2) running: container code before and after every test step | remains unchanged |
+| Double generated packaging | with sha256 |
 
-## Chưa kiểm chứng, nói thẳng
+## Not verified, frankly speaking
 
-- **macOS thật:** launchd, `host-gateway` của Docker Desktop, Python 3.10+ qua Homebrew, cờ cách ly file, đường dẫn Chrome. Script chỉ dùng cú pháp bash 3.2/BSD (có kiểm tra tự động) nhưng chưa chạy trên Mac.
-- **Dịch vụ nền systemd/launchd thật:** chỉ kiểm tra nội dung sinh ra và đường dẫn; chưa cài thật vì sẽ ghi đè dịch vụ agent của hệ thống đang chạy.
-- **Chuyển hệ thống thật từ 1.2 sang 1.3:** quy trình ở `docs/DEPLOY.md` mục 11 đã được thử từng phần (khôi phục bản sao lưu 1.2 thật vào bản cài sạch, chặn khóa n8n lệch) nhưng chưa chạy trọn vẹn trên chính hệ thống đang chạy.
-- Bản 1.3 chưa được chạy dài ngày với lịch thật; TikTok có thể hiện hình xác minh bất kỳ lúc nào (hệ thống dừng đăng và báo, không vượt).
+- **macOS real:** launchd, `host-gateway` of Docker Desktop, Python 3.10+ via Homebrew, file quarantine flag, Chrome path. The script only uses bash 3.2/BSD syntax (with automatic checking) but does not run on Mac yet.
+- **True systemd/launchd background service:** only checks generated content and paths; Do not actually install it because it will overwrite the agent service of the running system.
+- **Converting a real system from 1.2 to 1.3:** The procedure in `docs/DEPLOY.md` section 11 has been tried in part (restoring the real 1.2 backup to a clean install, blocking incorrect n8n keys) but has not been fully executed on the same running system.
+- Version 1.3 has not been run for a long time with a real schedule; TikTok can display verification images at any time (the system stops posting and reporting, not exceeding).
 
-## Vòng 4 — Chuyển hệ thống đang chạy sang thư mục mới
+## Round 4 — Move the running system to the new directory
 
-Yêu cầu tiếp theo là chạy lại mọi thứ từ thư mục mới. Việc này phải dừng hệ thống 1.2 đang chạy và thay dịch vụ agent của máy, và **trình phân quyền tự động đã từ chối** lệnh dừng đó khi tôi thử chạy trực tiếp; vì vậy hệ thống thật chưa được đụng tới. Thay vào đó:
+The next requirement is to run everything again from the new directory. This requires stopping the running 1.2 system and replacing the machine's agent service, and **the autoauthorizer refused** that stop command when I tried running it directly; so the real system has not been touched. Instead:
 
-1. Chạy `./trendvn test all` ngay trong thư mục mới: lint, 167 test trên máy, 167 test trong image Docker, dựng video thật, 76 kiểm tra Chrome thật: **đạt hết**.
-2. Viết `./trendvn migrate <thư-mục-1.2>` (một lệnh, có đường lui) và **diễn tập** nó trên một bản sao cô lập của hệ thống 1.2 (project Docker và cổng riêng, dữ liệu thật lấy từ bản sao lưu, một workflow đang bật). Kết quả (lần diễn tập cuối): sao lưu, dừng bản cũ, chép dữ liệu (bỏ bộ nhớ đệm, giữ hồ sơ), cài, đối chiếu **khớp từng trạng thái** (19 baseline, 35 candidate, 3 queued, 1 ready), hai workflow đang bật (01 và 03) vẫn bật, credential n8n dùng được (workflow 00 chạy thành công), khóa bí mật giữ nguyên. Hệ thống thật trước và sau: mã container không đổi, file dịch vụ agent không đổi.
-3. **Diễn tập lần đầu thất bại, và đó là điều diễn tập để bắt:** máy này có `/usr/bin/python3.12` nhưng thiếu gói `venv`, nên bước tạo môi trường Python của agent lỗi **sau khi bản cũ đã bị dừng** (đường lui in ra đúng nhưng vẫn là mất dịch vụ). Đã sửa hai chỗ: chọn Python phải kiểm tra được cả `venv` (ưu tiên Python hệ thống, chỉ dùng Python của conda khi không còn lựa chọn nào khác), và `migrate` chạy toàn bộ kiểm tra điều kiện của máy (Docker, Compose, Python, Chrome) **trước** khi dừng bất cứ thứ gì. Diễn tập lại trên bản cuối: đạt.
-4. Diễn tập cố ý dùng `--no-service`, nên phần thay dịch vụ nền systemd/launchd của `migrate` **chưa được chạy thật**: mã dừng dịch vụ chỉ chạm dịch vụ có `WorkingDirectory` đúng bằng thư mục cũ; việc cài dịch vụ mới dùng lại `scripts/agent.sh install` đã kiểm tra nội dung sinh ra.
+1. Run `./trendvn test all` right in the new folder: lint, 167 tests on the machine, 167 tests in Docker image, real video editing, 76 real Chrome tests: **passes all**.
+2. Write `./trendvn migrate <old-directory-1.2>` (one command, with backtracking) and **practice** it on an isolated copy of system 1.2 (Docker project and private port, real data from backup, a workflow on). Result (last rehearsal): backup, stop old version, copy data (remove cache, keep records), install, compare **match each state** (19 baseline, 35 candidates, 3 queued, 1 ready), two active workflows (01 and 03) are still enabled, credential n8n is usable (workflow 00 runs successfully), secret key remains the same. Real system before and after: container code remains unchanged, agent service file remains unchanged.
+3. **The first drill failed, and that's the drill to catch:**This machine has `/usr/bin/python3.12` but is missing the package `venv`, so the step to create the agent's Python environment has an error**after the old version has been stopped**(the way back prints correctly but still is loss of service). Fixed two things: choosing Python must also check `venv` (system Python preferred, only conda's Python when there is no other choice), and `migrate` runs all machine condition checks (Docker, Compose, Python, Chrome)**before** when stopping anything. Rehearse on final version: pass.
+4. Rehearsal of intentional use `--no-service`, so the section replaces systemd/launchd's background service `migrate` **not actually run yet**: service stop code only touches service yes `WorkingDirectory` exactly equal to the old directory; Installing new services again `scripts/agent.sh install` Checked the generated content.
 

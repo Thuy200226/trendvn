@@ -25,7 +25,7 @@ class PublisherOutcomeTests(unittest.TestCase):
         self.job = {
             "id": "j1",
             "output_hash": sha256(folder / "final.mp4"),
-            "caption": "Mô tả #a1 #b2 #c3",
+            "caption": "M\u00f4 t\u1ea3 #a1 #b2 #c3",
             "target": "u",
             "visibility": "public",
         }
@@ -94,7 +94,7 @@ class ScriptedStudioTests(unittest.TestCase):
         self.job = {
             "id": "j1",
             "output_hash": sha256(folder / "final.mp4"),
-            "caption": "Mô tả #a1 #b2 #c3",
+            "caption": "M\u00f4 t\u1ea3 #a1 #b2 #c3",
             "target": "u",
             "visibility": "public",
         }
@@ -177,11 +177,11 @@ class ScriptedStudioTests(unittest.TestCase):
         self.page.url = "https://www.tiktok.com/login?redirect=upload"
         outcome, _, reason = self.run_job()
         self.assertEqual(outcome, "signed_out")
-        self.assertIn("hết hạn", reason)
+        self.assertIn("h\u1ebft h\u1ea1n", reason)
 
     def test_challenge_before_the_click_pauses_publishing(self):
         def blocked(page):
-            raise post.Challenge("TikTok đòi xác minh")
+            raise post.Challenge("TikTok \u0111\u00f2i x\u00e1c minh")
 
         post.wait_for_upload_ui = blocked
         outcome, picture, reason = self.run_job()
@@ -190,7 +190,7 @@ class ScriptedStudioTests(unittest.TestCase):
 
     def test_challenge_after_the_click_is_unknown(self):
         def blocked(page):
-            raise post.Challenge("TikTok đòi xác minh")
+            raise post.Challenge("TikTok \u0111\u00f2i x\u00e1c minh")
 
         with mock.patch.object(post, "_confirm_post", blocked):
             outcome, _, _ = self.run_job()
@@ -208,13 +208,13 @@ class ScriptedStudioTests(unittest.TestCase):
         self.assertEqual((outcome, picture), ("failed", "/shots/error.png"))
 
     def test_post_is_confirmed_only_by_a_new_id_with_the_same_caption(self):
-        self.descriptions = [{"id": "1", "desc": "bài cũ"}]
+        self.descriptions = [{"id": "1", "desc": "b\u00e0i c\u0169"}]
         self.assertEqual(self.run_job()[0], "unknown")  # clicked, nothing new appeared on the profile
         calls = []
 
         def profile(ctx, target):
             calls.append(1)
-            return list(self.descriptions) + ([{"id": "2", "desc": "mô tả #a1 #b2 #c3"}] if len(calls) > 1 else [])
+            return list(self.descriptions) + ([{"id": "2", "desc": "m\u00f4 t\u1ea3 #a1 #b2 #c3"}] if len(calls) > 1 else [])
 
         post.own_descriptions = profile
         outcome, url, _ = self.run_job()
@@ -233,14 +233,16 @@ class ScriptedStudioTests(unittest.TestCase):
         self.ctx.new_page.assert_not_called()
 
     def test_a_profile_signed_in_as_somebody_else_never_posts(self):
-        post.wrong_account = lambda ctx, expected: "Hồ sơ Chrome đang đăng nhập @khac, không phải @%s." % expected
+        post.wrong_account = (
+            lambda ctx, expected: "H\u1ed3 s\u01a1 Chrome \u0111ang \u0111\u0103ng nh\u1eadp @khac, kh\u00f4ng ph\u1ea3i @%s." % expected
+        )
         outcome, _, reason = self.run_job()
         self.assertEqual((outcome, "@khac" in reason), ("signed_out", True))
         self.ctx.new_page.assert_not_called()
         self.assertEqual(self.run_job(dry_run=True)[0], "signed_out")  # a rehearsal does not upload into the wrong account either
 
     def test_same_caption_already_on_the_account_is_refused_before_uploading(self):
-        self.descriptions = [{"id": "1", "desc": "Mô tả #a1 #b2 #c3"}]
+        self.descriptions = [{"id": "1", "desc": "M\u00f4 t\u1ea3 #a1 #b2 #c3"}]
         self.assertEqual(self.run_job()[0], "duplicate")
         self.assertEqual(self.run_job(manual=True)[0], "deferred")
         self.ctx.new_page.assert_not_called()
@@ -350,7 +352,7 @@ class PerAccountJobTests(unittest.TestCase):
             own_descriptions=lambda ctx, target: [
                 {
                     "id": "11" if target == "main_user" else "22",
-                    "desc": "mô tả " + target,
+                    "desc": "m\u00f4 t\u1ea3 " + target,
                     "views": 5,
                     "likes": 1,
                     "comments": 0,
@@ -390,8 +392,13 @@ class PerAccountJobTests(unittest.TestCase):
 
     def test_unconfirmed_posts_are_looked_for_on_the_account_they_were_posted_to(self):
         self.unresolved = [
-            {"id": "a", "caption": "mô tả meo", "account": "pets", "target": "meo"},
-            {"id": "b", "caption": "mô tả main_user", "account": None, "target": None},  # made before accounts existed: the default one
+            {"id": "a", "caption": "m\u00f4 t\u1ea3 meo", "account": "pets", "target": "meo"},
+            {
+                "id": "b",
+                "caption": "m\u00f4 t\u1ea3 main_user",
+                "account": None,
+                "target": None,
+            },  # made before accounts existed: the default one
         ]
         result = jobs.verify_unresolved()
         self.assertEqual(result, {"resolved": 2, "still_unknown": 0})
@@ -428,7 +435,9 @@ class SignedOutReportingTests(unittest.TestCase):
             sent.append((path, payload))
             return claim if path.endswith("/claim") else {"ok": True}
 
-        with mock.patch.multiple(jobs, worker=worker, publish_one=lambda c, dry_run: ("signed_out", "", "Chưa đăng nhập")):
+        with mock.patch.multiple(
+            jobs, worker=worker, publish_one=lambda c, dry_run: ("signed_out", "", "Ch\u01b0a \u0111\u0103ng nh\u1eadp")
+        ):
             result = jobs.run_publish("j1")
         self.assertEqual(result["status"], "signed_out")
         finish = [p for path, p in sent if path.endswith("/finish")][0]
@@ -483,7 +492,11 @@ class SessionCheckTests(unittest.TestCase):
         from trendvn_agent.publisher import session
 
         def wrong(ctx, expected):
-            return "Hồ sơ Chrome đang đăng nhập @khac, không phải @%s." % expected if expected == "me" else None
+            return (
+                "H\u1ed3 s\u01a1 Chrome \u0111ang \u0111\u0103ng nh\u1eadp @khac, kh\u00f4ng ph\u1ea3i @%s." % expected
+                if expected == "me"
+                else None
+            )
 
         with mock.patch.multiple(session, chrome=self.fake_chrome, logged_in=lambda ctx: True, wrong_account=wrong):
             status = session.session_status(expected="me")
@@ -533,7 +546,9 @@ class SessionCheckTests(unittest.TestCase):
         page = SimpleNamespace(goto=lambda *a, **k: None, wait_for_timeout=lambda ms: None)
         ctx = SimpleNamespace(pages=[page], new_page=lambda: page)
         reported = []
-        answers = iter(["Đang đăng nhập @khac", "Đang đăng nhập @khac", None])  # the owner signs in wrongly twice, then correctly
+        answers = iter(
+            ["\u0110ang \u0111\u0103ng nh\u1eadp @khac", "\u0110ang \u0111\u0103ng nh\u1eadp @khac", None]
+        )  # the owner signs in wrongly twice, then correctly
         clock = iter(range(0, 10_000))
         fake_time = SimpleNamespace(time=lambda: next(clock))
         with (
@@ -564,7 +579,7 @@ class SessionCheckTests(unittest.TestCase):
             mock.patch.multiple(
                 session,
                 logged_in=lambda c: True,
-                wrong_account=lambda c, expected: "Đang đăng nhập @khac",
+                wrong_account=lambda c, expected: "\u0110ang \u0111\u0103ng nh\u1eadp @khac",
                 time=SimpleNamespace(time=lambda: next(clock)),
                 _report=lambda account, ok: reported.append((account, ok)),
             ),
@@ -609,7 +624,9 @@ class ChallengeWiringTests(unittest.TestCase):
             sent.append((path, payload))
             return claim if path.endswith("/claim") else {"ok": True}
 
-        with mock.patch.multiple(jobs, worker=worker, publish_one=lambda c, dry_run: ("challenge", "", "TikTok đòi xác minh")):
+        with mock.patch.multiple(
+            jobs, worker=worker, publish_one=lambda c, dry_run: ("challenge", "", "TikTok \u0111\u00f2i x\u00e1c minh")
+        ):
             jobs.run_publish("j1")
         self.assertIn(("/api/publisher/challenge", {"active": True, "account": "pets"}), sent)
 

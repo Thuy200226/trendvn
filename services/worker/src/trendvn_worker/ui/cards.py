@@ -8,7 +8,7 @@ from .components import chip, platform_badge, state_chip
 from .format import escape as E, headline, left_text, meta_of, num
 from .labels import ROUTE_LABEL, vi_reason
 
-CONFIRM_VISIBILITY = {"public": "CÔNG KHAI", "friends": "BẠN BÈ", "self": "CHỈ MÌNH TÔI"}
+CONFIRM_VISIBILITY = {"public": "C\u00d4NG KHAI", "friends": "B\u1ea0N B\u00c8", "self": "CH\u1ec8 M\u00ccNH T\u00d4I"}
 
 
 def _fact_chips(job, info):
@@ -17,18 +17,18 @@ def _fact_chips(job, info):
         portrait_916 = info["h"] > info["w"] and abs(info["w"] / info["h"] - 9 / 16) < 0.03
         facts.append(chip("%d×%d%s" % (info["w"], info["h"], " · 9:16" if portrait_916 else ""), "good" if portrait_916 else "warn"))
     if info.get("duration"):
-        facts.append(chip("%s giây" % info["duration"], "mute"))
+        facts.append(chip("%s gi\u00e2y" % info["duration"], "mute"))
     if info.get("size"):
         facts.append(chip("%.1f MB" % (info["size"] / 1e6), "mute"))
     facts.append(chip(ROUTE_LABEL.get(job["route"], job["route"] or ""), "info"))
     if info.get("reframed"):
-        facts.append(chip("đã đưa vào khung dọc", "mute"))
+        facts.append(chip("\u0111\u00e3 \u0111\u01b0a v\u00e0o khung d\u1ecdc", "mute"))
     if info.get("voice"):
-        facts.append(chip("giọng " + str(info["voice"]), "info"))
+        facts.append(chip("gi\u1ecdng " + str(info["voice"]), "info"))
     if info.get("hard_subs_blurred"):
-        facts.append(chip("làm mờ phụ đề gốc khi có phụ đề Việt", "mute"))
+        facts.append(chip("l\u00e0m m\u1edd ph\u1ee5 \u0111\u1ec1 g\u1ed1c khi c\u00f3 ph\u1ee5 \u0111\u1ec1 Vi\u1ec7t", "mute"))
     elif info.get("hard_subs"):
-        facts.append(chip("phụ đề gốc giữ nguyên", "mute"))
+        facts.append(chip("ph\u1ee5 \u0111\u1ec1 g\u1ed1c gi\u1eef nguy\u00ean", "mute"))
     if info.get("warning"):
         facts.append(chip(info["warning"], "warn"))
     return "".join(facts)
@@ -37,13 +37,13 @@ def _fact_chips(job, info):
 def _score_line(meta, with_views=True):
     parts = []
     if meta.get("score"):
-        parts.append("điểm %s" % num(meta["score"]))
+        parts.append("\u0111i\u1ec3m %s" % num(meta["score"]))
     if meta.get("likes"):
         parts.append("%s tim" % num(meta["likes"]))
     if with_views and meta.get("views"):
         parts.append("%s xem" % num(meta["views"]))
     if meta.get("age_h") is not None:
-        parts.append("%.0f giờ tuổi" % meta["age_h"])
+        parts.append("%.0f gi\u1edd tu\u1ed5i" % meta["age_h"])
     return " · ".join(parts)
 
 
@@ -55,18 +55,22 @@ def _destination_line(view, job):
     topic = job.get("topic")
     if len(view.d.get("accounts", [])) < 2 and not topic:
         return ""
-    label = topics.label(topic) if topic else "chưa phân loại"
+    label = topics.label(topic) if topic else "ch\u01b0a ph\u00e2n lo\u1ea1i"
     takers = view.takers(topic)
     if takers:
         names = ", ".join("@" + a["username"] for a in takers)
-        return '<div class="muted small">Chủ đề: <b>%s</b> · %s <b>%s</b></div>' % (
+        return '<div class="muted small">Ch\u1ee7 \u0111\u1ec1: <b>%s</b> · %s <b>%s</b></div>' % (
             E(label),
-            "lịch tự động đăng lên" if len(takers) == 1 else "lịch tự động chọn một trong",
+            (
+                "l\u1ecbch t\u1ef1 \u0111\u1ed9ng \u0111\u0103ng l\u00ean"
+                if len(takers) == 1
+                else "l\u1ecbch t\u1ef1 \u0111\u1ed9ng ch\u1ecdn m\u1ed9t trong"
+            ),
             E(names),
         )
     default = view.destination(topic)
     return (
-        '<div class="note warn small">Chủ đề <b>%s</b> chưa có tài khoản nào nhận. Lịch tự động sẽ không đăng; nút Đăng ngay dùng @%s.</div>'
+        '<div class="note warn small">Ch\u1ee7 \u0111\u1ec1 <b>%s</b> ch\u01b0a c\u00f3 t\u00e0i kho\u1ea3n n\u00e0o nh\u1eadn. L\u1ecbch t\u1ef1 \u0111\u1ed9ng s\u1ebd kh\u00f4ng \u0111\u0103ng; n\u00fat \u0110\u0103ng ngay d\u00f9ng @%s.</div>'
         % (
             E(label),
             E(default["username"] if default else view.cfg["target"]),
@@ -75,7 +79,7 @@ def _destination_line(view, job):
 
 
 def _confirm_text(view, job):
-    """The question asked before 'Đăng ngay': where it goes, how visible, and any rule the click overrides."""
+    """The question asked before 'Post now': where it goes, how visible, and any rule the click overrides."""
     d, cfg = view.d, view.cfg
     account = view.destination(job.get("topic"))
     warnings = []
@@ -86,12 +90,15 @@ def _confirm_text(view, job):
         else (d["published_today"], d["daily_limit"], d["in_window"])
     )
     if today >= limit:
-        warnings.append("Hôm nay đã đăng đủ %d/%d bài, bạn vẫn muốn đăng thêm?" % (today, limit))
+        warnings.append(
+            "H\u00f4m nay \u0111\u00e3 \u0111\u0103ng \u0111\u1ee7 %d/%d b\u00e0i, b\u1ea1n v\u1eabn mu\u1ed1n \u0111\u0103ng th\u00eam?"
+            % (today, limit)
+        )
     if not inside:
-        warnings.append("Đang ngoài giờ vàng.")
+        warnings.append("\u0110ang ngo\u00e0i gi\u1edd v\u00e0ng.")
     shown = account["visibility"] if account else cfg["visibility"]
     visibility = CONFIRM_VISIBILITY.get(shown, shown)
-    return "Đăng video này lên @%s ngay bây giờ? Chế độ hiển thị: %s. %s" % (
+    return "\u0110\u0103ng video n\u00e0y l\u00ean @%s ngay b\u00e2y gi\u1edd? Ch\u1ebf \u0111\u1ed9 hi\u1ec3n th\u1ecb: %s. %s" % (
         account["username"] if account else cfg["target"],
         visibility,
         " ".join(warnings),
@@ -103,37 +110,44 @@ def _account_hold(view, account):
     them in), or None when nothing does."""
     name = "@" + account["username"]
     if account.get("logged_in") is False:
-        return "%s chưa đăng nhập TikTok (./trendvn tiktok login%s)" % (name, account_flag(account["id"]))
+        return "%s ch\u01b0a \u0111\u0103ng nh\u1eadp TikTok (./trendvn tiktok login%s)" % (name, account_flag(account["id"]))
     if view.unconfirmed_for(account):
-        return "%s có bài đăng chưa xác nhận (xử lý ở tab Cần xem)" % name
+        return "%s c\u00f3 b\u00e0i \u0111\u0103ng ch\u01b0a x\u00e1c nh\u1eadn (x\u1eed l\u00fd \u1edf tab C\u1ea7n xem)" % name
     if not account.get("in_window", True):
-        return "%s ngoài giờ vàng, lần tới %s" % (name, account.get("next_window") or "?")
+        return "%s ngo\u00e0i gi\u1edd v\u00e0ng, l\u1ea7n t\u1edbi %s" % (name, account.get("next_window") or "?")
     if account["published_today"] >= account["daily_limit"]:
-        return "%s đã đăng đủ %d/%d bài hôm nay" % (name, account["published_today"], account["daily_limit"])
+        return "%s \u0111\u00e3 \u0111\u0103ng \u0111\u1ee7 %d/%d b\u00e0i h\u00f4m nay" % (
+            name,
+            account["published_today"],
+            account["daily_limit"],
+        )
     wait = (account.get("next_post_at") or 0) - view.now
     if wait > 0:
-        return "%s phải giãn cách giữa hai bài, còn %s" % (name, left_text(wait))
+        return "%s ph\u1ea3i gi\u00e3n c\u00e1ch gi\u1eefa hai b\u00e0i, c\u00f2n %s" % (name, left_text(wait))
     return None
 
 
 def _everyone_hold(view, job):
     """What holds this video back whichever account would post it: a verification pause, a post in flight, a recent failure of this video."""
     if view.challenge_on:
-        return "TikTok đang đòi xác minh (đăng tạm dừng cho tới khi bạn giải)"
+        return "TikTok \u0111ang \u0111\u00f2i x\u00e1c minh (\u0111\u0103ng t\u1ea1m d\u1eebng cho t\u1edbi khi b\u1ea1n gi\u1ea3i)"
     if view.counts.get("publishing", 0):
-        return "một bài khác đang được đăng"
+        return "m\u1ed9t b\u00e0i kh\u00e1c \u0111ang \u0111\u01b0\u1ee3c \u0111\u0103ng"
     failed = job.get("last_publish_fail")
     if failed and view.now - failed < FAILED_REST_SECONDS:
-        return "lần đăng trước lỗi nên video này nghỉ %s trước khi thử lại" % left_text(FAILED_REST_SECONDS - (view.now - failed))
+        return (
+            "l\u1ea7n \u0111\u0103ng tr\u01b0\u1edbc l\u1ed7i n\u00ean video n\u00e0y ngh\u1ec9 %s tr\u01b0\u1edbc khi th\u1eed l\u1ea1i"
+            % left_text(FAILED_REST_SECONDS - (view.now - failed))
+        )
     return None
 
 
 def _waiting_line(view, job):
     """Why the schedule has not posted this video yet, in words (the scheduler itself only tells n8n, in English)."""
     if job["state"] == "awaiting_approval":
-        text = "Chờ bạn duyệt: duyệt xong thì lịch mới đăng video này."
+        text = "Ch\u1edd b\u1ea1n duy\u1ec7t: duy\u1ec7t xong th\u00ec l\u1ecbch m\u1edbi \u0111\u0103ng video n\u00e0y."
     elif not view.d["publisher_enabled"]:
-        text = "Công tắc Tự đăng đang tắt nên lịch chưa đăng video nào. Bật ở tab Tổng quan."
+        text = "C\u00f4ng t\u1eafc T\u1ef1 \u0111\u0103ng \u0111ang t\u1eaft n\u00ean l\u1ecbch ch\u01b0a \u0111\u0103ng video n\u00e0o. B\u1eadt \u1edf tab T\u1ed5ng quan."
     else:
         takers = view.takers(job.get("topic"))
         if not takers:
@@ -141,9 +155,9 @@ def _waiting_line(view, job):
         everyone = _everyone_hold(view, job)
         holds = [everyone] if everyone else [_account_hold(view, a) for a in takers]
         if None in holds:
-            text = "Sẵn sàng: lịch sẽ đăng ở lần kiểm tra lịch kế tiếp nếu tới lượt."
+            text = "S\u1eb5n s\u00e0ng: l\u1ecbch s\u1ebd \u0111\u0103ng \u1edf l\u1ea7n ki\u1ec3m tra l\u1ecbch k\u1ebf ti\u1ebfp n\u1ebfu t\u1edbi l\u01b0\u1ee3t."
         else:
-            text = "Chưa đăng vì: " + "; ".join(holds) + "."
+            text = "Ch\u01b0a \u0111\u0103ng v\u00ec: " + "; ".join(holds) + "."
     return '<div class="note small wait">%s</div>' % E(text)
 
 
@@ -154,24 +168,24 @@ def ready_card(job, view, blocked):
     poster = ' poster="/media/%s/poster"' % E(job["id"]) if info.get("poster") else ""
     video = '<video controls preload="none" playsinline%s src="/media/%s/final"></video>' % (poster, E(job["id"]))
     if lint["ok"]:
-        lint_html = '<div class="lint ok">✓ Mô tả tốt: %d ký tự, %d hashtag</div>' % (lint["length"], lint["tags"])
+        lint_html = '<div class="lint ok">✓ M\u00f4 t\u1ea3 t\u1ed1t: %d k\u00fd t\u1ef1, %d hashtag</div>' % (lint["length"], lint["tags"])
     else:
         lint_html = '<div class="lint warn">⚠ %s</div>' % E(" · ".join(lint["issues"]))
     disabled = " disabled" if (blocked or view.busy_browser) else ""
     if blocked:
         reason = '<div class="note warn">%s</div>' % E(blocked)
     elif view.busy_browser:
-        reason = '<div class="note">Đang có việc khác chạy. Nút sẽ dùng được khi nó xong.</div>'
+        reason = '<div class="note">\u0110ang c\u00f3 vi\u1ec7c kh\u00e1c ch\u1ea1y. N\u00fat s\u1ebd d\u00f9ng \u0111\u01b0\u1ee3c khi n\u00f3 xong.</div>'
     else:
         reason = ""
     tags = "".join('<span class="tag">%s</span>' % E(t) for t in re.findall(r"#\w+", job["caption"]))
     approve = (
-        '<button class="ghost" formaction="/decide" name="action" value="approve">✔ Duyệt cho lịch tự đăng</button>'
+        '<button class="ghost" formaction="/decide" name="action" value="approve">✔ Duy\u1ec7t cho l\u1ecbch t\u1ef1 \u0111\u0103ng</button>'
         if job["state"] == "awaiting_approval"
         else ""
     )
     reset = (
-        '<button class="ghost" formaction="/caption" name="action" value="reset">↺ Dùng mô tả của hệ thống</button>'
+        '<button class="ghost" formaction="/caption" name="action" value="reset">↺ D\u00f9ng m\u00f4 t\u1ea3 c\u1ee7a h\u1ec7 th\u1ed1ng</button>'
         if job["caption_edited"]
         else ""
     )
@@ -183,15 +197,15 @@ def ready_card(job, view, blocked):
         '<div class="ttl">%(title)s</div>'
         '<div class="muted small">%(score)s</div>'
         '<div class="facts">%(facts)s</div>%(why)s%(dest)s%(wait)s'
-        '<label class="cap">Mô tả và hashtag sẽ đăng'
+        '<label class="cap">M\u00f4 t\u1ea3 v\u00e0 hashtag s\u1ebd \u0111\u0103ng'
         '<textarea name="caption" rows="4" maxlength="2200" data-caption spellcheck="false">%(caption)s</textarea></label>'
-        '<div class="row small"><span class="muted"><span data-len>%(length)d</span> ký tự · <span data-tags>%(ntags)d</span> hashtag%(edited)s</span></div>'
+        '<div class="row small"><span class="muted"><span data-len>%(length)d</span> k\u00fd t\u1ef1 · <span data-tags>%(ntags)d</span> hashtag%(edited)s</span></div>'
         '<div class="tags">%(chips)s</div>%(lint)s%(reason)s'
         '<div class="btns">'
-        '%(approve)s<button class="go big" formaction="/task" name="kind" value="publish" data-confirm="%(confirm)s"%(dis)s>🚀 Đăng ngay</button>'
-        '<button class="ghost" formaction="/task" name="kind" value="dryrun"%(dis)s>👁 Xem thử, không đăng</button>'
-        '<button class="ghost" formaction="/caption" name="action" value="save">💾 Lưu mô tả</button>%(reset)s'
-        '<button class="ghost danger" formaction="/decide" name="action" value="reject" data-confirm="Bỏ video này khỏi danh sách đăng?">🗑 Bỏ video</button>'
+        '%(approve)s<button class="go big" formaction="/task" name="kind" value="publish" data-confirm="%(confirm)s"%(dis)s>🚀 \u0110\u0103ng ngay</button>'
+        '<button class="ghost" formaction="/task" name="kind" value="dryrun"%(dis)s>👁 Xem th\u1eed, kh\u00f4ng \u0111\u0103ng</button>'
+        '<button class="ghost" formaction="/caption" name="action" value="save">💾 L\u01b0u m\u00f4 t\u1ea3</button>%(reset)s'
+        '<button class="ghost danger" formaction="/decide" name="action" value="reject" data-confirm="B\u1ecf video n\u00e0y kh\u1ecfi danh s\u00e1ch \u0111\u0103ng?">🗑 B\u1ecf video</button>'
         "</div></div></form>"
     ) % {
         "id": E(job["id"]),
@@ -199,7 +213,7 @@ def ready_card(job, view, blocked):
         "media": video,
         "plat": platform_badge(job["platform"]),
         "state": state_chip(job["state"]),
-        "title": E((job["title"] or "(không có tiêu đề)")[:120]),
+        "title": E((job["title"] or "(kh\u00f4ng c\u00f3 ti\u00eau \u0111\u1ec1)")[:120]),
         "score": E(_score_line(meta_of(job))),
         "facts": _fact_chips(job, info),
         "why": '<div class="muted small">%s</div>' % E(info["why"]) if info.get("why") else "",
@@ -208,7 +222,7 @@ def ready_card(job, view, blocked):
         "caption": E(job["caption"]),
         "length": lint["length"],
         "ntags": lint["tags"],
-        "edited": " · đã sửa tay" if job["caption_edited"] else "",
+        "edited": " · \u0111\u00e3 s\u1eeda tay" if job["caption_edited"] else "",
         "chips": tags,
         "lint": lint_html,
         "reason": reason,
@@ -222,7 +236,7 @@ def ready_card(job, view, blocked):
 def review_card(job, csrf):
     """A video the system held back, with the reason in plain words and the owner's choices."""
     retry = (
-        '<button class="ghost" name="action" value="retry" title="Video đã dựng xong; đưa về danh sách sẵn sàng đăng">↩ Đưa về sẵn sàng đăng</button>'
+        '<button class="ghost" name="action" value="retry" title="Video \u0111\u00e3 d\u1ef1ng xong; \u0111\u01b0a v\u1ec1 danh s\u00e1ch s\u1eb5n s\u00e0ng \u0111\u0103ng">↩ \u0110\u01b0a v\u1ec1 s\u1eb5n s\u00e0ng \u0111\u0103ng</button>'
         if job.get("output_file")
         else ""
     )
@@ -230,16 +244,16 @@ def review_card(job, csrf):
         '<form method="post" action="/decide" class="card ready"><input type="hidden" name="csrf" value="%s"><input type="hidden" name="id" value="%s">'
         '<div class="media"><video controls preload="none" playsinline src="/media/%s/source"></video></div>'
         '<div class="body stack"><div class="row">%s%s</div><div class="ttl">%s</div><div class="muted small">%s</div>'
-        '<div class="note warn">Lý do giữ lại: <b>%s</b></div>'
-        '<div class="btns">%s<button class="go" name="action" value="approve" title="Chạy lại và bỏ qua kiểm tra chủ đề/độ chắc chắn">Duyệt lại, bỏ qua kiểm tra</button>'
-        '<button class="ghost danger" name="action" value="reject">Bỏ</button></div></div></form>'
+        '<div class="note warn">L\u00fd do gi\u1eef l\u1ea1i: <b>%s</b></div>'
+        '<div class="btns">%s<button class="go" name="action" value="approve" title="Ch\u1ea1y l\u1ea1i v\u00e0 b\u1ecf qua ki\u1ec3m tra ch\u1ee7 \u0111\u1ec1/\u0111\u1ed9 ch\u1eafc ch\u1eafn">Duy\u1ec7t l\u1ea1i, b\u1ecf qua ki\u1ec3m tra</button>'
+        '<button class="ghost danger" name="action" value="reject">B\u1ecf</button></div></div></form>'
     ) % (
         csrf,
         E(job["id"]),
         E(job["id"]),
         platform_badge(job["platform"]),
         state_chip(job["state"]),
-        headline(job, 120) or "(không có tiêu đề)",
+        headline(job, 120) or "(kh\u00f4ng c\u00f3 ti\u00eau \u0111\u1ec1)",
         E(_score_line(meta_of(job), with_views=False)),
         E(vi_reason(job["reason"])),
         retry,

@@ -323,7 +323,7 @@ class BacklogAndLegacyTests(StoreCase):
     def test_a_clashing_default_name_leaves_the_other_settings_untouched(self):
         self.s.add_account({"username": "taken", "topics": ["food"]})
         before = self.s.settings()["daily_limit"]
-        with self.assertRaisesRegex(ValueError, "đã có"):
+        with self.assertRaisesRegex(ValueError, "\u0111\u00e3 c\u00f3"):
             self.s.update_settings({"daily_limit": before + 1, "target": "taken"})
         self.assertEqual(self.s.settings()["daily_limit"], before)
 
@@ -359,13 +359,13 @@ class DashboardAgreesWithTheWorkerTests(StoreCase):
         self.s.add_account({"username": "meo", "id": "pets", "topics": ["pets"]})
         view = View(dict(self.s.dashboard_data(), ready=[]), "csrf")
         line = _destination_line(view, {"topic": "gaming"})
-        self.assertIn("chưa có tài khoản nào nhận", line)
+        self.assertIn("ch\u01b0a c\u00f3 t\u00e0i kho\u1ea3n n\u00e0o nh\u1eadn", line)
         self.assertIn("@" + self.s.default_account()["username"], line)
-        self.assertIn("lịch tự động đăng lên", _destination_line(view, {"topic": "pets"}))
+        self.assertIn("l\u1ecbch t\u1ef1 \u0111\u1ed9ng \u0111\u0103ng l\u00ean", _destination_line(view, {"topic": "pets"}))
         both = View(dict(self.s.dashboard_data(), ready=[]), "csrf")
         self.s.update_account("main", {"topics": ["pets"]})
         shared = _destination_line(View(dict(self.s.dashboard_data(), ready=[]), "csrf"), {"topic": "pets"})
-        self.assertIn("chọn một trong", shared)
+        self.assertIn("ch\u1ecdn m\u1ed9t trong", shared)
         self.assertIn("@meo", shared)
         del both
 
@@ -545,7 +545,7 @@ class SurvivingMutantTests(StoreCase):
     def test_an_unconfirmed_post_names_its_account_and_target(self):
         self.ready("cat", topic="pets")
         claim = self.s.publish_claim()
-        self.s.publish_finish(claim["id"], claim["lease"], "unknown", "", "chưa xác nhận")
+        self.s.publish_finish(claim["id"], claim["lease"], "unknown", "", "ch\u01b0a x\u00e1c nh\u1eadn")
         (item,) = self.s.unresolved()
         self.assertEqual((item["account"], item["target"]), (claim["account"], claim["target"]))
 
@@ -555,7 +555,7 @@ class SurvivingMutantTests(StoreCase):
         self.ready("song", topic="music", meta=json.dumps({"score": 1}))
         first = self.s.publish_claim(job_id="cat")
         self.assertEqual(first["account"], "pets")
-        self.s.publish_finish(first["id"], first["lease"], "unknown", "", "chưa xác nhận")
+        self.s.publish_finish(first["id"], first["lease"], "unknown", "", "ch\u01b0a x\u00e1c nh\u1eadn")
         other = self.s.publish_claim(job_id="song")  # the pets account waits for its owner's confirmation; main is not held up by it
         self.assertEqual((other["status"], other["account"]), ("claimed", "main"))
 
@@ -619,10 +619,10 @@ class ChallengeHardeningTests(StoreCase):
 
     def test_the_mac_double_click_is_offered_only_for_the_account_it_works_for(self):
         self.s.set_challenge(True, "pets")
-        self.assertNotIn("Xac-minh-TikTok.command", self.sent[-1][1])  # that launcher always opens the main account's profile
+        self.assertNotIn("Verify-TikTok.command", self.sent[-1][1])  # that launcher always opens the main account's profile
         self.s.set_challenge(False, "pets")
         self.s.set_challenge(True, "main")
-        self.assertIn("Xac-minh-TikTok.command", self.sent[-1][1])
+        self.assertIn("Verify-TikTok.command", self.sent[-1][1])
 
 
 class HeartbeatLoginTests(StoreCase):
@@ -652,7 +652,9 @@ class HeartbeatLoginTests(StoreCase):
         self.assertEqual(self.s.component_state("publisher"), "error")
 
     def test_when_the_cookie_check_notices_first_the_owner_still_gets_the_alert_with_the_command(self):
-        self.s.heartbeat("publisher", False, {"login": {"main": True, "pets": False}, "text": "Chưa đăng nhập: @meo_channel"})
+        self.s.heartbeat(
+            "publisher", False, {"login": {"main": True, "pets": False}, "text": "Ch\u01b0a \u0111\u0103ng nh\u1eadp: @meo_channel"}
+        )
         alerts = [text for kind, text, key in self.sent if key == "login:pets"]
         self.assertEqual(len(alerts), 1)
         self.assertIn("./trendvn tiktok login --account pets", alerts[0])

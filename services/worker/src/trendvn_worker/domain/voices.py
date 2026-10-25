@@ -27,15 +27,15 @@ GENDERS = ("male", "female", "child", "mixed", "unknown")
 
 # Vietnamese words for the delivery (the style text of the TTS request): what the speaker sounds like, and how fast.
 TONE_WORDS = {
-    "calm": "điềm tĩnh, rõ ràng",
-    "warm": "ấm áp, thân thiện",
-    "energetic": "hào hứng, đầy năng lượng",
-    "serious": "nghiêm túc như bản tin",
-    "playful": "vui tươi, tinh nghịch",
-    "dramatic": "kịch tính, nhấn nhá",
-    "gentle": "nhẹ nhàng, dịu dàng",
+    "calm": "\u0111i\u1ec1m t\u0129nh, r\u00f5 r\u00e0ng",
+    "warm": "\u1ea5m \u00e1p, th\u00e2n thi\u1ec7n",
+    "energetic": "h\u00e0o h\u1ee9ng, \u0111\u1ea7y n\u0103ng l\u01b0\u1ee3ng",
+    "serious": "nghi\u00eam t\u00fac nh\u01b0 b\u1ea3n tin",
+    "playful": "vui t\u01b0\u01a1i, tinh ngh\u1ecbch",
+    "dramatic": "k\u1ecbch t\u00ednh, nh\u1ea5n nh\u00e1",
+    "gentle": "nh\u1eb9 nh\u00e0ng, d\u1ecbu d\u00e0ng",
 }
-PACE_WORDS = {SLOW: "chậm rãi, nhấn nhá rõ ràng", NORMAL: "", FAST: "nhanh, gọn, dứt khoát"}
+PACE_WORDS = {SLOW: "ch\u1eadm r\u00e3i, nh\u1ea5n nh\u00e1 r\u00f5 r\u00e0ng", NORMAL: "", FAST: "nhanh, g\u1ecdn, d\u1ee9t kho\u00e1t"}
 # characters per second the narration needs to fit its window: below SLOW_BELOW a slow delivery fills the window (the analysis asks for
 # about 13 a second, which a plain delivery at 16-19 would finish early), above FAST_ABOVE a fast one is needed (measured with Kore:
 # plain 16-19, slow 12, fast 24)

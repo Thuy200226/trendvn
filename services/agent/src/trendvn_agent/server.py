@@ -52,7 +52,11 @@ def session(payload):
     ok = not missing
     detail = {
         "login": logins,
-        "text": "Đã đăng nhập TikTok, sẵn sàng" if ok else "Chưa đăng nhập: " + ", ".join(missing),
+        "text": (
+            "\u0110\u00e3 \u0111\u0103ng nh\u1eadp TikTok, s\u1eb5n s\u00e0ng"
+            if ok
+            else "Ch\u01b0a \u0111\u0103ng nh\u1eadp: " + ", ".join(missing)
+        ),
     }
     worker("/api/heartbeat", {"component": "publisher", "ok": ok, "detail": detail})
     first = next(iter(results.values()))[1]

@@ -1,60 +1,62 @@
-# AGENTS.md - quy tắc cho mọi agent làm việc trong repo này
+# AGENTS.md - rules for all agents working in this repo
 
-Đọc file này trước khi sửa bất cứ thứ gì. Người dùng viết tiếng Việt: trả lời bằng tiếng Việt, rõ ràng, không khoe.
-Các chuẩn dùng chung cho mọi dự án (bố cục và module, **bảo mật**, **hiệu năng và tốc độ**, kiểm thử, CI/CD và triển khai, quy trình 3 vòng rà soát) nằm trong skill
-`engineering-standards`: bản trong repo ở [skills/engineering-standards](skills/engineering-standards/SKILL.md), cài cho mọi dự án bằng
-`cp -r skills/engineering-standards ~/.claude/skills/`. Nếu skill đã cài, hãy dùng nó; file này chỉ ghi những gì **riêng của repo này**.
-Mẫu AGENTS.md dùng lại cho dự án khác: `skills/engineering-standards/assets/AGENTS-template.md`.
+Read this file before editing anything. Users write in Vietnamese: reply in Vietnamese, clearly, without showing off.
+Common standards for all projects (layout and modules, **security**, **performance and speed**, testing, CI/CD and deployment, 3-round review process) are in the skill
+`engineering-standards`: version in repo at [skills/engineering-standards](skills/engineering-standards/SKILL.md), install for all projects using
+`cp -r skills/engineering-standards ~/.claude/skills/`. If the skill is installed, use it; This file records only the rules specific to this repo.
+AGENTS.md template reused for another project: `skills/engineering-standards/assets/AGENTS-template.md`.
 
-## Dự án là gì
-TrendVN thu thập video xu hướng (Douyin, Kuaishou; TikTok, Instagram cần IP Mỹ), thêm Vietsub hoặc thuyết minh tiếng Việt bằng Gemini, rồi đăng lên một hoặc nhiều tài khoản TikTok qua Chrome thật (không dùng API TikTok), theo lịch của n8n riêng của dự án.
-Ba khối: **worker** (Docker: hàng đợi, luật, Gemini, ffmpeg, bảng điều khiển), **agent** (máy chủ: Chrome + Playwright, dịch vụ nền `trendvn-agent`), **n8n** (chỉ hẹn giờ và nối bước).
+Write all documentation, comments and docstrings in English. Preserve required Vietnamese runtime text with Unicode escapes.
 
-## Lệnh (một cửa duy nhất: `./trendvn`)
-| Việc | Lệnh |
+## What is the project
+TrendVN collects trending videos (Douyin, Kuaishou; TikTok, Instagram need US IP), adds Vietsub or Vietnamese voiceover using Gemini, then posts to one or more TikTok accounts via real Chrome (not using TikTok API), according to the project's own n8n schedule.
+Three blocks: **worker**(Docker: queue, rules, Gemini, ffmpeg, console),**agent**(host: Chrome + Playwright, background service `trendvn-agent`),**n8n** (timer and step only).
+
+## Command (one-stop shop: `./trendvn`)
+| Job | Command |
 |---|---|
-| Kiểm thử nhanh (lint + unit) / đầy đủ (thêm Docker và Chrome thật) | `./trendvn test` / `./trendvn test all` |
-| Định dạng mã | `./trendvn fmt` |
-| Áp dụng mã mới vào hệ thống đang chạy | `./trendvn update` |
-| Chẩn đoán | `./trendvn doctor` |
-| Đóng gói | `./trendvn package` |
-Toàn bộ lệnh: `docs/COMMANDS.md`. Tiến độ và nhật ký rà soát từng phase: `docs/ROADMAP.md` (đọc trước khi tiếp tục công việc dang dở).
+| Quick (lint + unit) / full testing (add real Docker and Chrome) | `./trendvn test` / `./trendvn test all` |
+| Code format | `./trendvn fmt` |
+| Apply new code to running system | `./trendvn update` |
+| Diagnostics | `./trendvn doctor` |
+| Packaging | `./trendvn package` |
+Full command: `docs/COMMANDS.md`. Progress and review log for each phase: `docs/ROADMAP.md` (read before continuing unfinished work).
 
-## Bố cục (mỗi file một trách nhiệm, ghi ở dòng docstring đầu file)
-- `services/worker/src/trendvn_worker/`: `domain/` (luật thuần, không I/O) -> `store/` (SQLite, mỗi mối quan tâm một mixin) -> `ai/`, `media/` (Gemini, ffmpeg) -> `web/`, `tasks.py`, `pipeline.py` -> `ui/` (mỗi tab một file).
-- `services/agent/src/trendvn_agent/`: `collector/` (`sources/<nguồn>.py` + đăng ký một dòng trong `sources/__init__.py`), `publisher/`, `browser.py`, `server.py`.
-- `tests/{worker,agent,tools,e2e}` phản chiếu mã; `tests/support.py` là chỗ chung. `docs/` là tài liệu; `data/` và `.env` là trạng thái và bí mật (không bao giờ đóng gói hay commit).
-- Hàm dài quá khoảng 60 dòng thì tách bước có tên. Thêm nguồn, tab, chủ đề mới = thêm một file và một dòng đăng ký, không sửa xuyên năm file.
+## Layout (one responsibility per file, written in the docstring line at the beginning of the file)
+- `services/worker/src/trendvn_worker/`: `domain/` (pure rules, no I/O) -> `store/` (SQLite, one concern per mixin) -> `ai/`, `media/` (Gemini, ffmpeg) -> `web/`, `tasks.py`, `pipeline.py` -> `ui/` (one file per tab).
+- `services/agent/src/trendvn_agent/`: `collector/` (`sources/<source>.py` + register a line in `sources/__init__.py`), `publisher/`, `browser.py`, `server.py`.
+- `tests/{worker,agent,tools,e2e}` mirror code; `tests/support.py` is a common place. `docs/` is document; `data/` and `.env` are stateful and secret (never packaged or committed).
+- If the function is longer than about 60 lines, separate the named step. Add new source, tab, topic = add one file and one subscription line, do not edit across five files.
 
-## Cách làm việc
-1. Đọc `docs/ROADMAP.md` và chạy `./trendvn test` để biết nền trước khi đổi.
-2. Mỗi phase có mục tiêu đo được, và kết thúc bằng **3 vòng rà soát**: tĩnh (tự đọc lại + công cụ), động (chạy trên dữ liệu và hệ thống thật, có số đo trước/sau), độc lập (tác tử chỉ-đọc được giao phá mã; mẫu prompt ở skill). Sửa hết phát hiện, thêm test chặn lại, ghi vào ROADMAP rồi mới sang phase khác.
-3. **Đo trước khi tối ưu**; chỉ đổi cái số liệu ủng hộ; ghi cả thử nghiệm không hiệu quả. Đừng so sánh lặp lại với trang đang giới hạn mình (Kuaishou): kết quả bị nhiễu, giữ hành vi đã chứng minh.
-4. Tách commit "tái cấu trúc không đổi hành vi" khỏi commit đổi hành vi. Tái cấu trúc phải được kiểm độc lập (so cũ-mới), vì test sẵn có không bắt hết.
-5. Mỗi lỗi sửa xong có test thất bại nếu bỏ bản sửa. Cập nhật `CHANGELOG.md` và tài liệu cùng lúc với mã; `scripts/doclint.py` (chạy trong `./trendvn test lint`) bắt tài liệu lệch mã.
-6. Báo cáo trung thực: cái gì đã kiểm chứng (kèm số), cái gì **chưa** kiểm chứng và vì sao, việc nào chỉ người dùng làm được.
+## How it works
+1. Read `docs/ROADMAP.md` and run `./trendvn test` to establish a baseline before making changes.
+2. Each phase has a measurable goal, and ends with **3 review rounds**: static (self-readback + tools), dynamic (runs on real data and system, with before/after measurements), independent (read-only agent assigned to break code; sample prompt in skill). Correct all detections, add blocking tests, record them in ROADMAP and then move on to another phase.
+3. **Measure before optimizing**; change only what the measurements support and record experiments that did not help. Don't repeatedly compare with the site that is limiting you (Kuaishou): the results are noisy, keep the proven behavior.
+4. Separate the "refactoring without changing behavior" commit from the commit that changes the behavior. Refactorings must be tested independently (comparing old to new), because existing tests do not catch all.
+5. For each bug that is fixed, the test will fail if the fix is abandoned. Update `CHANGELOG.md` and documentation at the same time as the code; `scripts/doclint.py` (running in `./trendvn test lint`) catches miscoded documents.
+6. Honest report: what has been verified (with numbers), what **has not** verified and why, what can only be done by the user.
 
-## Chất lượng
-- Công cụ định dạng và lint **ghim đúng phiên bản** trong `requirements-dev.txt` (black, ruff): bản khác cho kiểu mã khác. Không có đúng bản thì `./trendvn test lint` tự bỏ qua kèm thông báo; dựng venv phát triển riêng (ví dụ ở thư mục tạm) bằng `pip install -r requirements-dev.txt` và đặt nó đầu `PATH`. Đừng dùng black của anaconda/hệ thống: nó định dạng lại file khác đi.
-- Test không được ghi vào `data/` hay `agent.log` thật (`tests/support.py` đã chuyển hướng log); test đổi trạng thái chung (tài khoản, cài đặt) dùng máy chủ/CSDL riêng.
-- Bộ test đầy đủ chạy cả trong image Docker (có ffmpeg thật); host không có ffmpeg sẽ bỏ qua một số test. Nếu Docker Hub không với tới được, chạy bước container bằng tay trong image sẵn có và nói rõ.
-- Bố cục e2e đo sau khi trang đã đứng yên; sau khi thêm giao diện, chạy `./trendvn test e2e` (Chrome thật, 7 cỡ màn hình, ô chạm >= 44 px).
+## Quality
+- Formatting and lint tools are **pinned to exact versions** in `requirements-dev.txt` (black, ruff): different versions produce different formatting. If the correct version is not available, `./trendvn test lint` will automatically ignore it with a notification; Build your own development venv (in a temporary directory, for example) with `pip install -r requirements-dev.txt` and place it at the top of `PATH`. Don't use anaconda/system black: it formats the file differently.
+- Test is not logged to the real `data/` or `agent.log` (`tests/support.py` redirected log); Test changing general status (account, settings) using a separate server/database.
+- Full test suite runs in Docker image (with real ffmpeg); Hosts without ffmpeg will skip some tests. If Docker Hub is not accessible, run the container step manually in an existing image and specify it.
+- e2e layout measured after the page has come to rest; After adding the theme, run `./trendvn test e2e` (Real Chrome, 7 screen sizes, touch panel >= 44 px).
 
-## An toàn (bắt buộc)
-- Hệ thống thật đang chạy trong thư mục này: container `trendvn-*`, dịch vụ nền `trendvn-agent`, cổng 5680-5682, `data/`. **Không bao giờ** chạy thử lệnh phá hủy (down, restore, uninstall, xóa volume) trên project mặc định; test như vậy phải export `COMPOSE_PROJECT_NAME` riêng và kiểm ID container trước/sau. `guard_project` chặn lệnh thay đổi khi project thuộc thư mục khác (`TRENDVN_ALLOW_TAKEOVER=1` chỉ chủ dùng).
-- **Không đăng thật lên TikTok** nếu người dùng chưa đồng ý rõ cho đúng lần đó; không xóa bài đã đăng; không bao giờ giải hay né CAPTCHA (hệ thống chỉ phát hiện, tạm dừng, báo chủ). Công tắc "Tự đăng" và việc bật lịch n8n là việc của người dùng.
-- Không xóa vĩnh viễn dữ liệu hay thư mục cũ của người dùng: đưa lệnh chính xác và cảnh báo (đừng `docker compose down -v` ở thư mục cũ vì volume `trendvn_n8n_data` giờ thuộc hệ thống này).
-- Bí mật (`.env`, `data/worker/gemini.key`, phiên Chrome trong `data/agent/profiles`) không vào git, gói, log, API, hay thư mục tạm; nếu buộc phải chép để thử thì xóa ngay.
-- CSDL có phiên bản (`PRAGMA user_version`); migration mới chạy trong một giao dịch cùng việc nâng phiên bản và thử trên bản sao CSDL thật.
-- Subagent rà soát phải chỉ-đọc, dùng thư mục tạm, không chạm hệ thống thật, không gọi Gemini, không mở TikTok/Douyin. Đừng sửa file mà họ đang đọc.
+## Safety (required)
+- The real system is running in this directory: container `trendvn-*`, background service `trendvn-agent`, ports 5680-5682, `data/`. **Never** test destructive commands (down, restore, uninstall, volume deletion) on default project; Such a test must export `COMPOSE_PROJECT_NAME` separately and check the container ID before/after. `guard_project` blocks change commands when the project is in another directory (`TRENDVN_ALLOW_TAKEOVER=1` is reserved for the owner).
+- **Do not actually post to TikTok** if the user has not given explicit consent at that time; Do not delete posted articles; Never solve or avoid CAPTCHA (the system only detects, pauses, and alerts the owner). The "Auto Post" switch and turning on the n8n calendar are up to the user.
+- Do not permanently delete user data or old folders: give correct command and warning (do not `docker compose down -v` in old folder because volume `trendvn_n8n_data` now belongs to this system).
+- Secret (`.env`, `data/worker/gemini.key`, Chrome session in `data/agent/profiles`) does not enter git, package, log, API, or temporary directory; If you have to copy it to test it, delete it immediately.
+- Database has version (`PRAGMA user_version`); The new migration runs in a transaction with the version upgraded and tested on the actual database copy.
+- The review subagent must be read-only, use a temporary folder, do not touch the real system, do not call Gemini, do not open TikTok/Douyin. Don't edit the file they're reading.
 
-## Bẫy đã gặp (đừng lặp lại)
-- Ổ đĩa luôn gần đầy (~1-2 GB trống): không tạo tệp lớn, xóa video thử ngay; `./trendvn doctor` báo.
-- Gemini thường trả 503 kéo dài cho video (văn bản thì chạy được): coi là "xếp hàng lại", không phải video hỏng; đừng chỉnh `thinkingConfig`/độ phân giải khi không đo được (tham số sai làm hỏng mọi lần gọi).
-- `loudnorm` trên âm thanh toàn số 0 cho NaN: video `silent` không chỉnh âm lượng. Bắt Gemini TTS đọc nhanh làm nó bỏ sót câu: giữ tốc độ mặc định và chốt `MAX_CHARS_PER_SECOND`.
-- Douyin: tìm kiếm ra CAPTCHA; dùng các tab chủ đề của trang `jingxuan` (bấm bằng `dispatch_event` vì cửa sổ đăng nhập chặn chuột). Kuaishou chỉ có một luồng cho khách và hạn chế khi tải lặp; chờ thích nghi chỉ dùng cho Douyin.
-- Khi đổi mã nguồn thực thể chạy (`./trendvn update`), đừng quên dịch vụ nền của agent cũng được cài lại; kiểm `./trendvn doctor` sau đó. Máy có thể khởi động lại và xóa `/tmp`: dựng lại công cụ phát triển từ phiên bản ghim.
-- Nhiều tài khoản: mỗi tài khoản một hồ sơ Chrome (`publisher` cho `main`, `publisher-<mã>` cho còn lại); phải kiểm tên đăng nhập thật trước khi đăng; tài khoản chưa đăng nhập bị bỏ qua và không tính là lỗi của video.
+## Trap encountered (do not repeat)
+- Drive is always nearly full (~1-2 GB free): don't create large files, delete test videos immediately after use; `./trendvn doctor` reports.
+- Gemini often returns prolonged HTTP 503 errors for video (text works): considered "re-queue", not broken video; Don't adjust `thinkingConfig`/resolution without measurement (wrong parameters ruin every call).
+- `loudnorm` on all-zero audio for NaN: `silent` video no volume adjustment. Getting Gemini TTS to read quickly makes it miss sentences: keep default speed and set `MAX_CHARS_PER_SECOND`.
+- Douyin search triggers CAPTCHA; Use the topic tabs of page `jingxuan` (click with `dispatch_event` because the login window blocks the mouse). Kuaishou only has one client stream and limited loop loading; waiting for adaptation is only used for Douyin.
+- When changing the run entity source code (`./trendvn update`), don't forget that the agent's background services are also reinstalled; check `./trendvn doctor` afterwards. The machine can reboot and delete `/tmp`: rebuild the development tools from the pinned version.
+- Multiple accounts: one Chrome profile per account (`publisher` for `main`, `publisher-<id>` for others); Must check real username before posting; Accounts that are not logged in are ignored and are not counted as video errors.
 
-## Chưa kiểm chứng được (cập nhật khi thay đổi)
-Gemini thật báo vị trí phụ đề cứng (API video hay quá tải), nguồn Mỹ (cần IP Mỹ), đăng thật lên nhiều tài khoản, macOS thật, chạy dài ngày theo lịch thật.
+## Unverified (updated when changed)
+Gemini reports hard subtitle location (video API is often overloaded), US source (needs US IP), real posting to multiple accounts, real macOS, running for a long time according to a real schedule.

@@ -29,7 +29,7 @@ class EnvFileTests(unittest.TestCase):
         self.assertEqual(envfile.parse("/nonexistent/.env"), {})
 
     def test_format_line_round_trips(self):
-        for value in ("plain", "has space", "has # hash", "a=b", "mật-khẩu"):
+        for value in ("plain", "has space", "has # hash", "a=b", "m\u1eadt-kh\u1ea9u"):
             self.assertEqual(self.parse(envfile.format_line("K", value) + "\n")["K"], value)
 
 

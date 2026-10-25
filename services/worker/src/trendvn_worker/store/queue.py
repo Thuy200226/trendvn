@@ -46,11 +46,11 @@ class QueueMixin:
             title = (db.execute("SELECT title FROM jobs WHERE id=?", (jid,)).fetchone() or ["?"])[0][:60]
         reason = str(fields.get("reason", ""))
         if state == "needs_review":
-            self.emit("review", "⚠️ Cần bạn duyệt: %s\nLý do: %s" % (title, reason), jid)
+            self.emit("review", "⚠️ C\u1ea7n b\u1ea1n duy\u1ec7t: %s\nL\u00fd do: %s" % (title, reason), jid)
         elif state == "awaiting_approval":
-            self.emit("approval", "🎬 Video đã dựng, chờ bạn duyệt đăng: %s" % title, jid)
+            self.emit("approval", "🎬 Video \u0111\u00e3 d\u1ef1ng, ch\u1edd b\u1ea1n duy\u1ec7t \u0111\u0103ng: %s" % title, jid)
         elif state == "failed":
-            self.emit("error", "❌ Xử lý thất bại: %s\n%s" % (title, reason), jid)
+            self.emit("error", "❌ X\u1eed l\u00fd th\u1ea5t b\u1ea1i: %s\n%s" % (title, reason), jid)
 
     def reserve_fingerprint(self, jid, lease, fingerprint, duration, similar, check=True):
         """Look for an earlier video that looks the same and, in the same transaction, record this video's fingerprint so that one being
@@ -93,9 +93,9 @@ class QueueMixin:
             if action == "retry":
                 # a video parked after repeated posting failures: the rendered file is fine, so put it back in the list of postable videos
                 if row["state"] != "needs_review" or not row["output_file"] or not Path(row["output_file"]).is_file():
-                    raise ValueError("Video này chưa có bản dựng để đăng lại")
+                    raise ValueError("Video n\u00e0y ch\u01b0a c\u00f3 b\u1ea3n d\u1ef1ng \u0111\u1ec3 \u0111\u0103ng l\u1ea1i")
                 db.execute(
-                    "UPDATE jobs SET state='ready',publish_fails=0,last_publish_fail=NULL,reason='Bạn đưa về sẵn sàng đăng',updated=? WHERE id=?",
+                    "UPDATE jobs SET state='ready',publish_fails=0,last_publish_fail=NULL,reason='B\u1ea1n \u0111\u01b0a v\u1ec1 s\u1eb5n s\u00e0ng \u0111\u0103ng',updated=? WHERE id=?",
                     (now, jid),
                 )
             elif action == "reject":
@@ -129,7 +129,7 @@ class QueueMixin:
         ):  # the dashboard shows it too, but a phone message is what gets the disk cleaned before it stops everything
             self.emit(
                 "urgent",
-                "💾 Ổ đĩa chỉ còn %d MB trống: hệ thống đã ngừng tải và dựng thêm video. Hãy dọn ổ đĩa (xem ./trendvn doctor)."
+                "💾 \u1ed4 \u0111\u0129a ch\u1ec9 c\u00f2n %d MB tr\u1ed1ng: h\u1ec7 th\u1ed1ng \u0111\u00e3 ng\u1eebng t\u1ea3i v\u00e0 d\u1ef1ng th\u00eam video. H\u00e3y d\u1ecdn \u1ed5 \u0111\u0129a (xem ./trendvn doctor)."
                 % (free >> 20),
                 "disk",
             )
@@ -147,7 +147,8 @@ class QueueMixin:
         if unknown:
             self.emit(
                 "urgent",
-                "🚨 Có %d bài đăng chưa xác nhận. Hệ thống đã dừng đăng để tránh trùng; mở bảng điều khiển để xác nhận." % unknown,
+                "🚨 C\u00f3 %d b\u00e0i \u0111\u0103ng ch\u01b0a x\u00e1c nh\u1eadn. H\u1ec7 th\u1ed1ng \u0111\u00e3 d\u1eebng \u0111\u0103ng \u0111\u1ec3 tr\u00e1nh tr\u00f9ng; m\u1edf b\u1ea3ng \u0111i\u1ec1u khi\u1ec3n \u0111\u1ec3 x\u00e1c nh\u1eadn."
+                % unknown,
                 "unknown",
             )
         return unknown
@@ -163,7 +164,7 @@ class QueueMixin:
         """
         with self.transaction() as db:
             again = db.execute(
-                "UPDATE jobs SET state='queued',lease=NULL,reason='Xử lý bị ngắt; xếp lại hàng đợi',updated=? "
+                "UPDATE jobs SET state='queued',lease=NULL,reason='X\u1eed l\u00fd b\u1ecb ng\u1eaft; x\u1ebfp l\u1ea1i h\u00e0ng \u0111\u1ee3i',updated=? "
                 "WHERE state='processing' AND updated<? AND attempts<2",
                 (time.time(), older_than),
             ).rowcount

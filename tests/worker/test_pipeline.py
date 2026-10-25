@@ -9,7 +9,7 @@ from trendvn_worker import pipeline
 from trendvn_worker.ai.errors import RateLimited
 from trendvn_worker.files import file_hash
 
-ANALYSIS = {"kind": "dialogue", "caption_vi": "Mô tả tiếng Việt", "hashtags": ["a", "b", "c"], "segments": []}
+ANALYSIS = {"kind": "dialogue", "caption_vi": "M\u00f4 t\u1ea3 ti\u1ebfng Vi\u1ec7t", "hashtags": ["a", "b", "c"], "segments": []}
 
 
 class PipelineTests(StoreCase):
@@ -92,7 +92,7 @@ class PipelineTests(StoreCase):
         with mock.patch.object(pipeline, "analyze", lambda *a, **k: (dict(ANALYSIS, caption_vi="  "), "vietsub")):
             result = pipeline.process_one(self.s)
         self.assertEqual(result["status"], "needs_review")
-        self.assertIn("mô tả", result["reason"])
+        self.assertIn("m\u00f4 t\u1ea3", result["reason"])
 
     def test_a_busy_google_puts_the_voice_off_a_few_times_then_the_video_goes_out_with_subtitles(self):
         """A voice-over is preferred, so a TTS that is merely busy sends the video back in the queue (its analysis is remembered, waiting
@@ -100,7 +100,7 @@ class PipelineTests(StoreCase):
         from trendvn_worker.ai.errors import Transient
 
         def busy(*a, **k):
-            raise Transient("Gemini đang quá tải")
+            raise Transient("Gemini \u0111ang qu\u00e1 t\u1ea3i")
 
         with (
             mock.patch.object(pipeline, "analyze", lambda *a, **k: (dict(ANALYSIS), "voiceover")),
@@ -111,7 +111,7 @@ class PipelineTests(StoreCase):
                 self.assertEqual(self.row()["state"], "queued")  # back in the line, not marked broken, no attempt burned
             result = pipeline.process_one(self.s)  # the fifth run: the voice has been put off four times
         self.assertEqual(result["route"], "vietsub")
-        self.assertIn("Google bận", self.row()["reason"])
+        self.assertIn("Google b\u1eadn", self.row()["reason"])
 
     def test_the_owners_approval_starts_the_voice_allowance_once_not_on_every_run(self):
         """`approved` stays on the row for good, so a count reset in every run of an approved video would never reach its limit and the
@@ -119,7 +119,7 @@ class PipelineTests(StoreCase):
         from trendvn_worker.ai.errors import Transient
 
         def busy(*a, **k):
-            raise Transient("Gemini đang quá tải")
+            raise Transient("Gemini \u0111ang qu\u00e1 t\u1ea3i")
 
         folder = self.s.root / "jobs" / "j1"
         folder.mkdir(parents=True, exist_ok=True)
@@ -176,13 +176,13 @@ class PipelineTests(StoreCase):
         with mock.patch.object(pipeline, "analyze", rejected):
             results = pipeline.process_many(self.s, 4, parallel=1)
         self.assertEqual([r["status"] for r in results], ["blocked"])  # one answer, and nothing else is started
-        self.assertIn("Khóa Gemini", results[0]["reason"])
+        self.assertIn("Kh\u00f3a Gemini", results[0]["reason"])
         self.assertEqual(self.row()["state"], "queued")  # not blamed: still waiting, no attempt burned
         self.assertEqual(self.row()["attempts"], 0)
         self.assertEqual(self.row("j2")["state"], "queued")
         self.assertEqual(len(sent), 1)
         self.assertEqual((sent[0][0], sent[0][2]), ("urgent", "gemini_key"))
-        self.assertIn("Cài đặt", sent[0][1])
+        self.assertIn("C\u00e0i \u0111\u1eb7t", sent[0][1])
         self.assertTrue(self.s.status()["gemini_key_rejected"])  # and the dashboard says so, not only a phone message that may not exist
 
     def test_the_rejected_key_flag_goes_when_a_call_goes_through_or_a_new_key_is_saved(self):
@@ -238,7 +238,7 @@ class PipelineTests(StoreCase):
 
     def test_rate_limit_puts_the_job_back_without_using_an_attempt(self):
         def limited(*a, **k):
-            raise RateLimited("Gemini hết hạn mức")
+            raise RateLimited("Gemini h\u1ebft h\u1ea1n m\u1ee9c")
 
         with mock.patch.object(pipeline, "analyze", limited):
             result = pipeline.process_one(self.s)
@@ -246,10 +246,10 @@ class PipelineTests(StoreCase):
         self.assertEqual((result["status"], row["state"], row["attempts"]), ("rate_limited", "queued", 0))
 
     def test_failed_quality_check_blocks_the_video(self):
-        with mock.patch.object(pipeline, "qc", lambda out, audio: ({}, ["Bản dựng mất tiếng"])):
+        with mock.patch.object(pipeline, "qc", lambda out, audio: ({}, ["B\u1ea3n d\u1ef1ng m\u1ea5t ti\u1ebfng"])):
             result = pipeline.process_one(self.s)
         self.assertEqual(result["status"], "needs_review")
-        self.assertIn("Bản dựng mất tiếng", self.row()["reason"])
+        self.assertIn("B\u1ea3n d\u1ef1ng m\u1ea5t ti\u1ebfng", self.row()["reason"])
 
     def test_a_poster_failure_does_not_fail_the_video(self):
         def no_poster(out, poster, duration):
@@ -263,16 +263,22 @@ class PipelineTests(StoreCase):
         return json.loads(self.row(job_id)["output_info"])
 
     def test_the_dashboard_gets_the_reason_for_the_route(self):
-        with mock.patch.object(pipeline, "analyze", lambda *a, **k: (dict(ANALYSIS, route_reason="Có lời nói: thêm phụ đề"), "vietsub")):
+        with mock.patch.object(
+            pipeline,
+            "analyze",
+            lambda *a, **k: (dict(ANALYSIS, route_reason="C\u00f3 l\u1eddi n\u00f3i: th\u00eam ph\u1ee5 \u0111\u1ec1"), "vietsub"),
+        ):
             pipeline.process_one(self.s)
-        self.assertEqual(self.info()["why"], "Có lời nói: thêm phụ đề")
+        self.assertEqual(self.info()["why"], "C\u00f3 l\u1eddi n\u00f3i: th\u00eam ph\u1ee5 \u0111\u1ec1")
 
     def test_a_voice_over_that_falls_back_explains_itself(self):
         self.s.update_settings({"voiceover_enabled": False})
-        analyzer = mock.patch.object(pipeline, "analyze", lambda *a, **k: (dict(ANALYSIS, route_reason="Người dẫn kể lại"), "voiceover"))
+        analyzer = mock.patch.object(
+            pipeline, "analyze", lambda *a, **k: (dict(ANALYSIS, route_reason="Ng\u01b0\u1eddi d\u1eabn k\u1ec3 l\u1ea1i"), "voiceover")
+        )
         with analyzer:
             pipeline.process_one(self.s)
-        self.assertIn("chưa bật lồng tiếng", self.info()["why"])
+        self.assertIn("ch\u01b0a b\u1eadt l\u1ed3ng ti\u1ebfng", self.info()["why"])
 
     def test_burned_in_subtitles_are_blurred_only_when_ours_replace_them(self):
         found = dict(ANALYSIS, hard_subtitles={"present": True, "top": 0.72, "bottom": 0.77})

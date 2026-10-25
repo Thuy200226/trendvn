@@ -31,7 +31,7 @@ services:
       N8N_PROTOCOL: ${TRENDVN_N8N_PROTOCOL:-http}
       N8N_EDITOR_BASE_URL: ${TRENDVN_N8N_URL:-http://localhost:5680}
       WEBHOOK_URL: ${TRENDVN_N8N_URL:-http://localhost:5680}/
-      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Chưa có .env - hãy chạy ./trendvn install}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Missing .env - run ./trendvn install}
       N8N_SECURE_COOKIE: ${TRENDVN_N8N_SECURE_COOKIE:-false}
       N8N_DIAGNOSTICS_ENABLED: "false"
       N8N_PERSONALIZATION_ENABLED: "false"
@@ -71,7 +71,7 @@ services:
       - "${TRENDVN_BIND:-127.0.0.1}:${TRENDVN_WORKER_PORT:-5681}:8080"
     environment:
       TZ: ${TRENDVN_TZ:-Asia/Ho_Chi_Minh}
-      TRENDVN_TOKEN: ${TRENDVN_TOKEN:?Chưa có .env - hãy chạy ./trendvn install}
+      TRENDVN_TOKEN: ${TRENDVN_TOKEN:?Missing .env - run ./trendvn install}
       TRENDVN_DATA: /data
       TRENDVN_GATEWAY: ${TRENDVN_GATEWAY:-172.20.0.1}   # a connection from here is "this machine" (the published port arrives via the bridge gateway)
       MALLOC_ARENA_MAX: "2"                           # glibc keeps per-thread arenas otherwise: noticeably less memory for a threaded server

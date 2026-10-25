@@ -1,92 +1,92 @@
-# Chất lượng đầu ra: đo gì, thấy gì, chọn gì (bản 1.6, 2026-10-02)
+# Output quality: what to measure, what to see, what to choose (version 1.6, 2026-10-02)
 
-Mọi con số dưới đây đo thật (video Douyin thật, API Gemini thật, ffmpeg thật) ngày 2026-10-02; chỗ nào chưa đo được thì ghi rõ. Nguyên tắc: **đo trước, chỉ đổi khi có bằng chứng, giữ tốc độ**.
+All numbers below are real measurements (real Douyin video, real Gemini API, real ffmpeg) on 2026-10-02; Any areas that cannot be measured must be clearly stated. Principle: **measure first, only change when there is evidence, keep speed**.
 
-## 1. Lỗi lớn nhất tìm được: giọng đọc đọc luôn câu hướng dẫn
+## 1. Biggest error found: the voice always read the instructions
 
-Các model TTS mới (`gemini-3.x-flash-tts`) coi trường `text` là **bản chép nguyên văn**. Bản cũ đặt trước văn bản một câu hướng dẫn ("Đọc bằng tiếng Việt tự nhiên... chỉ đọc đoạn sau") nên giọng **đọc to cả câu đó** rồi mới đọc lời thuyết minh. Đo bằng cách nghe lại (chép lại âm thanh bằng một model khác):
+New TTS models (`gemini-3.x-flash-tts`) treat field `text` as **verbatimcopy**. The old version places an instruction sentence in front of the text ("Read in natural Vietnamese... only read the next paragraph"), so **'s voice reads the whole sentence out loud** before reading the narration. Measure by listening again (copy the sound with another model):
 
-| Cách gọi | Độ dài âm thanh | Tốc độ | Từ được đọc đúng / từ nghe thấy |
+| Calling method | Audio length | Speed | Words spoken correctly / words heard |
 |---|---|---|---|
-| Bản cũ: câu hướng dẫn + văn bản (`generateContent`) | 18,2 s | 7,3 ký tự/s | 1,00 / **0,50** (nửa số từ là câu hướng dẫn) |
-| Chỉ văn bản (`generateContent`) | 8,2 s | 16,2 ký tự/s | 1,00 / 1,00 |
-| Chỉ văn bản (Interactions API) | 8,0 s | 16,5 ký tự/s | 1,00 / 1,00 |
+| Old version: instructions + text (`generateContent`) | 18.2 s | 7.3 characters/s | 1.00 / **0.50** (half of the words are instructions) |
+| Text only (`generateContent`) | 8.2 s | 16.2 characters/s | 1.00 / 1.00 |
+| Text only (Interactions API) | 8.0 s | 16.5 chars/s | 1.00 / 1.00 |
 
-Hệ quả cũ: lời thuyết minh trông "quá dài" so với cửa sổ lời, bị tăng tốc hoặc từ chối (video rơi về Vietsub), và niềm tin "Gemini đọc tiếng Việt khoảng 9,5 ký tự/giây, bắt đọc nhanh thì bỏ sót câu" **sai**: tốc độ tự nhiên là 16–19 ký tự/giây và không bỏ sót chữ nào.
+Old consequences: the voiceover looks "too long" compared to the speech window, is sped up or rejected (video falls to Vietsub), and the belief "Gemini reads Vietnamese at about 9.5 characters/second, if you force it to read quickly, you miss sentences" **sai**: natural speed is 16–19 characters/second and doesn't miss any words.
 
-Sửa: văn bản gửi đi **chỉ là lời thuyết minh**; giọng, sắc thái và tốc độ đi riêng trong `speech_metadata.style` của Interactions API (`ai/tts.py`). Model cũ hơn vẫn nhận lời hướng dẫn dưới dạng chữ đứng trước. Có test khóa điều này (`test_the_text_is_sent_as_the_transcript...`).
+Edit: sent text **is just voiceover**; voice, tone, and pacing in `speech_metadata.style` of the Interactions API (`ai/tts.py`). Older models still receive instructions in front text. There is a test that locks this (`test_the_text_is_sent_as_the_transcript...`).
 
-## 2. Tốc độ đọc điều khiển bằng lời, không bằng cách ép âm thanh
+## 2. Reading speed is controlled verbally, not by forcing sound
 
-Cùng một câu 134 ký tự, giọng Kore, mọi từ đều được đọc (recall 1,00):
+Same sentence, 134 characters, Kore accent, every word is read (recall 1.00):
 
-| Style gửi kèm | Độ dài | Tốc độ |
+| Style included | Length | Speed |
 |---|---|---|
-| không | 6,9 s (lần khác 8,2 s) | 16–19 ký tự/s |
-| "chậm rãi, trầm ấm, nhấn nhá rõ ràng" | 11,0 s | 12,0 |
-| "nghiêm túc như bản tin thời sự" | 8,3 s | 15,9 |
-| "nhanh, hào hứng, đầy năng lượng" | 5,6 s | 23,6 |
+| no | 6.9 s (other times 8.2 s) | 16–19 characters/s |
+| "slow, warm, clear accent" | 11.0 s | 12.0 |
+| "serious as news" | 8.3 s | 15.9 |
+| "fast, exciting, full of energy" | 5.6 s | 23.6 |
 
-Vì vậy `make_voice` chọn nhịp theo số ký tự cần nói mỗi giây trong cửa sổ lời (dưới 14,5: chậm; trên 19: nhanh), gọi TTS, nếu dài hơn cửa sổ quá 15% thì gọi **một lần nữa, nhanh hơn một bậc** (chậm → thường → nhanh; nhảy thẳng từ chậm lên nhanh vượt quá cửa sổ nên bản thứ hai không bao giờ gần hơn bản đầu). Lần gọi thứ hai chỉ cải thiện bản đã có nên chỉ chờ Google bận một vòng (tối đa 25 giây) và lỗi gì cũng giữ bản đầu; bản nào gần cửa sổ hơn thì được dùng. Sau đó chỉ chỉnh tốc độ tối đa +25% (không bao giờ chậm quá 8%). Từ chối và video giữ phụ đề khi: dài hơn cửa sổ 25%, ngắn hơn một nửa cửa sổ, nhanh quá 24 ký tự/giây, giọng kéo dài quá hết video hơn 0,3 giây (chỉ xảy ra với cửa sổ lời ngắn hơn 2 giây ở cuối video), hoặc giọng im lặng (dưới -50 LUFS; file đó bị xóa để lần chạy lại tạo giọng mới thay vì đọc lại đúng đoạn im lặng). Giọng đã tạo được nhớ trong thư mục việc theo (lời, giọng, nhịp): video quay lại hàng đợi hoặc được duyệt tay không phải tạo, không phải trả phí lại. Lời đưa cho giọng đọc đã lọc như chú thích (không liên kết, số điện thoại, emoji, thẻ `{an8}`, ngắt dòng `\N`). Nhịp tự nhiên giữ chất lượng giọng tốt hơn kéo giãn âm thanh.
+Therefore, `make_voice` selects the rhythm according to the number of characters to say per second in the speech window (under 14.5: slow; over 19: fast), calls TTS, if longer than the window by more than 15%, calls **again, one step faster** (slow → normal → fast; jumping straight from slow to fast exceeds window so the second version is never closer than the first). The second call only improves the existing version, so just wait for Google to be busy for a round (maximum 25 seconds) and if there are any errors, keep the first version; Whichever version is closer to the window is used. Then only adjust the maximum speed to +25% (never slower than 8%). Reject and videos keep subtitles when: longer than 25% of the window, shorter than half the window, faster than 24 characters/second, the voice lasts more than 0.3 seconds past the end of the video (only happens with a speech window shorter than 2 seconds at the end of the video), or the voice is silent (under -50 LUFS; the file is deleted so that the next playback creates a new voice instead of rereading the exact silence). Created voices are stored in the folder according to (words, voice, rhythm): videos returned to the queue or approved manually do not have to be created, there is no charge again. Text given to filtered voice as captions (no links, phone numbers, emojis, tags `{an8}`, line breaks `\N`). Natural rhythm keeps voice quality better than stretching the sound.
 
-## 3. Chọn giọng theo người nói
+## 3. Select the voice according to the speaker
 
-Gemini nay báo thêm `speaker` (giới tính, sắc thái, số người nói) và `dub_ok` (thay giọng có mất gì không). Giọng nam không bị lồng bằng giọng nữ. Đã kiểm chứng bằng cách để một model khác nghe từng giọng đọc cùng một câu:
+Gemini now reports `speaker` (gender, nuance, number of speakers) and `dub_ok` (is there any loss in changing the voice). Male voices are not dubbed with female voices. Verified by letting another model listen to each voice read the same sentence:
 
-| Giọng | Nghe ra | Dùng cho |
+| Voice | Output | For |
 |---|---|---|
-| Kore | nữ, trưởng thành, vừa | nữ: bình tĩnh, nghiêm túc, kịch tính |
-| Aoede | nữ, trẻ, thân thiện | nữ: ấm áp, nhẹ nhàng |
-| Leda | nữ, trẻ, thân thiện | nữ: sôi nổi, tinh nghịch (và trẻ em) |
-| Zephyr | nữ, trẻ | (chưa dùng) |
-| Orus | **nam**, trưởng thành | nam: mọi sắc thái |
+| Kore | female, mature, medium | female: calm, serious, dramatic |
+| Aoede | female, young, friendly | female: warm, gentle |
+| Leda | female, young, friendly | female: lively, mischievous (and childish) |
+| Zephyr | female, young | (unused) |
+| Orus | **nam**, mature | male: all shades |
 
-**Chưa nghe được**: Puck, Charon, Fenrir, Achird, Sadaltager, Algieba, Gacrux, Sulafat, Callirrhoe, Despina (Google ghi Puck, Charon, Fenrir, Orus... là giọng nam; chưa có bằng chứng của chính ta). Lúc đó hạn mức ngày của khóa Gemini hết (HTTP 429 "exceeded your current quota"), nên chỉ có một giọng nam được xác nhận và bảng `POOLS` (`domain/voices.py`) chỉ dùng giọng đã nghe. Muốn thêm: gọi TTS cùng một câu với giọng đó, nhờ model nghe và hỏi giới tính/độ tuổi (xem `docs/PROMPTS.md`, mục TTS), rồi thêm vào `GENDER` và `POOLS` cùng một test.
+**Unheard**: Puck, Charon, Fenrir, Achird, Sadaltager, Algieba, Gacrux, Sulafat, Callirrhoe, Despina (Google lists Puck, Charon, Fenrir, Orus... as male voices; no evidence of our own). At that time, the Gemini key's daily quota expired (HTTP 429 "exceeded your current quota"), so only one male voice was confirmed and the `POOLS` (`domain/voices.py`) board only used the voice heard. Want to add: call the TTS with the same voice, ask the model to listen and ask for gender/age (see `docs/PROMPTS.md`, TTS section), then add `GENDER` and `POOLS` with the same test.
 
-## 4. Lồng tiếng được ưu tiên khi phù hợp
+## 4. Voice acting is preferred when appropriate
 
-- `narration` (người dẫn kể lại): lồng tiếng như cũ.
-- Một người nói và Gemini cho `dub_ok = true` (giải thích, hướng dẫn, đọc tin, đánh giá sản phẩm, vlog kể chuyện): lồng tiếng. Phạm vi chỉnh ở "Lồng tiếng cho" (`voiceover_scope`: `monologue` mặc định hoặc `narration`).
-- Hài, kịch, tranh cãi, cảnh xúc động, hát, nhiều người nói: giữ giọng gốc và Vietsub. Đo thật: video tiểu phẩm 2 người (53 giây) được Gemini xếp `dub_ok = false`, `count = 2`, sắc thái "tinh nghịch" → Vietsub, đúng.
-- Công tắc tổng "Lồng tiếng Việt" nay **bật mặc định**. Google bận lúc tạo giọng thì video quay lại hàng đợi (phân tích đã nhớ trong `jobs/<id>/analysis.json`, chờ không tốn thêm lượt gọi video), tối đa 4 lần rồi mới ra với Vietsub.
+- `narration` (narrator): same voiceover.
+- A speaker and Gemini for `dub_ok = true` (explanation, tutorial, news reading, product review, storytelling vlog): voiceover. Adjustment range is at "Dub for" (`voiceover_scope`: default `monologue` or `narration`).
+- Comedy, drama, controversy, emotional scenes, singing, many people talking: keep the original voice and Vietsub. True measurement: 2-person skit video (53 seconds) ranked by Gemini `dub_ok = false`, `count = 2`, "mischievous" nuance → Vietsub, correct.
+- "Vietnamese dubbing" master switch now **enabled by default**. Google was busy while creating the voice, so the video went back to the queue (analysis remembered in `jobs/<id>/analysis.json`, wait without wasting additional video calls), maximum 4 times before joining Vietsub.
 
-## 5. Âm thanh khi lồng tiếng
+## 5. Sound when dubbing
 
-Bản cũ: giọng lồng trộn với tiếng gốc hạ cố định còn 18% **suốt cả video**. Nay: giọng được cân riêng (-16 LUFS) rồi mới trộn; tiếng gốc chỉ hạ còn 14% (khoảng -17 dB) **trong cả cửa sổ lời gốc** (từ 0,3 s trước giọng đến hết cửa sổ hoặc hết giọng, cái nào muộn hơn, rồi ra mềm 0,5 s; một giọng ngắn hơn lời gốc không trả tiếng gốc về âm lượng đầy khi người gốc còn đang nói) và giữ nguyên ở đoạn đầu, đoạn nghỉ và đoạn cuối; cả bản trộn vẫn đưa về -14 LUFS như mọi video. Đo bằng ffmpeg thật: tiếng gốc (300 Hz) thấp hơn **trên 8 dB** dưới giọng so với trước và sau giọng (`test_the_bed_is_lower_under_the_voice_than_outside_it`). Sau bản trộn có thêm bộ giới hạn đỉnh (`alimiter`, -1,5 dBFS) vì người phản biện đo được đỉnh vượt 0 dBTP sau AAC trên nền nhạc xung (+3,9 dBTP khi không có, +0,3 khi có). **Giới hạn của phép đo:** trên 7 nền nhạc tôi tự dựng (xung thưa/dày, vuông, đá trống, cắt cứng, to rồi nhỏ) bộ giới hạn đổi đỉnh không quá 0,3 dB theo cả hai hướng và mọi đỉnh đều dưới -2,7 dBTP, nên **không có test nào phân biệt được có hay không có nó** (chỉ có test kiểm nó nối đúng chỗ); và nó chưa bảo đảm không vượt 0 dBTP (nền của người phản biện vẫn ra +0,3).
+Old version: dubbed voice mixed with original voice lowered to 18% **throughout the entire video**. Now: voices are weighted separately (-16 LUFS) and then mixed; The original sound is only lowered to 14% (about -17 dB) **in the original lyrics window**(from 0.3 s before the voice to the end of the window or the end of the voice, whichever is later, then soft out 0.5 s; a voice shorter than the original speech does not return the original voice to full volume while the original speaker is still speaking) and remains the same at the beginning, rest and end; The whole mix still returns -14 LUFS like every video. Measured with real ffmpeg: original sound (300 Hz) is lower**above 8 dB**subvocal compared to pre- and post-vocal (`test_the_bed_is_lower_under_the_voice_than_outside_it`). After the mix there is an additional peak limiter (`alimiter`, -1.5 dBFS) because the reviewer measured a peak exceeding 0 dBTP after AAC on pulsed music (+3.9 dBTP without, +0.3 with).**Limits of measurement:**On the 7 tracks I built myself (sparse/thick pulse, square, kick drum, hard cut, loud then soft) the limiter shifted peaks no more than 0.3 dB in either direction and all peaks were below -2.7 dBTP, so**There is no test to distinguish between its presence and absence** (only test to make sure it's connected to the right place); and it is not guaranteed not to exceed 0 dBTP (the reviewer's background is still +0.3).
 
-## 6. Làm mờ phụ đề gốc: chỉ khi cần, chỉ lúc cần
+## 6. Blur original subtitles: only when needed, only when needed
 
-Bản đầu làm mờ một dải ngang **suốt cả video** nên che người và cảnh ngay cả khi không ai nói. Nay quyết định theo điều kiện (cài đặt "Làm mờ phụ đề gốc"):
+The original blurs a horizontal strip **throughout the video** should cover people and scenes even when no one is speaking. Now decided by condition (setting "Blur original subtitles"):
 
-| Chế độ | Làm gì |
+| Mode | What does | do
 |---|---|
-| Tự động (mặc định) | Chỉ làm mờ khi **phụ đề Việt sẽ đè lên dải chữ gốc** (so hình học thật của hộp phụ đề với dải Gemini báo, có đệm 1,5% chiều cao), và chỉ trong lúc phụ đề Việt hiện (+0,5 s trước, +0,6 s sau, gộp các dòng cách nhau dưới 1,5 s) |
-| Luôn | Làm mờ khi biết dải chữ gốc, vẫn chỉ trong lúc phụ đề Việt hiện |
-| Không bao giờ | Không làm mờ |
+| Automatic (default) | Blur only when **Vietnamese subtitles will overlap the original text strip** (compare the actual geometry of the subtitle box with the Gemini strip, with 1.5% height padding), and only while Vietnamese subtitles are visible (+0.5 s before, +0.6 s after, merge lines less than 1.5 s apart) |
+| Always | Blur when knowing the original text range, still only while Vietnamese subtitles appear |
+| Never | No dimming |
 
-Hệ quả hình học (có test): video **ngang** đưa vào khung dọc đặt phụ đề Việt **dưới khung hình** nên không bao giờ đè chữ gốc → chữ gốc giữ nguyên, hình không bị che. Video dọc có chữ gốc ở đúng chỗ phụ đề Việt (khoảng 70–76% chiều cao) → làm mờ đúng lúc; chữ gốc ở sát đáy (dưới vùng TikTok che) hoặc ở cao → để nguyên. Video nhạc giữ nguyên không bao giờ bị làm mờ (giữ lời bài hát). Dải Gemini báo không dùng được (thiếu `bottom`, cao quá 30%) bị bỏ qua. Thẻ video trên bảng điều khiển ghi rõ đã làm mờ hay để nguyên.
+Geometric consequences (with test): video **ngang**is put into a vertical frame with Vietnamese subtitles** under the frame ** so never override the original text → the original text remains the same, the image is not obscured. Vertical video has the original text in the right place with Vietnamese subtitles (about 70–76% of the height) → blurred at the right time; The original text is close to the bottom (under the TikTok cover area) or high → leave it as is. The music video stays intact and is never blurred (keeping the lyrics). The Gemini band that says it cannot be used (`bottom` missing, 30% too high) is ignored. The video card on the control panel indicates whether it has been dimmed or left intact.
 
-## 7. Phụ đề: bớt lời bịa và bớt quá nhanh
+## 7. Subtitles: less lies and less too fast
 
-- **Dòng bịa**: một video tiểu phẩm 53 giây trả về 11 dòng thật rồi 11 dòng nữa với mốc 1,0–2,1 giây (mô hình "đặt lại đồng hồ" và viết tiếp); sắp xếp theo thời gian thì dòng thật đầu tiên bị cắt ngắn và một dòng bịa hiện ở giây 1,6. Nay phát hiện đồng hồ bị đặt lại và phần đuôi toàn dòng dài trong chưa đầy nửa giây thì bỏ cả đuôi; dòng lẻ "hơn 20 ký tự trong dưới 0,5 giây" cũng bỏ, và một đuôi từ 4 dòng trở lên dồn trong một khoảng ngắn đến mức cộng lại hơn 30 ký tự/giây cũng bỏ nốt (kiểm bằng dữ liệu của người phản biện: 11 dòng bịa dài 0,6 giây vẫn bị loại) (`domain/analysis.py`). Nhóm dòng theo người nói (hợp lệ) vẫn được giữ.
-- **Quá nhanh**: Gemini hay viết 25 ký tự/giây cho các câu qua lại nhanh (mục tiêu 16). Sau khi mượn thời gian từ quãng nghỉ, dòng còn nhanh hơn 20 ký tự/giây được viết ngắn lại bằng **một lần gọi văn bản** (hoạt động cả khi API video quá tải), mỗi dòng được kiểm riêng, dòng nào không đạt giữ nguyên lời cũ (`ai/condense.py`).
+- **Fictional lines**: a 53-second skit video that returns 11 real lines then 11 more at 1.0–2.1 seconds (the "reset the clock" and continue writing model); sorted by time, the first real line is truncated and a made-up line appears at 1.6 seconds. Now I find that the clock has been reset and the last part of the line is less than half a second long, so the whole line is removed; The odd line "more than 20 characters in less than 0.5 seconds" was also removed, and a tail of 4 or more lines packed into a short space that added up to more than 30 characters/second was also removed (checked with reviewer data: 11 made-up lines 0.6 seconds long were still eliminated) (`domain/analysis.py`). Line grouping by speaker (valid) is retained.
+- **Too fast**: Gemini likes to write 25 characters/second for quick back-and-forth sentences (goal 16). After borrowing time from the break, the line faster than 20 characters/second is shortened with **one call to the text** (works even when the video API is overloaded), each line is tested separately, any line that fails keeps the original text (`ai/condense.py`).
 
-## 8. Mã hóa và tốc độ dựng: đo xong, không đổi
+## 8. Encoding and rendering speed: measured, unchanged
 
-Đoạn 30 giây của video ngang 1080p (nguồn 1,9 Mb/s) dựng lên khung 1080×1920 với nền mờ; SSIM so với bản tham chiếu `crf 12 slow`:
+30-second clip of 1080p landscape video (1.9 Mb/s source) rendered to a 1080×1920 frame with blurred background; SSIM compared to reference `crf 12 slow`:
 
-| Thiết lập | Thời gian | Dung lượng | SSIM |
+| Setup | Time | Capacity | SSIM |
 |---|---|---|---|
-| **hiện tại** veryfast, crf 24, tối đa 4 Mb/s | **7,6 s** | **8,5 MB** | 0,9927 |
+| **current**veryfast, crf 24, max 4 Mb/s |**7,6 s**|**8,5 MB** | 0.9927 |
 | veryfast, crf 22, 4 Mb/s | 7,9 s | 10,9 MB (+29%) | 0,9940 |
 | veryfast, crf 20, 6 Mb/s | 8,0 s | 14,4 MB (+69%) | 0,9951 |
 | faster, crf 22, 6 Mb/s | 11,2 s (+48%) | 13,1 MB | 0,9948 |
 | fast, crf 22, 6 Mb/s | 13,5 s (+78%) | 13,5 MB | 0,9952 |
 | veryfast, crf 24, `-tune film` | 10,0 s (+31%) | 8,5 MB | 0,9927 |
 
-Chênh SSIM chỉ 0,001–0,002 (mắt không phân biệt được) trong khi dung lượng tăng 30–70% và thời gian tăng đến 78%; nguồn Douyin chỉ 1–2 Mb/s nên thêm bit không lấy lại được chi tiết đã mất. **Giữ nguyên.** Thông số TikTok khuyến nghị (1080×1920, H.264, 30 fps, tối thiểu 720×1280) đã đạt; bản dựng chạy nhanh khoảng 4 lần thời gian thực. Đo lại bằng ffmpeg thật (người phản biện, video 60 giây, trung vị 3 lần): dựng Vietsub 21,5 s → 20,5 s, dựng lồng tiếng 21,9 s → 22,0 s; riêng nhánh âm thanh +1 s (thêm `loudnorm` cho giọng và bộ giới hạn đỉnh). Việc làm mờ vẫn chạy bộ lọc mờ mỗi khung hình (chỉ phần dán lên được bật/tắt theo thời gian), nên tiết kiệm nằm ở chỗ video ngang và dải thấp không còn bị dán gì, không phải ở thời gian lọc. **Phase H (2026-10-05):** dải làm mờ nay được làm mờ trên bản thu nhỏ 1/4 của dải rồi phóng lại (cùng cách với nền mờ), chỉ khi dải cao từ 48 điểm ảnh; dải mỏng hơn làm như cũ. Đo trên video thật cần làm mờ (134 giây, 43% thời lượng có dải mờ): dựng 44,8 giây → 36,4 giây (−19%, trung vị 3 lần xen kẽ, cùng dung lượng 43,2 MB); chỉ gắn `enable=` vào `boxblur` thì −5%, trong ngưỡng nhiễu nên bỏ. Dải khác bản cũ SSIM 0,988–0,996 (PSNR trung bình 47,7 dB, thấp nhất 36,8 dB), nhìn bằng mắt không thấy khác (đã xem khung cạnh nhau).
+SSIM difference is only 0.001–0.002 (the eye cannot distinguish) while capacity increases by 30–70% and time increases by up to 78%; Douyin source is only 1–2 Mb/s, so adding bits cannot restore lost details. **Stay the same.**Recommended TikTok specifications (1080×1920, H.264, 30 fps, minimum 720×1280) achieved; The build runs about 4 times faster than real time. Measured again with real ffmpeg (reviewer, 60 second video, median 3 times): Vietsub editing 21.5 s → 20.5 s, dubbing editing 21.9 s → 22.0 s; +1 s audio branch alone (add `loudnorm` for voice and peak limiter). Fade still runs the blur filter every frame (only the pasted part is toggled on/off over time), so the savings are in the horizontal and low-range video no longer having any pasting, not in the filtering time.**Phase H (2026-10-05):** blur strips are now blurred on a scaled 1/4 scale and then scaled again (same way as blur background), only if the strip is 48 or more pixels high; Thinner strip do the same. Measured on real video that needs blurring (134 seconds, 43% of duration has blurred bands): edit 44.8 seconds → 36.4 seconds (−19%, median of 3 interlaced times, same capacity 43.2 MB); Just attaching `enable=` to `boxblur` gives −5%, which is within the noise threshold and should be removed. The range is different from the old version SSIM 0.988–0.996 (average PSNR 47.7 dB, lowest 36.8 dB), with the naked eye there is no difference (see frames side by side).
 
-## 9. Giới hạn của các phép đo này
+## 9. Limits of these measurements
 
-- Không có tai người: "giọng nghe hay" được kiểm bằng cách nhờ một model khác nghe và chép lại (độ chính xác từng chữ, giới tính, tuổi, nhịp), không phải bằng thẩm mỹ. Hãy bấm "Nghe thử giọng đọc" ở Thêm → Cài đặt và nghe vài video thật trước khi tin.
-- Hạn mức ngày của khóa Gemini hết giữa chừng nên bộ giọng nam, và việc chạy lại trọn vẹn một video lồng tiếng từ đầu tới cuối trên API thật (phân tích → giọng → dựng), chưa làm được. Phần ghép giọng, trộn âm và dựng đã chạy thật bằng ffmpeg với âm thanh giả; phần gọi TTS đã chạy thật ở mức từng lần gọi.
+- No human ears: "good sounding voice" is checked by having another model listen and transcribe (word-by-word accuracy, gender, age, rhythm), not by aesthetics. Click "Audio reading" in More → Settings and listen to some real videos before believing.
+- The Gemini course's day limit expired halfway, so the male voice set, and the complete playback of a dubbing video from start to finish on the real API (analysis → voice → editing), was not possible. Vocal pairing, mixing and editing were run in real time using ffmpeg with fake audio; The TTS calling part is actually running at each call level.

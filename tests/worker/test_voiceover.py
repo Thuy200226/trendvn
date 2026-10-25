@@ -55,8 +55,8 @@ class VoiceChoiceTests(unittest.TestCase):
         self.assertEqual(voices.pace_for(21), voices.FAST)
 
     def test_the_style_text_names_the_tone_and_the_pace_and_is_none_when_empty(self):
-        self.assertIn("hào hứng", voices.style_for({"tone": "energetic"}, voices.NORMAL))
-        self.assertIn("chậm rãi", voices.style_for({"tone": "calm"}, voices.SLOW))
+        self.assertIn("h\u00e0o h\u1ee9ng", voices.style_for({"tone": "energetic"}, voices.NORMAL))
+        self.assertIn("ch\u1eadm r\u00e3i", voices.style_for({"tone": "calm"}, voices.SLOW))
         self.assertIn("nhanh", voices.style_for({}, voices.FAST))
         self.assertIsNone(voices.style_for({}, voices.NORMAL))
         self.assertIsNone(voices.style_for(None, voices.NORMAL))
@@ -64,8 +64,8 @@ class VoiceChoiceTests(unittest.TestCase):
 
 class RouteTests(unittest.TestCase):
     def analysis(self, **speaker):
-        base = {"kind": "dialogue", "confidence": 0.99, "topic": "knowledge", "sensitive": False, "caption_vi": "Mẹo hay",
-                "segments": [{"start": 1.0, "end": 5.0, "vi": "Xin chào các bạn"}], "narration_vi": "Xin chào các bạn"}  # fmt: skip
+        base = {"kind": "dialogue", "confidence": 0.99, "topic": "knowledge", "sensitive": False, "caption_vi": "M\u1eb9o hay",
+                "segments": [{"start": 1.0, "end": 5.0, "vi": "Xin ch\u00e0o c\u00e1c b\u1ea1n"}], "narration_vi": "Xin ch\u00e0o c\u00e1c b\u1ea1n"}  # fmt: skip
         base["speaker"] = dict({"gender": "female", "tone": "warm", "count": 1, "dub_ok": True}, **speaker)
         return base
 
@@ -158,7 +158,7 @@ class MakeVoiceTests(StoreCase):
         self.assertAlmostEqual(result["seconds"], 10.0)
         self.assertEqual(len(calls), 1)  # one TTS call
         self.assertEqual(voices.GENDER[calls[0][0]], "male")  # a man's speech gets a man's voice
-        self.assertIn("nghiêm túc", calls[0][1])
+        self.assertIn("nghi\u00eam t\u00fac", calls[0][1])
 
     def test_a_voice_that_is_too_long_is_asked_for_again_faster_before_it_is_sped_up(self):
         result, calls = self.make([13.0, 10.5])
@@ -184,9 +184,9 @@ class MakeVoiceTests(StoreCase):
         the closer one, so the call was paid for nothing."""
         _, calls = self.make([11.8, 9.9], text="x" * 140)  # 14 characters a second asked of a 10 second window: slow
         self.assertEqual(len(calls), 2)
-        self.assertIn("chậm", calls[0][1])
+        self.assertIn("ch\u1eadm", calls[0][1])
         self.assertNotIn("nhanh", calls[1][1])  # normal pace, not fast
-        self.assertNotIn("chậm", calls[1][1])
+        self.assertNotIn("ch\u1eadm", calls[1][1])
         _, calls = self.make([13.0, 10.5], text="x" * 160)  # a normal delivery that runs long still goes to fast
         self.assertIn("nhanh", calls[1][1])
         _, calls = self.make([12.0], text="x" * 250)  # already the fastest (25 characters a second asked): no second try
@@ -223,14 +223,14 @@ class MakeVoiceTests(StoreCase):
         self.assertIn("(12.50-t)/0.5", ";".join(chain))  # (a voice that had ended at 9.6 s used to let the original back at full volume)
 
     def test_a_voice_that_would_run_past_the_end_of_the_video_is_refused(self):
-        with self.assertRaisesRegex(VoiceoverUnfit, "quá hết video"):
+        with self.assertRaisesRegex(VoiceoverUnfit, "qu\u00e1 h\u1ebft video"):
             self.make([10.0], duration=11.0)  # starts at 2.0, ends at 12.0
         self.assertAlmostEqual(self.make([10.0], duration=12.2)[0]["until"], 12.0)
 
     def test_a_short_last_window_near_the_end_of_the_video_cannot_hold_a_voice_that_needs_two_seconds(self):
         """A window shorter than two seconds is treated as two: the only way the voice can outlast a video whose timestamps are valid."""
         late = self.analysis(text="x" * 30, start=29.0, end=29.5)
-        with self.assertRaisesRegex(VoiceoverUnfit, "quá hết video"):
+        with self.assertRaisesRegex(VoiceoverUnfit, "qu\u00e1 h\u1ebft video"):
             self.make([2.0], duration=30.0, analysis=late)  # 29.0 + 2.0 is past the end by a second
         self.assertAlmostEqual(self.make([2.0], duration=31.0, analysis=late)[0]["delay"], 29.0)
 
@@ -241,14 +241,16 @@ class MakeVoiceTests(StoreCase):
         self.assertEqual((len(first), len(second)), (1, 0))  # the same text, voice and style: the file in the job folder is used
 
     def test_subtitle_line_breaks_are_not_read_as_the_letter_n(self):
-        _, calls = self.make([10.0], text="Chào các bạn\\Nrất vui\\n được gặp\\h lại " + "x" * 120)
+        _, calls = self.make(
+            [10.0], text="Ch\u00e0o c\u00e1c b\u1ea1n\\Nr\u1ea5t vui\\n \u0111\u01b0\u1ee3c g\u1eb7p\\h l\u1ea1i " + "x" * 120
+        )
         spoken = calls[0][2]
         self.assertNotIn("\\", spoken)
         self.assertNotRegex(spoken, r"\bN\b")  # "\N" is an ASS line break, not a word
-        self.assertIn("các bạn rất vui", spoken)
+        self.assertIn("c\u00e1c b\u1ea1n r\u1ea5t vui", spoken)
 
     def test_the_text_that_is_read_aloud_has_no_links_phone_numbers_or_emoji(self):
-        _, calls = self.make([10.0], text="Xem tại https://evil.test hoặc gọi 0912 345 678 nhé 😂 {an8} " + "x" * 120)
+        _, calls = self.make([10.0], text="Xem t\u1ea1i https://evil.test ho\u1eb7c g\u1ecdi 0912 345 678 nh\u00e9 😂 {an8} " + "x" * 120)
         spoken = calls[0][2]
         for forbidden in ("http", "evil", "0912", "😂", "{"):
             self.assertNotIn(forbidden, spoken)
@@ -256,7 +258,7 @@ class MakeVoiceTests(StoreCase):
     def test_a_silent_voice_is_no_voice_and_is_not_kept_to_be_found_again(self):
         folder = Path(tempfile.mkdtemp(dir=self.tmp.name))
         with mock.patch.object(speech, "decode_check", lambda path, with_audio: {"lufs": -90.0}):
-            with self.assertRaisesRegex(VoiceoverUnfit, "im lặng"):
+            with self.assertRaisesRegex(VoiceoverUnfit, "im l\u1eb7ng"):
                 self.make([10.0], folder=folder)
         self.assertEqual(
             list(folder.glob("voice-*.wav")), []
@@ -350,8 +352,12 @@ class CondenseTests(StoreCase):
 
     def lines(self):
         return [
-            {"start": 0.0, "end": 2.0, "vi": "Xin chào các bạn"},  # 8 characters a second: fine
-            {"start": 2.0, "end": 3.0, "vi": "Đây là mục tiêu cần xử lý trong nhiệm vụ lần này đấy"},  # 53 characters in a second
+            {"start": 0.0, "end": 2.0, "vi": "Xin ch\u00e0o c\u00e1c b\u1ea1n"},  # 8 characters a second: fine
+            {
+                "start": 2.0,
+                "end": 3.0,
+                "vi": "\u0110\u00e2y l\u00e0 m\u1ee5c ti\u00eau c\u1ea7n x\u1eed l\u00fd trong nhi\u1ec7m v\u1ee5 l\u1ea7n n\u00e0y \u0111\u1ea5y",
+            },  # 53 characters in a second
         ]
 
     def run_condense(self, reply):
@@ -372,11 +378,11 @@ class CondenseTests(StoreCase):
         from trendvn_worker.ai import condense as condense_mod
 
         self.assertEqual(condense_mod.too_fast(self.lines()), [(1, 17)])  # 17 characters a second for one second
-        out, calls = self.run_condense({"lines": [{"i": 1, "vi": "Mục tiêu lần này"}]})
-        self.assertEqual(out[1]["vi"], "Mục tiêu lần này")
-        self.assertEqual(out[0]["vi"], "Xin chào các bạn")  # untouched
+        out, calls = self.run_condense({"lines": [{"i": 1, "vi": "M\u1ee5c ti\u00eau l\u1ea7n n\u00e0y"}]})
+        self.assertEqual(out[1]["vi"], "M\u1ee5c ti\u00eau l\u1ea7n n\u00e0y")
+        self.assertEqual(out[0]["vi"], "Xin ch\u00e0o c\u00e1c b\u1ea1n")  # untouched
         self.assertIn('"max_chars": 17', calls[0])
-        self.assertNotIn("Xin chào", calls[0])  # lines that read fine are not even sent
+        self.assertNotIn("Xin ch\u00e0o", calls[0])  # lines that read fine are not even sent
 
     def test_a_rewrite_that_was_asked_for_before_is_not_asked_for_again(self):
         from trendvn_worker.ai import condense as condense_mod
@@ -386,7 +392,11 @@ class CondenseTests(StoreCase):
 
         def fake_generate(store, cfg, parts, schema, **kwargs):
             calls.append(kwargs)
-            return {"candidates": [{"content": {"parts": [{"text": json.dumps({"lines": [{"i": 1, "vi": "Mục tiêu lần này"}]})}]}}]}
+            return {
+                "candidates": [
+                    {"content": {"parts": [{"text": json.dumps({"lines": [{"i": 1, "vi": "M\u1ee5c ti\u00eau l\u1ea7n n\u00e0y"}]})}]}}
+                ]
+            }
 
         with mock.patch.object(condense_mod, "generate", fake_generate):
             first = condense_mod.condense(self.s, {}, self.lines(), folder)
@@ -398,14 +408,14 @@ class CondenseTests(StoreCase):
         from trendvn_worker.ai import condense as condense_mod
 
         with mock.patch.object(condense_mod, "generate", side_effect=AssertionError("no call expected")):
-            same = [{"start": 0.0, "end": 4.0, "vi": "Một câu bình thường"}]
+            same = [{"start": 0.0, "end": 4.0, "vi": "M\u1ed9t c\u00e2u b\u00ecnh th\u01b0\u1eddng"}]
             self.assertEqual(condense_mod.condense(self.s, {}, same), same)
 
     def test_a_bad_rewrite_keeps_the_original_wording(self):
         original = self.lines()[1]["vi"]
         for bad in (
             {"lines": [{"i": 1, "vi": ""}]},  # empty
-            {"lines": [{"i": 1, "vi": original + " nữa"}]},  # longer than the original
+            {"lines": [{"i": 1, "vi": original + " n\u1eefa"}]},  # longer than the original
             {"lines": [{"i": 1, "vi": "x" * 40}]},  # longer than allowed
             {"lines": [{"i": 0, "vi": "a"}]},  # a line that was not asked about
             {"lines": [{"i": "1", "vi": "a"}]},  # wrong type
@@ -428,7 +438,7 @@ class CondenseTests(StoreCase):
             self.assertEqual(out, original)
 
     def test_the_rewrite_is_cleaned_like_every_other_subtitle(self):
-        out, _ = self.run_condense({"lines": [{"i": 1, "vi": "Xem tại evil.com 😂 {x}"}]})
+        out, _ = self.run_condense({"lines": [{"i": 1, "vi": "Xem t\u1ea1i evil.com 😂 {x}"}]})
         self.assertNotIn("evil", out[1]["vi"])
         self.assertNotIn("😂", out[1]["vi"])
 
@@ -526,7 +536,7 @@ class RealMixTests(unittest.TestCase):
         )
         folder = tmp / "out"
         folder.mkdir()
-        analysis = {"kind": "narration", "segments": [{"start": 4.0, "end": 8.0, "vi": "Xin chào"}]}
+        analysis = {"kind": "narration", "segments": [{"start": 4.0, "end": 8.0, "vi": "Xin ch\u00e0o"}]}
         voice = {"wav": wav, "tempo": 1.0, "delay": 4.0, "seconds": 4.0}
         out = render_mod.render(src, folder, analysis, "voiceover", ffmpeg_mod.probe(src)[0], voice)
         before, under, after = self.band_level(out, 0.5, 2.5), self.band_level(out, 4.8, 2.4), self.band_level(out, 9.5, 2.0)
@@ -578,7 +588,7 @@ class LoudBedTests(unittest.TestCase):
         )
         folder = tmp / "out"
         folder.mkdir()
-        analysis = {"kind": "narration", "segments": [{"start": 0.0, "end": 9.0, "vi": "Xin chào"}]}
+        analysis = {"kind": "narration", "segments": [{"start": 0.0, "end": 9.0, "vi": "Xin ch\u00e0o"}]}
         voice = {"wav": wav, "tempo": 1.0, "delay": 0.0, "seconds": 9.0, "until": 9.0}
         out = render_mod.render(src, folder, analysis, "voiceover", ffmpeg_mod.probe(src)[0], voice)
         measured = ffmpeg_mod.decode_check(out, True)

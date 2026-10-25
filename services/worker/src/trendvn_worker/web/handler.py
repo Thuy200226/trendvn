@@ -17,11 +17,11 @@ from .responses import ResponseMixin
 from .security import SESSION_COOKIE, SESSION_SECONDS, same
 
 STALE_PAGE = (
-    '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Trang đã cũ</title>'
+    '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Trang \u0111\u00e3 c\u0169</title>'
     '<body style="font:16px/1.5 system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem">'
-    "<h1>Trang đã cũ</h1><p>Trang này được mở trước khi hệ thống cập nhật hoặc đã để quá lâu, nên lần bấm vừa rồi "
-    "<b>chưa được lưu</b>. Tải lại bảng điều khiển rồi làm lại thao tác.</p>"
-    '<p><a href="/">← Quay lại bảng điều khiển</a></p></body>'
+    "<h1>Trang \u0111\u00e3 c\u0169</h1><p>Trang n\u00e0y \u0111\u01b0\u1ee3c m\u1edf tr\u01b0\u1edbc khi h\u1ec7 th\u1ed1ng c\u1eadp nh\u1eadt ho\u1eb7c \u0111\u00e3 \u0111\u1ec3 qu\u00e1 l\u00e2u, n\u00ean l\u1ea7n b\u1ea5m v\u1eeba r\u1ed3i "
+    "<b>ch\u01b0a \u0111\u01b0\u1ee3c l\u01b0u</b>. T\u1ea3i l\u1ea1i b\u1ea3ng \u0111i\u1ec1u khi\u1ec3n r\u1ed3i l\u00e0m l\u1ea1i thao t\u00e1c.</p>"
+    '<p><a href="/">← Quay l\u1ea1i b\u1ea3ng \u0111i\u1ec1u khi\u1ec3n</a></p></body>'
 )
 
 MAX_BODY = 2 * 1024 * 1024
@@ -113,13 +113,18 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
             return self.send(
                 403,
                 {
-                    "error": "Kết nối từ %s không phải máy này. Nếu đây đúng là máy của bạn, thêm địa chỉ đó vào TRENDVN_TRUSTED_PEERS trong .env"
+                    "error": "K\u1ebft n\u1ed1i t\u1eeb %s kh\u00f4ng ph\u1ea3i m\u00e1y n\u00e0y. N\u1ebfu \u0111\u00e2y \u0111\u00fang l\u00e0 m\u00e1y c\u1ee7a b\u1ea1n, th\u00eam \u0111\u1ecba ch\u1ec9 \u0111\u00f3 v\u00e0o TRENDVN_TRUSTED_PEERS trong .env"
                     % peer
                 },
             )
         if path == "/login" and self.host_ok() and not self.local_ui():
             if not self.app.config.ui_password:
-                return self.send(403, {"error": "Đặt TRENDVN_UI_PASSWORD trong .env để mở bảng điều khiển từ máy khác"})
+                return self.send(
+                    403,
+                    {
+                        "error": "\u0110\u1eb7t TRENDVN_UI_PASSWORD trong .env \u0111\u1ec3 m\u1edf b\u1ea3ng \u0111i\u1ec1u khi\u1ec3n t\u1eeb m\u00e1y kh\u00e1c"
+                    },
+                )
             return self.login_page()
         if path == "/" and self.host_ok() and not self.local_ui():
             return self.redirect_to("/login")
@@ -172,7 +177,7 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
         try:
             result = forms.FORMS[path](self.app, form)
         except (ValueError, KeyError, TypeError, OSError, OverflowError) as error:
-            return self.redirect(err=vi_error(str(error)) or "Không thực hiện được")
+            return self.redirect(err=vi_error(str(error)) or "Kh\u00f4ng th\u1ef1c hi\u1ec7n \u0111\u01b0\u1ee3c")
         return self.redirect(result.key, result.err, result.anchor)
 
     def api_post(self, path, payload):
@@ -203,7 +208,9 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
             return self.send(403, {"error": "Not available"})
         ip = self.client_address[0]
         if self.access.login_locked(ip):
-            return self.login_page("Thử sai quá nhiều lần. Đợi một phút rồi thử lại.")
+            return self.login_page(
+                "Th\u1eed sai qu\u00e1 nhi\u1ec1u l\u1ea7n. \u0110\u1ee3i m\u1ed9t ph\u00fat r\u1ed3i th\u1eed l\u1ea1i."
+            )
         try:
             body = self.rfile.read(min(self.body_length(), LOGIN_FORM_MAX)).decode()
             form = parse_qs(body, keep_blank_values=True)
@@ -214,4 +221,4 @@ class Handler(ResponseMixin, BaseHTTPRequestHandler):
             return self.redirect_to("/", self.session_cookie(self.access.new_session(), SESSION_SECONDS))
         self.access.login_failed(ip)
         time.sleep(1)  # slow down guessing
-        return self.login_page("Mật khẩu chưa đúng.")
+        return self.login_page("M\u1eadt kh\u1ea9u ch\u01b0a \u0111\u00fang.")

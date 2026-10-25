@@ -46,14 +46,14 @@ class TopicMenuTests(unittest.TestCase):
         for text in (
             "Best location ever",
             "the competition",
-            "Chăn nuôi gà",
-            "Tăng cân nhanh",
+            "Ch\u0103n nu\u00f4i g\u00e0",
+            "T\u0103ng c\u00e2n nhanh",
             "deliver the parcel",
             "Discover my strong voice",
         ):
             self.assertEqual(topics.guess_topics(text), [], text)
         self.assertEqual(topics.guess_topics("My cat sleeps")[:1], ["pets"])
-        self.assertEqual(topics.guess_topics("Nấu ăn ngon")[:1], ["food"])
+        self.assertEqual(topics.guess_topics("N\u1ea5u \u0103n ngon")[:1], ["food"])
         self.assertIn("lifestyle", topics.guess_topics("#vlog日常 下班后"))  # a hashtag glued to Chinese text still counts
         self.assertEqual(topics.guess_topics("LIVE concert")[:1], ["music"])
 
@@ -70,9 +70,9 @@ class TopicMenuTests(unittest.TestCase):
             self.assertIn('"%s"' % topic_id, menu)
 
     def test_labels_never_fail(self):
-        self.assertEqual(topics.label("pets"), "Thú cưng, động vật")
-        self.assertEqual(topics.label("other"), "Ngoài chủ đề")
-        self.assertEqual(topics.label(None), "chưa rõ")
+        self.assertEqual(topics.label("pets"), "Th\u00fa c\u01b0ng, \u0111\u1ed9ng v\u1eadt")
+        self.assertEqual(topics.label("other"), "Ngo\u00e0i ch\u1ee7 \u0111\u1ec1")
+        self.assertEqual(topics.label(None), "ch\u01b0a r\u00f5")
         self.assertEqual(topics.label("zzz"), "zzz")
 
 
@@ -86,11 +86,11 @@ class AccountRuleTests(unittest.TestCase):
 
     def test_overrides_use_the_same_ranges_as_the_global_settings(self):
         ok = validate_account(
-            {"daily_limit": 3, "min_gap": 0, "windows": [[8, 10]], "visibility": "friends", "enabled": False, "label": "  Mèo "}
+            {"daily_limit": 3, "min_gap": 0, "windows": [[8, 10]], "visibility": "friends", "enabled": False, "label": "  M\u00e8o "}
         )
         self.assertEqual(
             (ok["daily_limit"], ok["min_gap"], ok["windows"], ok["visibility"], ok["enabled"], ok["label"]),
-            (3, 0, [[8, 10]], "friends", False, "Mèo"),
+            (3, 0, [[8, 10]], "friends", False, "M\u00e8o"),
         )
         self.assertIsNone(validate_account({"daily_limit": None})["daily_limit"])  # None means "use the global setting"
         for bad in ({"daily_limit": 0}, {"daily_limit": True}, {"windows": [[10, 8]]}, {"visibility": "all"}, {"enabled": "yes"}, "x"):
@@ -110,7 +110,7 @@ class AccountRuleTests(unittest.TestCase):
         account = {"topics": ["pets"]}
         self.assertTrue(accepts(account, "pets") and accepts(account, None))
         self.assertFalse(accepts(account, "food"))
-        self.assertEqual(slug("Kênh Mèo!"), "k-nh-m-o")
+        self.assertEqual(slug("K\u00eanh M\u00e8o!"), "k-nh-m-o")
         with self.assertRaises(ValueError):
             slug("!!!")
 
@@ -135,18 +135,18 @@ class AccountStoreTests(StoreCase):
 
     def test_uniqueness_and_the_last_account_rules(self):
         self.s.add_account({"username": "second", "topics": ["food"]})
-        with self.assertRaisesRegex(ValueError, "đã có"):
+        with self.assertRaisesRegex(ValueError, "\u0111\u00e3 c\u00f3"):
             self.s.add_account({"username": "second", "topics": ["food"], "id": "other"})
-        with self.assertRaisesRegex(ValueError, "Mã"):
+        with self.assertRaisesRegex(ValueError, "M\u00e3"):
             self.s.add_account({"username": "third", "topics": ["food"], "id": "second"})
         self.s.update_account("main", {"enabled": False})
-        with self.assertRaisesRegex(ValueError, "ít nhất một"):
+        with self.assertRaisesRegex(ValueError, "\u00edt nh\u1ea5t m\u1ed9t"):
             self.s.update_account("second", {"enabled": False})
-        with self.assertRaisesRegex(ValueError, "ít nhất một"):
+        with self.assertRaisesRegex(ValueError, "\u00edt nh\u1ea5t m\u1ed9t"):
             self.s.delete_account("second")  # the only one still enabled
         self.s.update_account("main", {"enabled": True})
         self.s.delete_account("second")
-        with self.assertRaisesRegex(ValueError, "ít nhất một"):
+        with self.assertRaisesRegex(ValueError, "\u00edt nh\u1ea5t m\u1ed9t"):
             self.s.delete_account("main")  # the last one
         with self.assertRaises(ValueError):
             self.s.update_account("ghost", {"label": "x"})
@@ -156,13 +156,13 @@ class AccountStoreTests(StoreCase):
     def test_at_most_ten_accounts(self):
         for i in range(9):
             self.s.add_account({"username": "acc%d" % i, "topics": ["food"]})
-        with self.assertRaisesRegex(ValueError, "Tối đa"):
+        with self.assertRaisesRegex(ValueError, "T\u1ed1i \u0111a"):
             self.s.add_account({"username": "one_too_many", "topics": ["food"]})
 
     def test_an_account_with_an_unconfirmed_post_cannot_be_deleted(self):
         self.s.add_account({"username": "second", "topics": ["food"]})
         self.job("j1", "publish_unknown", account="second")
-        with self.assertRaisesRegex(ValueError, "chưa xác nhận"):
+        with self.assertRaisesRegex(ValueError, "ch\u01b0a x\u00e1c nh\u1eadn"):
             self.s.delete_account("second")
 
     def test_the_target_setting_is_the_default_accounts_username(self):
