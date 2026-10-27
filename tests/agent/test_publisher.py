@@ -6,8 +6,8 @@ from pathlib import Path
 from unittest import mock
 
 from tests.support import TZ, StoreCase, at  # noqa: F401  (also puts the source folders on sys.path)
-from trendvn_agent.publisher import jobs, post
-from trendvn_agent.publisher.text import sha256
+from trendvn_agent.publisher import jobs, post, studio
+from trendvn_agent.publisher.text import norm, sha256
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -128,6 +128,7 @@ class ScriptedStudioTests(unittest.TestCase):
             wrong_account=lambda ctx, expected: None,
             own_descriptions=lambda ctx, target: list(self.descriptions),
             wait_for_upload_ui=lambda page: (self.target, mock.MagicMock()),
+            has_challenge=lambda page: False,
             wait_uploaded=lambda page: True,
             dismiss_popups=lambda page: None,
             set_caption=lambda page, editor, caption: True,
@@ -187,6 +188,43 @@ class ScriptedStudioTests(unittest.TestCase):
         outcome, picture, reason = self.run_job()
         self.assertEqual((outcome, picture), ("challenge", "/shots/challenge.png"))
         self.assertIn("trust", reason)
+
+    def test_a_challenge_that_appears_after_the_file_was_sent_pauses_instead_of_blaming_the_video(self):
+        """The check that waits for the upload page only sees a verification that shows BEFORE the file is sent. One that appears afterwards
+        covers the editor, the step fails with "element is covered", and that used to be a plain failure: a strike for the video, no pause.
+        """
+
+        def covered(page, editor, caption):
+            raise RuntimeError("Locator.click: element is covered by the verification overlay")
+
+        post.set_caption = covered
+        post.has_challenge = lambda page: True
+        outcome, picture, reason = self.run_job()
+        self.assertEqual((outcome, picture), ("challenge", "/shots/challenge.png"))
+        self.assertIn("trust", reason)
+
+    def test_a_challenge_found_when_a_step_reports_failure_pauses_too(self):
+        for name, patch in {
+            "upload_slow": dict(wait_uploaded=lambda page: False),
+            "caption": dict(set_caption=lambda page, editor, caption: False),
+            "visibility": dict(set_visibility=lambda page, wanted: False),
+        }.items():
+            with self.subTest(name), mock.patch.multiple(post, has_challenge=lambda page: True, **patch):
+                self.assertEqual(self.run_job()[0], "challenge")
+
+    def test_without_a_challenge_a_failed_step_is_still_the_videos_failure(self):
+        post.set_caption = lambda page, editor, caption: False
+        self.assertEqual(self.run_job()[0], "failed")  # has_challenge is False here: nothing changes for an ordinary failure
+
+    def test_a_challenge_never_turns_a_published_post_into_a_pause(self):
+        """After the click the outcome stays "unknown" whatever the page shows: the post may be live."""
+        post.has_challenge = lambda page: True
+
+        def broken(page):
+            raise RuntimeError("page crashed")
+
+        with mock.patch.object(post, "_confirm_post", broken):
+            self.assertEqual(self.run_job()[0], "unknown")
 
     def test_challenge_after_the_click_is_unknown(self):
         def blocked(page):
@@ -629,6 +667,89 @@ class ChallengeWiringTests(unittest.TestCase):
         ):
             jobs.run_publish("j1")
         self.assertIn(("/api/publisher/challenge", {"active": True, "account": "pets"}), sent)
+
+
+class FinishIsRecordedFirstTests(unittest.TestCase):
+    """How a post ended is the one thing the worker must hear: without it the video sits in `publishing` and 45 minutes later becomes a false
+    "unconfirmed post" that blocks the account."""
+
+    claim = {"status": "claimed", "id": "j1", "lease": "L", "account": "pets", "target": "meo", "output_hash": "h", "caption": "c"}
+
+    def run_job(self, outcome, failing=(), errors=None):
+        """run_publish with the browser replaced; `self.sent` keeps the worker paths called (also when run_publish raises)."""
+        self.sent = []
+        answers = {path: iter(items) for path, items in (errors or {}).items()}
+
+        def worker(path, payload=None, timeout=900):
+            self.sent.append(path)
+            if path in failing:
+                raise OSError("worker busy")
+            if path in answers:
+                answer = next(answers[path], None)
+                if answer is not None:
+                    raise answer
+            return self.claim if path.endswith("/claim") else {"ok": True}
+
+        with (
+            mock.patch.multiple(jobs, worker=worker, publish_one=lambda c, dry_run: (outcome, "", "r")),
+            mock.patch.object(jobs.time, "sleep"),
+        ):
+            return jobs.run_publish("j1")
+
+    def test_the_result_is_recorded_before_the_verification_pause_is_reported(self):
+        self.run_job("challenge")
+        self.assertLess(self.sent.index("/api/publish/finish"), self.sent.index("/api/publisher/challenge"))
+
+    def test_a_failure_reporting_the_pause_does_not_lose_the_result(self):
+        """The pause used to be reported first: when that call failed the result was never sent and the video was blamed 45 minutes later."""
+        result = self.run_job("challenge", failing=("/api/publisher/challenge",))
+        self.assertEqual(result["status"], "challenge")
+        self.assertIn("/api/publish/finish", self.sent)
+
+    def test_the_result_is_sent_again_when_the_worker_is_briefly_unreachable(self):
+        result = self.run_job("published", errors={"/api/publish/finish": [OSError("reset"), OSError("reset")]})
+        self.assertEqual(result["status"], "published")
+        self.assertEqual(self.sent.count("/api/publish/finish"), 3)
+
+    def test_a_worker_that_stays_unreachable_gives_up_after_three_tries(self):
+        with self.assertRaises(OSError):
+            self.run_job("published", failing=("/api/publish/finish",))
+        self.assertEqual(self.sent.count("/api/publish/finish"), jobs.FINISH_ATTEMPTS)
+
+    def test_a_refusal_from_the_worker_is_final(self):
+        """A stale lease does not get better by asking again: exactly one try."""
+        refusal = RuntimeError("worker /api/publish/finish -> 400: Stale publish lease")
+        with self.assertRaises(RuntimeError):
+            self.run_job("published", errors={"/api/publish/finish": [refusal, refusal, refusal]})
+        self.assertEqual(self.sent.count("/api/publish/finish"), 1)
+
+
+class CaptionCheckTests(unittest.TestCase):
+    """set_caption is the last check before the Post click; it must be as strict as the profile check after it (60 normalised characters)."""
+
+    CAPTION = "Con m\u00e8o n\u00e0y l\u00e0m tr\u00f2 c\u01b0\u1eddi r\u1ea5t vui nh\u1ed9n #meo #hai #fyp"
+
+    def check(self, shown):
+        editor = mock.MagicMock()
+        editor.inner_text.return_value = shown
+        return studio.set_caption(mock.MagicMock(), editor, self.CAPTION)
+
+    def test_the_text_the_editor_shows_is_accepted(self):
+        self.assertTrue(self.check(self.CAPTION))
+        self.assertTrue(self.check(self.CAPTION + " \n"))  # trailing space or line break is not a difference
+
+    def test_an_editor_that_dropped_characters_after_the_25th_is_not_accepted(self):
+        """Checking only the first 25 characters let a caption missing a few letters through: it went live wrong and could never be confirmed."""
+        dropped = self.CAPTION[:34] + self.CAPTION[37:]  # three letters of "nh\u1ed9n" lost
+        self.assertEqual(
+            norm(dropped)[:25], norm(self.CAPTION)[:25]
+        )  # the first 25 normalised characters are intact: only the full key sees it
+        self.assertNotEqual(norm(dropped), norm(self.CAPTION))
+        self.assertFalse(self.check(dropped))
+
+    def test_the_file_name_left_in_the_editor_is_not_a_caption(self):
+        self.assertFalse(self.check("final"))
+        self.assertFalse(self.check("final " + self.CAPTION))
 
 
 class _Window:

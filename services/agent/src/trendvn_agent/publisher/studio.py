@@ -50,7 +50,9 @@ def set_caption(page, editor, caption):
     page.keyboard.type(caption, delay=25)
     page.wait_for_timeout(1200)
     shown = re.sub(r"\s+", " ", editor.inner_text()).strip()
-    return norm(shown).startswith(norm(caption)[:25]) and "final" != shown
+    # the same key the profile check after the click uses (60 normalised characters): a weaker check here let an editor that dropped
+    # characters past the 25th pass, and the post then went live with the wrong caption and could never be confirmed
+    return norm(shown) == norm(caption) and "final" != shown
 
 
 def set_visibility(page, wanted):

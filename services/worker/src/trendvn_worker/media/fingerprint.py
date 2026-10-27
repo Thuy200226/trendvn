@@ -29,5 +29,6 @@ def similar(a, b):
     """True when most sampled frames look alike (the same video re-encoded, trimmed a little, or re-uploaded)."""
     if not len(a) == len(b) == len(SAMPLE_POINTS):
         return False
-    close = sum((int(x, 16) ^ int(y, 16)).bit_count() <= MAX_BIT_DIFFERENCE for x, y in zip(a, b))
+    # counting the set bits with bin() rather than a method of int: the method needs Python 3.10 and macOS ships 3.9
+    close = sum(bin(int(x, 16) ^ int(y, 16)).count("1") <= MAX_BIT_DIFFERENCE for x, y in zip(a, b))
     return close >= MIN_MATCHING_FRAMES

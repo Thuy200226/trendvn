@@ -6,7 +6,7 @@ import time
 from ..browser import chrome
 from ..config import RUNTIME
 from ..log import log
-from .challenge import Challenge, wait_for_upload_ui
+from .challenge import Challenge, has_challenge, wait_for_upload_ui
 from .constants import HEADED, POST_LABELS, UPLOAD_URL
 from .profile import account_flag, logged_in, own_descriptions, profile_name, wrong_account
 from .screenshots import export_shot, shot
@@ -83,7 +83,7 @@ def _post_in_studio(ctx, job, video, dry_run, state):
     try:
         failure, target, post_button = _upload_and_fill(page, job, video)
         if failure:
-            return failure
+            return _challenge_if_shown(page, job, failure)
         if dry_run:
             return (
                 "dry_run",
@@ -95,26 +95,39 @@ def _post_in_studio(ctx, job, video, dry_run, state):
         _confirm_post(page)
         return None
     except Challenge as e:
-        picture = shot(page, "challenge") or ""
         if state["clicked"]:
             return (
                 "unknown",
-                picture,
+                shot(page, "challenge") or "",
                 "\u0110\u00e3 b\u1ea5m \u0110\u0103ng nh\u01b0ng TikTok \u0111\u00f2i x\u00e1c minh: ch\u01b0a bi\u1ebft b\u00e0i c\u00f3 l\u00ean kh\u00f4ng",
             )
-        return (
-            "challenge",
-            picture,
-            "%s. \u0110\u0103ng t\u1ea1m d\u1eebng t\u1edbi khi b\u1ea1n gi\u1ea3i: ./trendvn tiktok trust%s"
-            % (e, account_flag(job.get("account"))),
-        )
+        return _challenge_result(page, job, str(e))
     except Exception as e:
         picture = shot(page, "error") or ""
         if state["clicked"]:
             return "unknown", picture, "\u0110\u00e3 b\u1ea5m \u0110\u0103ng nh\u01b0ng ch\u01b0a x\u00e1c nh\u1eadn: " + str(e)[:120]
-        return "failed", picture, "L\u1ed7i tr\u01b0\u1edbc khi b\u1ea5m \u0110\u0103ng: " + str(e)[:160]
+        return _challenge_if_shown(page, job, ("failed", picture, "L\u1ed7i tr\u01b0\u1edbc khi b\u1ea5m \u0110\u0103ng: " + str(e)[:160]))
     finally:
         page.close()
+
+
+def _challenge_result(page, job, why):
+    """The (outcome, picture, reason) of a verification TikTok asked for before the Post click: publishing pauses until the owner passes it."""
+    return (
+        "challenge",
+        shot(page, "challenge") or "",
+        "%s. \u0110\u0103ng t\u1ea1m d\u1eebng t\u1edbi khi b\u1ea1n gi\u1ea3i: ./trendvn tiktok trust%s"
+        % (why, account_flag(job.get("account"))),
+    )
+
+
+def _challenge_if_shown(page, job, failure):
+    """A verification that appears AFTER the file was sent covers the page, so whatever step was running fails with an unrelated message
+    ("element is covered"). That is TikTok asking for a human, not a broken video: report the challenge so the account pauses and the video
+    gets no strike (the check that waits for the upload page only sees one that appears before). Only looked for once something failed."""
+    if failure[0] != "failed" or not has_challenge(page):
+        return failure
+    return _challenge_result(page, job, "TikTok y\u00eau c\u1ea7u x\u00e1c minh (CAPTCHA)")
 
 
 def _failed(page, name, reason):

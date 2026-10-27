@@ -22,6 +22,9 @@ from .media.render import covered_hard_subtitles, make_poster, qc, render
 REASON_LIMIT = 700
 PACE_NAMES = {"slow": "n\u00f3i ch\u1eadm", "normal": "t\u1ed1c \u0111\u1ed9 t\u1ef1 nhi\u00ean", "fast": "n\u00f3i nhanh"}
 VOICE_RETRIES = 4  # times a voice-over may be put off because Google is busy before the video goes out with subtitles
+# Times ONE video may be sent back because Gemini failed transiently (a 5xx, or no answer in time) before it waits for the owner. A video that
+# always times out would otherwise be retried for ever; the bound is generous because a real outage lasts days and must not park the queue.
+MAX_DEFERRALS = 10
 MIN_FREE_BYTES = 512 << 20  # below this much free disk nothing new is processed: a render needs room, and a full disk stops the database
 MIN_SIDE = 64  # pixels: a 1x1 or 2x2 "video" (a tracking pixel, a broken download) cannot become a post
 TERMINAL_STATUSES = ("disabled", "blocked", "idle", "rate_limited")  # after one of these there is nothing more to do right now
@@ -94,6 +97,12 @@ def process_one(store):
         return _process(store, cfg, job)
     except RateLimited as e:
         reason = str(e)
+        if isinstance(e, Transient) and _count_try(store.root / "jobs" / job["id"] / "deferrals") > MAX_DEFERRALS:
+            reason = (
+                "Gemini lỗi tạm thời %d lần với riêng video này (có thể video quá nặng để phân tích); cần bạn xem lại: " % MAX_DEFERRALS
+                + reason[:160]
+            )
+            return _settle(job, "needs_review", reason, lambda: store.finish(job["id"], job["lease"], "needs_review", reason=reason))
         return _settle(job, "rate_limited", reason, lambda: store.release(job["id"], job["lease"], reason))
     except KeyRejected as e:
         # every video would fail the same way: stop here, keep this one waiting, and tell the owner once (not once per video)

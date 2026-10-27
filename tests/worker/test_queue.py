@@ -114,6 +114,32 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(self.s.status()["jobs"][0]["state"], "publish_unknown")
         self.assertIsNone(self.s.claim())
 
+    def test_seeing_a_video_again_leaves_the_clocks_of_the_retention_rules_alone(self):
+        """`updated` drives file retention, the 45-minute publishing expiry and the daily post count; a scan that sees the video again
+        must only move `last_seen`, or a video that keeps trending never ages out."""
+        self.s.ingest(self.batch(["123"]), now=self.now)
+        self.s.ingest(self.batch(["123"], self.now + 10), now=self.now + 10_000)
+        with self.s.connect() as db:
+            row = db.execute("SELECT updated,last_seen FROM jobs").fetchone()
+        self.assertEqual(row["updated"], self.now)
+        self.assertEqual(row["last_seen"], self.now + 10)
+
+
+class ClaimOrderTests(StoreCase):
+    def test_the_video_that_waited_longest_in_the_queue_goes_first(self):
+        """The clock is the time it entered the queue (`updated`), not when the stream first showed it."""
+        self.job("entered_first", "queued", first_seen=5, updated=100)
+        self.job("entered_later", "queued", first_seen=1, updated=200)
+        self.assertEqual(self.s.claim()["id"], "entered_first")
+
+    def test_a_video_sent_back_goes_behind_the_others(self):
+        """It used to be claimed first on every run (oldest first_seen), so one video that always failed blocked everything behind it."""
+        self.job("a", "queued", first_seen=1, updated=100)
+        self.job("b", "queued", first_seen=2, updated=200)
+        first = self.s.claim()
+        self.s.release(first["id"], first["lease"], "Gemini is busy")
+        self.assertEqual(self.s.claim()["id"], "b")
+
 
 if __name__ == "__main__":
     unittest.main()
