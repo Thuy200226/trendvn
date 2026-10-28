@@ -3,16 +3,19 @@
 import hmac
 import json
 import threading
+import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .config import ENV, TOKEN
+from .limits import JOB_SECONDS
 from .log import log
 from .worker_client import worker, worker_get
 
 BIND = ENV.get("TRENDVN_AGENT_BIND", "172.20.0.1")
 PORT = int(ENV.get("TRENDVN_AGENT_PORT", "5682"))
 browser_lock = threading.Lock()  # one Chrome job at a time: profiles cannot be shared and sites throttle parallel scans
+current = {"job": None, "since": 0.0}  # what holds the lock and since when (shown by /health)
 MAX_BODY = 1024 * 1024  # a job request is a few small fields; anything bigger is refused before it is read
 SOCKET_TIMEOUT = 30  # seconds a caller may stall mid-request
 
@@ -75,6 +78,21 @@ def verify(payload):
     return publisher.verify_unresolved()
 
 
+def overdue(path):
+    """A job has run longer than its limit (limits.py). It is not stopped; the owner is told, because the browser stays busy and every
+    later call gets 409 until it ends or the agent restarts. Never raises: this runs on a timer thread."""
+    minutes = int(JOB_SECONDS.get(path, 1800) // 60)
+    log("job %s still running after %d minutes" % (path, minutes))
+    try:
+        worker(
+            "/api/alert",
+            {"step": "agent " + path, "detail": "still running after %d minutes; the browser is busy until it ends" % minutes},
+            timeout=30,
+        )
+    except Exception as error:
+        log("could not send the overdue alert: " + str(error)[:120])
+
+
 ROUTES = {
     "/api/collect": collect,
     "/api/publish": publish,
@@ -110,7 +128,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            return self.send(200, {"ok": True, "service": "trendvn-agent", "busy": browser_lock.locked()})
+            busy = browser_lock.locked()
+            job = current["job"] if busy else None
+            return self.send(
+                200,
+                {
+                    "ok": True,
+                    "service": "trendvn-agent",
+                    "busy": busy,
+                    "job": job,
+                    "busy_for": int(time.monotonic() - current["since"]) if job else 0,
+                },
+            )
         self.send(404, {"error": "Not found"})
 
     def do_POST(self):
@@ -130,12 +159,18 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(404, {"error": "Not found"})
         if not browser_lock.acquire(blocking=False):
             return self.send(409, {"error": "Agent busy with another browser job"})
+        current.update(job=self.path, since=time.monotonic())
+        timer = threading.Timer(JOB_SECONDS.get(self.path, 1800), overdue, args=(self.path,))
+        timer.daemon = True
+        timer.start()
         try:
             self.send(200, job(payload))
         except Exception as error:
             log("ERROR %s: %s" % (self.path, traceback.format_exc()[-600:]))
             self.send(500, {"error": str(error)[:300]})
         finally:
+            timer.cancel()
+            current.update(job=None, since=0.0)
             browser_lock.release()
 
 

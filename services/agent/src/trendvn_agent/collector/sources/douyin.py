@@ -3,39 +3,40 @@
 import re
 
 from ..capture import NoVideos, capture_streams
-from ..normalize import to_int
+from ..normalize import parse_each, to_int
 from ..rules import rotate
 
 # hosts Douyin videos are served from (the downloader refuses anything else)
 CDN = ("zjcdn.com", "douyinvod.com", "douyincdn.com", "douyin.com", "bytecdn.cn", "bytedance.com", "ibytedtos.com")
 
 
+def _douyin_item(a):
+    if not isinstance(a, dict) or a.get("aweme_type") != 0 or a.get("is_ads") or not a.get("video"):
+        return None
+    stats = a.get("statistics") or {}
+    vid = str(a.get("aweme_id") or "")
+    urls = ((a["video"].get("play_addr") or {}).get("url_list")) or []
+    urls = [u for u in urls if isinstance(u, str) and u.startswith("http")]
+    if not vid or not urls or not stats:
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", vid):  # the worker refuses a whole batch for one id like this
+        return None
+    urls = [u.replace("http://", "https://", 1) for u in urls]
+    duration = (a.get("duration") or a["video"].get("duration") or 0) / 1000
+    return {
+        "source_id": vid,
+        "url": "https://www.douyin.com/video/" + vid,
+        "title": str(a.get("desc") or "")[:500],
+        "likes": to_int(stats.get("digg_count")),
+        "views": None,
+        "duration": duration,
+        "created": to_int(a.get("create_time")),
+        "media": {"kind": "direct", "url": urls[0], "referer": "https://www.douyin.com/"},
+    }
+
+
 def parse_douyin(payload):
-    items = []
-    for a in payload.get("aweme_list") or []:
-        if not isinstance(a, dict) or a.get("aweme_type") != 0 or a.get("is_ads") or not a.get("video"):
-            continue
-        stats = a.get("statistics") or {}
-        vid = str(a.get("aweme_id") or "")
-        urls = ((a["video"].get("play_addr") or {}).get("url_list")) or []
-        urls = [u for u in urls if isinstance(u, str) and u.startswith("http")]
-        if not vid or not urls or not stats:
-            continue
-        urls = [u.replace("http://", "https://", 1) for u in urls]
-        duration = (a.get("duration") or a["video"].get("duration") or 0) / 1000
-        items.append(
-            {
-                "source_id": vid,
-                "url": "https://www.douyin.com/video/" + vid,
-                "title": str(a.get("desc") or "")[:500],
-                "likes": to_int(stats.get("digg_count")),
-                "views": None,
-                "duration": duration,
-                "created": to_int(a.get("create_time")),
-                "media": {"kind": "direct", "url": urls[0], "referer": "https://www.douyin.com/"},
-            }
-        )
-    return items
+    return parse_each(payload.get("aweme_list") or [], _douyin_item, "douyin")
 
 
 # Douyin's own category tabs on the jingxuan page (measured on the live site: each returns about 40 videos of its own). topic -> tab name.

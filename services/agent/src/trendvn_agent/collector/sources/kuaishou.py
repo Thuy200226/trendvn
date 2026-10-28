@@ -3,34 +3,33 @@
 import re
 
 from ..capture import capture
-from ..normalize import to_int
+from ..normalize import parse_each, to_int
 
 CDN = ("kwaicdn.com", "yximgs.com", "kuaishou.com", "gifshow.com", "ksapisrv.com")
 
 
+def _kuaishou_item(f):
+    p = f.get("photo") if isinstance(f, dict) else None
+    if not p or not p.get("id") or not p.get("photoUrl"):
+        return None
+    vid = str(p["id"])
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", vid):
+        return None
+    return {
+        "source_id": vid,
+        "url": "https://www.kuaishou.com/short-video/" + vid,
+        "title": str(p.get("caption") or "")[:500],
+        "likes": to_int(p.get("realLikeCount")),
+        "views": to_int(p.get("viewCount")),
+        "duration": (p.get("duration") or 0) / 1000,
+        "created": (to_int(p.get("timestamp")) or 0) // 1000 or None,
+        "media": {"kind": "direct", "url": p["photoUrl"], "referer": "https://www.kuaishou.com/"},
+    }
+
+
 def parse_kuaishou(payload):
-    items = []
     feeds = (((payload.get("data") or {}).get("brilliantTypeData") or {}).get("feeds")) or []
-    for f in feeds:
-        p = f.get("photo") if isinstance(f, dict) else None
-        if not p or not p.get("id") or not p.get("photoUrl"):
-            continue
-        vid = str(p["id"])
-        if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", vid):
-            continue
-        items.append(
-            {
-                "source_id": vid,
-                "url": "https://www.kuaishou.com/short-video/" + vid,
-                "title": str(p.get("caption") or "")[:500],
-                "likes": to_int(p.get("realLikeCount")),
-                "views": to_int(p.get("viewCount")),
-                "duration": (p.get("duration") or 0) / 1000,
-                "created": (to_int(p.get("timestamp")) or 0) // 1000 or None,
-                "media": {"kind": "direct", "url": p["photoUrl"], "referer": "https://www.kuaishou.com/"},
-            }
-        )
-    return items
+    return parse_each(feeds, _kuaishou_item, "kuaishou")
 
 
 def scan_kuaishou(ctx, topics=()):

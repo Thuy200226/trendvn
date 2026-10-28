@@ -37,8 +37,11 @@ def collect(platforms=None, download_media=True, ingest=True, thresholds=None, l
     for country, plats in by_country.items():
         try:
             with chrome("collector-" + country.lower(), locale=SOURCES[plats[0]]["locale"], region=country) as ctx:
-                exit_c = exit_country(ctx)
-                log("%s sources use exit country %s" % (country, exit_c))
+                # the exit country only matters to sources that depend on it; Douyin and Kuaishou serve the same content to any IP, and asking
+                # two IP services for them cost up to 30 seconds when those were unreachable
+                exit_c = exit_country(ctx) if any(SOURCES[p]["geo_locked"] for p in plats) else None
+                if exit_c:
+                    log("%s sources use exit country %s" % (country, exit_c))
                 seen = {}  # platform -> {source_id: item} of what this scan found worth downloading
                 for platform in plats:
                     if SOURCES[platform]["geo_locked"] and exit_c != country:
@@ -48,7 +51,11 @@ def collect(platforms=None, download_media=True, ingest=True, thresholds=None, l
                             % (country, exit_c or "kh\u00f4ng x\u00e1c \u0111\u1ecbnh", country),
                         }
                         continue
-                    report[platform], found = scan_platform(ctx, platform, thresholds, ingest, topics)
+                    try:
+                        report[platform], found = scan_platform(ctx, platform, thresholds, ingest, topics)
+                    except Exception as e:  # one platform failing must not end the session for the platforms after it
+                        log("%s: scan failed: %s" % (platform, str(e)[:160]))
+                        report[platform], found = {"status": "error", "reason": "L\u1ed7i thu th\u1eadp: " + str(e)[:160]}, None
                     if found is not None:
                         seen[platform] = found
                 if download_media and ingest and seen:
@@ -69,6 +76,31 @@ def run_platform(ctx, platform, thresholds, download_media, ingest, limit, topic
     if download_media and ingest and found is not None:
         result["summary"]["media"] = fetch_pending(ctx, platform, found, limit, topics)
     return result
+
+
+def _qualified_and_scored(platform, item, thresholds, weights):
+    """True when the item passes the gates; its score and meta are then filled in. An item whose numbers cannot be compared (a text where a
+    number should be, a number too large for a float) is dropped on its own instead of ending the whole scan of the platform."""
+    try:
+        if not qualifies(platform, item, thresholds, topic_stream=bool(item.get("topic"))):
+            return False
+        age = age_hours(item)
+        item["score"] = score(platform, item, weights)
+        item["meta"] = {
+            k: v
+            for k, v in (
+                ("score", item["score"]),
+                ("likes", item.get("likes")),
+                ("views", item.get("views")),
+                ("age_h", round(age, 1) if age is not None else None),
+                ("created", item.get("created")),
+            )
+            if v is not None
+        }
+        return True
+    except (TypeError, ValueError, ArithmeticError) as error:
+        log("%s: dropped an item whose numbers do not compare (%s)" % (platform, str(error)[:80]))
+        return False
 
 
 def scan_platform(ctx, platform, thresholds, ingest, topics=()):
@@ -93,21 +125,7 @@ def scan_platform(ctx, platform, thresholds, ingest, topics=()):
     downloads = []
     weights = thresholds.get("weights") or {}
     for stream, raw in streams.items():
-        good = [i for i in raw if qualifies(platform, i, thresholds, topic_stream=bool(i.get("topic")))]
-        for i in good:
-            age = age_hours(i)
-            i["score"] = score(platform, i, weights)
-            i["meta"] = {
-                k: v
-                for k, v in (
-                    ("score", i["score"]),
-                    ("likes", i.get("likes")),
-                    ("views", i.get("views")),
-                    ("age_h", round(age, 1) if age is not None else None),
-                    ("created", i.get("created")),
-                )
-                if v is not None
-            }
+        good = [i for i in raw if _qualified_and_scored(platform, i, thresholds, weights)]
         summary[stream] = {"seen": len(raw), "qualified": len(good)}
         if not ingest or not good:
             continue

@@ -4,14 +4,24 @@ import time
 
 from ..config import DATA, RUNTIME
 
+SHOTS_KEPT = (
+    20  # a failed or CAPTCHA'd publish leaves a full-page picture; nothing else ever removed them and the disk is the recurring risk
+)
+
 
 def shot(page, name):
     try:
-        path = DATA / "shots" / ("%s_%d.png" % (name, int(time.time())))
+        folder = DATA / "shots"
+        path = folder / ("%s_%d.png" % (name, int(time.time())))
         page.screenshot(path=str(path), full_page=True)
-        return str(path)
     except Exception:
         return None
+    try:
+        for old in sorted(folder.glob("*.png"), key=lambda f: f.stat().st_mtime)[:-SHOTS_KEPT]:
+            old.unlink(missing_ok=True)
+    except OSError:
+        pass  # pruning is housekeeping: it must never turn a successful picture into a failure
+    return str(path)
 
 
 def export_shot(page, name):
