@@ -1,0 +1,11 @@
+schema_version: "1.1"
+name: generate-docs-small-service
+context:
+  scaffold_script: place-files.sh
+expected_outcome: |
+  The project gets four live documents (FLOWS, TECH, OPERATIONS, ROADMAP) plus README and CHANGELOG. FLOWS has no
+  technology terms and shows the life of a job with all six states; TECH explains components, decisions and where rules
+  live; OPERATIONS has install, daily use, troubleshooting and every command; ROADMAP says plainly what was not verified.
+  Facts match the code (30 messages a minute, 3 attempts, lease of 600 seconds that turns a stale sending job into
+  unknown, never resent by itself) and the stale README claims (60 a minute, 5 retries) are gone. The linter and the
+  Mermaid check pass, and the final reply lists what was verified and what was not.

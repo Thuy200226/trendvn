@@ -35,6 +35,7 @@ Full commands: `docs/OPERATIONS.md`. Status, open items and owner decisions: `do
 - Add to an existing document before adding a file; a new live document needs a link in `README.md`. Flows and states are Mermaid blocks in the document (they must parse); a draw.io file is only a visual twin of a text section.
 - One H1 per document, English, short sentences, tables for facts. A figure says what was measured, on what, and when; an estimate says it is one; what is not verified is said so.
 - Change behavior and documents together, and add the entry to `CHANGELOG.md` (the packaging step needs a section for the version).
+- The portable form of this standard is the skill `skills/docs-generation` (generate, restructure, update or audit documents; its linter, Mermaid check and self-test are in its `scripts/`): `cp -r skills/docs-generation ~/.claude/skills/`. `scripts/doclint.py` stays this repo's own, stricter linter.
 
 ## How it works
 1. Read `docs/ROADMAP.md` (status and open items) and run `./trendvn test` to establish a baseline before making changes.
