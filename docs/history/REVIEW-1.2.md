@@ -1,6 +1,6 @@
 # Review log version 1.2
 
-> Note: this is a historical document of version 1.2; the paths in there (`worker/`, `agent/`, `runtime/`, `agent_data/`, `install.sh`...) are from the old layout. The comparison table to layout 1.3 is located at [CHANGELOG](../CHANGELOG.md).
+> Note: this is a historical document of version 1.2; the paths in there (`worker/`, `agent/`, `runtime/`, `agent_data/`, `install.sh`...) are from the old layout. The comparison table to layout 1.3 is located at [CHANGELOG](../../CHANGELOG.md).
 
 Goal: the interface works well on phones, is fast, doesn't cause errors, and the video quality, description, and hashtags are good enough to post. Four rounds of testing, plus tests using real services. All findings below were reproduced in code or in runtime before correction.
 

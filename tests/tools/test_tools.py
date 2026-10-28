@@ -135,6 +135,38 @@ class BackupProfilesTests(unittest.TestCase):
             )  # fmt: skip
         self.assertNotIn(r.returncode, (0, 10))
 
+    def pack_with_fake_tar(self, version_line, exit_code):
+        """pack_profiles' exit code when `tar` says `version_line` for --version and exits with `exit_code` (the real tar differs per OS)."""
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            fake = root / "bin" / "tar"
+            fake.parent.mkdir()
+            fake.write_text('#!/bin/sh\nif [ "$1" = "--version" ]; then echo "%s"; exit 0; fi\nexit %d\n' % (version_line, exit_code))
+            fake.chmod(0o755)
+            (root / "profiles" / "publisher").mkdir(parents=True)
+            r = subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    '. "$1"; pack_profiles "$2" "$3"',
+                    "x",
+                    str(ROOT / "scripts" / "lib.sh"),
+                    str(root / "s.tgz"),
+                    str(root / "profiles"),
+                ],
+                env=dict(os.environ, PATH="%s:%s" % (root / "bin", os.environ["PATH"])),
+                capture_output=True,
+                text=True,
+            )
+            return r.returncode
+
+    def test_tars_exit_1_is_benign_only_for_gnu_tar(self):
+        """bsdtar (the tar on macOS) exits 1 for any error, an unreadable Cookies file included: the backup then passed with no session in it."""
+        self.assertEqual(self.pack_with_fake_tar("tar (GNU tar) 1.35", 1), 0)  # a file changed while Chrome ran: the archive is good
+        self.assertEqual(self.pack_with_fake_tar("bsdtar 3.5.3 - libarchive 3.7.4 zlib/1.2.12", 1), 1)
+        self.assertEqual(self.pack_with_fake_tar("tar (GNU tar) 1.35", 2), 2)  # a real error on GNU tar
+        self.assertEqual(self.pack_with_fake_tar("bsdtar 3.5.3 - libarchive 3.7.4 zlib/1.2.12", 0), 0)
+
     def test_backup_stops_when_the_profiles_cannot_be_packed(self):
         script = (ROOT / "scripts" / "backup.sh").read_text()
         self.assertIn("pack_rc", script)

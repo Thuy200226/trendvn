@@ -48,11 +48,40 @@
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {
-          "timeout": 1500000
+          "timeout": 1980000
         },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "{}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN \u00b7 Worker ri\u00eang"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "c6dc150c1d885e9f81e8bd3b8d9c1a33",
+      "name": "B\u00e1o l\u1ed7i: 02 publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        300
+      ],
+      "parameters": {
+        "url": "http://worker:8080/api/alert",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({step: \"02 publish\", detail: String(($json.error && ($json.error.message || $json.error)) || $json.message || 'failed')}) }}"
       },
       "credentials": {
         "httpHeaderAuth": {
@@ -95,6 +124,18 @@
         [
           {
             "node": "\u0110\u0103ng video t\u1ed1t nh\u1ea5t n\u1ebfu \u0111\u1ee7 \u0111i\u1ec1u ki\u1ec7n",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\u0110\u0103ng video t\u1ed1t nh\u1ea5t n\u1ebfu \u0111\u1ee7 \u0111i\u1ec1u ki\u1ec7n": {
+      "main": [
+        [],
+        [
+          {
+            "node": "B\u00e1o l\u1ed7i: 02 publish",
             "type": "main",
             "index": 0
           }

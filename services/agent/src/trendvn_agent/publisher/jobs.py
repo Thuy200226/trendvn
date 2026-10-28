@@ -1,5 +1,7 @@
 """What the schedule and the dashboard ask the publisher to do: post, rehearse, read stats, verify."""
 
+import time
+
 from ..browser import chrome
 from ..log import log
 from ..worker_client import worker, worker_get
@@ -15,6 +17,32 @@ def report_login(account, ok):
         worker("/api/accounts/login", {"id": account or "main", "ok": bool(ok)})
     except Exception as error:
         log("could not report the login state: " + str(error)[:120])
+
+
+def report_challenge(account):
+    """Pause publishing for an account after TikTok asked for verification. Never raises: the worker must hear how the post ended first."""
+    try:
+        worker("/api/publisher/challenge", {"active": True, "account": account})
+    except Exception as error:
+        log("could not report the verification pause: " + str(error)[:120])
+
+
+FINISH_ATTEMPTS = 3  # tries to record how a post ended
+FINISH_WAIT = 10  # seconds between them
+
+
+def send_finish(payload):
+    """Record how the post ended. It is the one call that must not be lost: without it the video stays `publishing` and, 45 minutes later,
+    becomes an "unconfirmed post" (a false alarm that blocks the account until the owner acts). A worker that cannot be reached for a moment
+    is tried again; one that answers with a refusal (4xx, e.g. a stale lease) is final."""
+    for attempt in range(1, FINISH_ATTEMPTS + 1):
+        try:
+            return worker("/api/publish/finish", payload)
+        except Exception as error:
+            log("could not record the result of the post (try %d/%d): %s" % (attempt, FINISH_ATTEMPTS, str(error)[:120]))
+            if attempt == FINISH_ATTEMPTS or " -> 4" in str(error):
+                raise
+            time.sleep(FINISH_WAIT)
 
 
 def run_publish(job_id=None):
@@ -33,16 +61,16 @@ def run_publish(job_id=None):
         "challenge": "deferred",
         "signed_out": "deferred",  # not the video's fault either: nothing was posted
     }.get(outcome, "failed")
+    # how the post ended is recorded FIRST: the bookkeeping below can fail (worker busy) without leaving the video stuck in `publishing`
+    send_finish(
+        {"id": claim["id"], "lease": claim["lease"], "outcome": finish, "url": url if url.startswith("https://") else "", "reason": reason}
+    )
     if outcome == "challenge":
-        worker("/api/publisher/challenge", {"active": True, "account": claim.get("account")})
+        report_challenge(claim.get("account"))
     if outcome == "signed_out":
         report_login(claim.get("account"), False)  # the schedule leaves this account alone until it is signed in again
     elif outcome in ("published", "duplicate", "unknown", "challenge", "deferred"):
         report_login(claim.get("account"), True)  # it got past the sign-in check, so the account is signed in (heals an old "signed out")
-    worker(
-        "/api/publish/finish",
-        {"id": claim["id"], "lease": claim["lease"], "outcome": finish, "url": url if url.startswith("https://") else "", "reason": reason},
-    )
     return {"status": outcome, "id": claim["id"], "reason": reason, "url": url if url.startswith("https://") else ""}
 
 

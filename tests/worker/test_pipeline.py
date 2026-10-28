@@ -6,7 +6,7 @@ from unittest import mock
 
 from tests.support import StoreCase
 from trendvn_worker import pipeline
-from trendvn_worker.ai.errors import RateLimited
+from trendvn_worker.ai.errors import RateLimited, Transient
 from trendvn_worker.files import file_hash
 
 ANALYSIS = {"kind": "dialogue", "caption_vi": "M\u00f4 t\u1ea3 ti\u1ebfng Vi\u1ec7t", "hashtags": ["a", "b", "c"], "segments": []}
@@ -305,3 +305,50 @@ class PipelineTests(StoreCase):
         with mock.patch.object(pipeline, "analyze", lambda *a, **k: (dict(ANALYSIS, topic="pets"), "vietsub")):
             pipeline.process_one(self.s)
         self.assertEqual(self.row()["topic"], "pets")
+
+    def poisoned_queue(self):
+        """j1 always fails transiently (a Gemini timeout) and is first in line; j2 is healthy and behind it. Returns the patch to apply."""
+        self.job("j2", "queued", source_file=str(self.source), content_hash=file_hash(self.source), first_seen=2, updated=2000)
+        with self.s.transaction() as db:
+            db.execute("UPDATE jobs SET updated=1000 WHERE id='j1'")
+        counter = iter(range(1000))
+
+        def analyze(store, path, duration, cfg, folder, lenient=False):
+            if folder.name == "j1":
+                raise Transient("Gemini HTTP 504 (m): no response in time")
+            return dict(ANALYSIS), "vietsub"
+
+        return mock.patch.multiple(pipeline, analyze=analyze, fingerprint=lambda path, duration: [next(counter)])
+
+    def test_one_failing_video_does_not_block_the_queue_behind_it(self):
+        """Before: it went back with the oldest first_seen and was claimed first on every run, so 0 of 8 runs processed anything."""
+        with self.poisoned_queue():
+            for _ in range(3):
+                pipeline.process_many(self.s, 1, parallel=1)
+        self.assertEqual(self.row("j2")["state"], "ready")
+        self.assertEqual(self.row("j1")["state"], "queued")
+
+    def test_a_video_deferred_too_often_waits_for_the_owner_and_approval_counts_afresh(self):
+        with self.poisoned_queue():
+            with self.s.transaction() as db:
+                db.execute("UPDATE jobs SET state='rejected' WHERE id='j2'")  # only the failing video is left in the queue
+            for n in range(pipeline.MAX_DEFERRALS):
+                result = pipeline.process_one(self.s)
+                self.assertEqual((result["status"], self.row()["state"]), ("rate_limited", "queued"), n)
+            parked = pipeline.process_one(self.s)
+            self.assertEqual((parked["status"], self.row()["state"]), ("needs_review", "needs_review"))
+            self.assertIn(str(pipeline.MAX_DEFERRALS), parked["reason"])
+            self.s.decide("j1", "approve")  # the owner's decision starts the count again: it is not parked again at once
+            self.assertEqual(pipeline.process_one(self.s)["status"], "rate_limited")
+            self.assertEqual(self.row()["state"], "queued")
+
+    def test_only_transient_failures_count_as_deferrals(self):
+        """Our own daily budget running out is not the video's fault: it waits without limit."""
+
+        def budget(*a, **k):
+            raise RateLimited("Local rolling 24-hour limit of 12 Gemini calls reached")
+
+        with mock.patch.object(pipeline, "analyze", budget):
+            for _ in range(pipeline.MAX_DEFERRALS + 2):
+                self.assertEqual(pipeline.process_one(self.s)["status"], "rate_limited")
+        self.assertEqual(self.row()["state"], "queued")

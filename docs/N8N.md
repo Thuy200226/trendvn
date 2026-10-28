@@ -13,6 +13,7 @@ n8n/build.py ──birth──► n8n/workflows/*.json ──n8n import──►
 | File | Role |
 |---|---|
 | `n8n/build.py` | **Standard source.** Each workflow is several lines describing the node and connecting edges. Read `.env` to get the agent port and time zone. The node id is deduced from the name so it is regenerated for the same file; `--check` reports an error if the JSON in the repo has the wrong code |
+| `services/agent/src/trendvn_agent/limits.py` | How long each agent job may take. n8n waits for a job as long as this table allows plus one minute, and the agent reports a job that runs past it |
 | `n8n/workflows/*.json` | The output, **does not contain the secret**. Compose mounts this directory to container n8n (`/import`, read-only) |
 | `n8n/manage.py` | Load / enable / disable / list / export via n8n official CLI (`docker compose exec n8n n8n …`) |
 | credential `TrendVN · Private worker` | Created at load from `TRENDVN_TOKEN` in `.env`; located in volume n8n (encrypted with `N8N_ENCRYPTION_KEY`), not in workflow |
@@ -27,6 +28,8 @@ n8n/build.py ──birth──► n8n/workflows/*.json ──n8n import──►
 | `trendvn00status` | 00 · Check connectivity and availability | press | read the real status of workers and agents |
 | `trendvn10inbox` | 10 · Get observations | webhook with authentication | import video list from external tool |
 | `trendvn20process` | 20 · Process Vietnamese video and subtitles | hand press | runs the processing step separately |
+
+Every step of 01, 02 and 03 continues on its **error output**: the failure goes to the worker (`/api/alert`, one phone message per step per 6 hours) and the next step still runs, as before. The run itself still shows green in n8n, so the message is how you hear about it (`guard()` in `n8n/build.py`).
 
 Only **01, 02, 03** is automatic calendar; `./trendvn n8n activate` turns on these three. The buttons on the control panel are additional, sharing keys with the calendar, so they never overlap.
 

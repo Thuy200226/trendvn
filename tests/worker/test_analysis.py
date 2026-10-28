@@ -55,6 +55,13 @@ class AudioTests(unittest.TestCase):
         self.assertTrue(similar(["0" * 16] * 5, ["0" * 15 + "1"] * 5))
         self.assertFalse(similar(["0" * 16] * 5, ["f" * 16] * 5))
 
+    def test_the_comparison_runs_on_the_hosts_own_python(self):
+        """macOS ships Python 3.9 and `./trendvn test` runs this suite on it; int.bit_count() needs 3.10, so one test failed there while the
+        container (3.12) stayed green. A static check, because the container cannot tell."""
+        source = (ROOT / "services" / "worker" / "src" / "trendvn_worker" / "media" / "fingerprint.py").read_text()
+        self.assertNotIn(".bit_count(", source)
+        self.assertEqual(sum(bin(x).count("1") for x in (0b1011, 0)), 3)  # the replacement counts bits the same way
+
     def test_subtitle_injection_sanitized(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "vi.srt"

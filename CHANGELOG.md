@@ -1,11 +1,46 @@
-# Source language maintenance — 2026-10-25
+# Changelog
+
+Newest first. One `## <version>` section per release (the packaging step refuses a version without one); work not released yet is under `## Unreleased`. Versions follow SemVer.
+
+## Unreleased
+
+### 2026-10-28: workflow reliability and visibility (docs/ROADMAP.md, phase K)
+
+- **A failing step of the automatic schedule is reported.** n8n marked every run green however many calls failed, and the dashboard only noticed after 7 hours. Every step of workflows 01, 02 and 03 now continues on its error output: the failure goes to the new worker route `/api/alert` (one phone message per step per 6 hours; the detail is cut and a Bearer token masked) and the next step still runs. Checked by running the workflows in the pinned n8n 2.38.7 against fake services.
+- **Agent jobs have limits (`limits.py`).** A job that runs past its limit is reported and `/health` names the job that holds the browser; it is not killed. n8n now waits limit + 1 minute (session, verify, collect 16 minutes, publish 33, stats 11) instead of timeouts that could be shorter than the job, which left the agent busy and the next call skipped with a 409.
+- **Housekeeping no longer requeues a video that is being processed:** it skips that recovery while the processing lock is held.
+- **A collect session survives odd data.** Each item of a response is parsed on its own, an item whose numbers cannot be compared is dropped alone, a platform that raises does not end the session for the next one, and a Douyin id the worker would reject no longer makes it refuse the whole batch.
+- **`data/agent/shots` keeps the latest 20 pictures** (it grew without limit on a disk that is nearly full).
+- **n8n stops calling out:** release notes, the template library and the MCP registry are off in `compose.yaml`; the collector no longer asks two IP services for the exit country of Douyin and Kuaishou.
+- Not done: a lock for the `tiktok` commands (K4 d), the session check in the manual Update (K5), replacing n8n (K7: the owner's decision).
+
+### 2026-10-28: documentation layout (no behavior change)
+
+- New `docs/README.md`: the index of every document grouped by what the reader wants to do, the layout of `docs/` and the conventions (one topic per file, text is the source of truth, history is not rewritten). `scripts/doclint.py` now fails when a file in `docs/` is missing from it, when a document has no single H1, and also checks links in subfolders.
+- New `docs/WORKFLOWS.md`: every automatic workflow (01, 02, 03 and the support ones), every dashboard button and command-line flow, the locks, and the evaluation of the workflow layer, with Mermaid diagrams.
+- `docs/ROADMAP.md`: retitled to a roadmap and review log, status table extended, and the plan of phase K (workflow reliability and visibility) added. Nothing in it is implemented yet.
+- `docs/DEPLOY.md` section 9: backup first, the update flow as a diagram, and how to go back (the database only migrates forward).
+- `docs/REVIEW-1.2.md` and `docs/REVIEW-1.3.md` moved to `docs/history/`; `docs/architecture.drawio` moved to `docs/diagrams/`. The root `README.md` points to the index.
+- This file now has one H1; the unreleased work is listed first, newest entry on top.
+
+### 2026-10-28: review of design and implementation (docs/ROADMAP.md, phase J)
+
+Two independent read-only reviews (worker; host agent and n8n) found eight real defects. Each fix has a test that fails when the fix is removed (mutation-checked).
+- **Retention clocks no longer reset by a scan.** A scan that saw a known video again reset `updated`, which drives file removal of finished videos, the 21-day expiry, the 45-minute publishing expiry and the daily post count: files of a rejected or duplicate video that stayed popular were kept for good, and a stuck `publishing` post blocked every account for longer than 45 minutes. `last_seen` already records the sighting.
+- **One failing video no longer blocks processing.** A video sent back after a transient Gemini failure (a 5xx, or a timeout reported as HTTP 504) was claimed first on every run, so 1-2 such videos stopped everything (reviewer's simulation: 0 of 8 runs processed anything). `claim()` now takes the video that waited longest since it entered the queue, so a sent-back video goes behind the others; after 10 transient failures of the same video (`MAX_DEFERRALS`) it waits for the owner, and approving it starts the count again. Our own daily budget running out never counts.
+- **The download room is shared across platforms.** Each platform filled the room in the order of `SOURCES` before the next one ran (reviewer's simulation: Douyin 18 downloads, Kuaishou 1 in 16 cycles, whatever the weights). Platforms scanned in the same browser session are now scanned first and the downloads are chosen once from one pool (`fetch_pooled`), ranked by score with the topic round-robin unchanged.
+- **A CAPTCHA that appears after the file was sent pauses the account.** It covered the editor, the step failed with "element is covered" and the video got a strike without any pause (each 30-minute slot burned a video). When a step fails before the Post click, the page is now checked for a verification and reported as `challenge`.
+- **The caption is checked as strictly before the click as after it.** The pre-click check compared 25 normalised characters, the profile check after the click 60: an editor that dropped letters past the 25th let a wrong caption go live that could never be confirmed. Both use the same key now.
+- **Backup on macOS no longer passes without the session.** `pack_profiles` treated tar exit code 1 as the benign "file changed while read"; that is GNU tar. bsdtar (macOS) exits 1 for any error, an unreadable `Cookies` file included, so the backup passed with no session in it. 1 is tolerated only for GNU tar.
+- **`./trendvn test` on macOS runs green.** `int.bit_count()` needs Python 3.10 and macOS ships 3.9; replaced by `bin(x).count("1")` (same result).
+- **The result of a post is recorded first.** The verification pause was reported before `/api/publish/finish`; if that call failed the result was never sent and the video became a false "unconfirmed post" 45 minutes later. The result is sent first and retried 3 times (a refusal from the worker is final); the pause and login reports follow and can no longer fail the job.
+
+### 2026-10-25: source language maintenance (no release)
 
 - Translate documentation, comments and docstrings into English.
 - Preserve Vietnamese runtime text with Unicode/octal escapes and keep generated workflow JSON ASCII-escaped.
 - Rename macOS launchers to English and update their references.
 - Update documentation lint history markers to match the translated migration guide.
-
-# Change history
 
 ## 1.6 — 2026-10-02 (output quality: docs/QUALITY.md)
 

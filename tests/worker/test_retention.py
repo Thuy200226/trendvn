@@ -51,6 +51,38 @@ class RetentionTests(StoreCase):
         self.assertEqual((row["state"], row["source_file"]), ("published", None))  # the row still remembers the video (no duplicates)
         self.assertIsNotNone(row["pruned_at"])
 
+    def sight(self, source_id, now):
+        """A scan that reports the video again (the platform keeps showing it for weeks)."""
+        batch = {
+            "platform": "douyin",
+            "stream": "hot",
+            "observed_at": now,
+            "items": [
+                {
+                    "source_id": source_id,
+                    "url": "https://www.douyin.com/video/" + source_id,
+                    "country": "CN",
+                    "title": "t",
+                    "rank": 1,
+                    "views": 1000,
+                    "evidence_url": "https://www.douyin.com/hot",
+                }
+            ],
+        }
+        self.s.ingest(batch, now=now)
+
+    def test_a_rejected_video_that_keeps_trending_still_loses_its_files_after_a_week(self):
+        """Every scan that saw the video again used to reset `updated`, so the files of a video that stayed popular were kept for good."""
+        old = self.old(retention.KEEP_FILES_DAYS + 1)
+        self.job("1234567", "rejected", updated=old, **self.media("1234567"))
+        self.job("7654321", "rejected", updated=old, **self.media("7654321"))
+        self.sight("1234567", time.time())  # the first scan of the stream only records a baseline, but it touches known videos too
+        self.sight("1234567", time.time() + 1)
+        self.s.prune()
+        for job_id in ("1234567", "7654321"):  # the one that kept being seen and the one that was not
+            self.assertFalse((self.s.root / "inbox" / ("douyin_%s.mp4" % job_id)).exists(), job_id)
+            self.assertFalse((self.s.root / "jobs" / job_id / "final.mp4").exists(), job_id)
+
     def test_a_second_run_does_nothing_and_no_batch_starves_the_rest(self):
         old = self.old(10)
         for n in range(retention.BATCH + 30):

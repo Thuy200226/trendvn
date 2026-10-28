@@ -16,8 +16,10 @@ class QueueMixin:
     """The processing queue and the human decisions on its results."""
 
     def claim(self):
+        """The video that has waited longest since it was last put in the queue. A video sent back (Google busy, a timeout) is stamped
+        `updated` again, so it goes behind the others instead of being claimed first on every run and blocking the queue for good."""
         with self.transaction() as db:
-            row = db.execute("SELECT * FROM jobs WHERE state='queued' ORDER BY first_seen LIMIT 1").fetchone()
+            row = db.execute("SELECT * FROM jobs WHERE state='queued' ORDER BY updated, first_seen LIMIT 1").fetchone()
             if not row:
                 return None
             token = uuid.uuid4().hex
@@ -111,16 +113,19 @@ class QueueMixin:
                     "UPDATE jobs SET state='queued',approved=1,publish_fails=0,last_publish_fail=NULL,reason='Approved by operator; reprocessing',updated=? WHERE id=?",
                     (now, jid),
                 )
-                # the owner's decision starts the voice's busy-Google allowance afresh (once: `approved` stays on the row for good)
-                (self.root / "jobs" / jid / "voice_retries").unlink(missing_ok=True)
+                # the owner's decision starts the voice's busy-Google allowance and the deferral count afresh (once: `approved` stays on the row)
+                for marker in ("voice_retries", "deferrals"):
+                    (self.root / "jobs" / jid / marker).unlink(missing_ok=True)
             else:
                 raise ValueError("Nothing to approve in this state")
             self.event(db, jid, "operator_" + action)
 
-    def housekeeping(self):
-        """Crash recovery and the disk: stuck work is freed, then the retention rules run (see store/retention.py)."""
+    def housekeeping(self, recover=True):
+        """Crash recovery and the disk: stuck work is freed, then the retention rules run (see store/retention.py).
+        `recover=False` leaves `processing` videos alone: a run that is working on them right now holds the processing lock, and a slow video
+        can look stuck for longer than half an hour."""
         now = time.time()
-        processing = self._recover_processing(now - 1800)
+        processing = self._recover_processing(now - 1800) if recover else 0
         unknown = self.expire_stale_publishing(now)
         pruned = self.prune(now)
         free = free_bytes(self.root)

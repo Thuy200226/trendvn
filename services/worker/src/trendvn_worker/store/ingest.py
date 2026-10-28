@@ -37,9 +37,11 @@ class IngestMixin:
             hint = topic_hint(report.topic, item.title)
             # a stream with its own category (a Douyin tab) knows better than the keywords that guessed when the video first appeared
             keep = "COALESCE(?,topic_hint)" if report.topic else "COALESCE(topic_hint,?)"
+            # `updated` is NOT touched: it is the clock of the retention rules, the 45-minute publishing expiry and the daily post count,
+            # and a video that keeps trending would otherwise never age out (`last_seen` already records the sighting)
             db.execute(
-                "UPDATE jobs SET last_seen=?,updated=?,meta=COALESCE(?,meta),topic_hint=%s WHERE id=?" % keep,
-                (report.observed, now, item.meta, hint, job_id),
+                "UPDATE jobs SET last_seen=?,meta=COALESCE(?,meta),topic_hint=%s WHERE id=?" % keep,
+                (report.observed, item.meta, hint, job_id),
             )
         else:
             job_id = uuid.uuid4().hex

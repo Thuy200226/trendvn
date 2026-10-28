@@ -462,6 +462,112 @@ class BacklogTests(unittest.TestCase):
         self.assertEqual(asked[0]["platform"], "douyin")  # so another platform's newest rows cannot push the best ones out of the list
 
 
+class PooledDownloadTests(unittest.TestCase):
+    """The room in the queue is shared by every platform scanned together, ranked by score (it used to go to the first platform in SOURCES)."""
+
+    CANDIDATES = {
+        "douyin": [("d1", 10), ("d2", 9), ("d3", 8)],
+        "kuaishou": [("k1", 1000)],
+    }
+
+    def pooled(self, backlog=2, limit=6):
+        downloaded = []
+
+        def worker(path, payload=None, **k):
+            if path == "/api/media/pending":
+                platform = payload["platform"]
+                return {
+                    "items": [
+                        {"id": "id-" + s, "platform": platform, "source_id": s, "topic_hint": None} for s, _ in self.CANDIDATES[platform]
+                    ]
+                }
+            return {"state": "queued"}
+
+        seen = {pl: {s: {"source_id": s, "score": sc} for s, sc in items} for pl, items in self.CANDIDATES.items()}
+        status = {"counts": {}, "backlog": backlog, "thresholds": {"max_backlog": 4}}
+        with mock.patch.multiple(
+            run,
+            worker=worker,
+            worker_get=lambda path, timeout=30: status,
+            download=lambda ctx, item, platform: downloaded.append((platform, item["source_id"])) or "f.mp4",
+            free_bytes=lambda: 50 << 30,
+        ):
+            report = run.fetch_pooled(None, seen, limit, [])
+        return report, downloaded
+
+    def test_the_best_candidates_win_whatever_platform_they_come_from(self):
+        """Two slots, douyin first in SOURCES with three candidates: it used to take both (d1, d2) and kuaishou's far better video waited."""
+        report, downloaded = self.pooled(backlog=2)
+        self.assertEqual(sorted(downloaded), [("douyin", "d1"), ("kuaishou", "k1")])
+        self.assertEqual((report["douyin"]["downloaded"], report["kuaishou"]["downloaded"]), (1, 1))
+        self.assertEqual((report["douyin"]["waiting"], report["kuaishou"]["waiting"]), (2, 0))
+
+    def test_a_full_queue_gives_every_platform_the_same_note(self):
+        report, downloaded = self.pooled(backlog=4)
+        self.assertEqual(downloaded, [])
+        self.assertEqual(report["douyin"], report["kuaishou"])
+        self.assertEqual(report["douyin"]["downloaded"], 0)
+
+    def test_one_platform_may_take_everything_when_it_is_all_there_is(self):
+        self.CANDIDATES = {"douyin": [("d1", 10), ("d2", 9), ("d3", 8)], "kuaishou": []}
+        _, downloaded = self.pooled(backlog=0, limit=3)
+        self.assertEqual([s for _, s in downloaded], ["d1", "d2", "d3"])
+
+
+class CollectScansBeforeItDownloadsTests(unittest.TestCase):
+    def test_every_platform_of_a_country_is_scanned_first_and_the_downloads_come_once_after(self):
+        order = []
+
+        def scan_for(platform):
+            def scan(ctx, topics):
+                order.append("scan " + platform)
+                item = {"source_id": platform[0] + "1", "url": "https://x/" + platform, "title": "t", "views": 10**6, "likes": None,
+                        "duration": 30, "created": None, "rank": 1, "media": {}}  # fmt: skip
+                return {platform: [item]}
+
+            return scan
+
+        class Window:
+            def __enter__(self):
+                return None
+
+            def __exit__(self, *exc):
+                return False
+
+        fake = {p: {"country": "CN", "locale": "zh-CN", "scan": scan_for(p), "geo_locked": False} for p in ("douyin", "kuaishou")}
+        status = {"counts": {}, "backlog": 0, "thresholds": {"max_backlog": 4, "max_candidates_per_scan": 6}}
+
+        def worker(path, payload=None, **k):
+            order.append(path)
+            if path == "/api/ingest":
+                return {"baseline": False, "new": 1}
+            if path == "/api/media/pending":
+                return {
+                    "items": [{"id": "id", "platform": payload["platform"], "source_id": payload["platform"][0] + "1", "topic_hint": None}]
+                }
+            return {"state": "queued"}
+
+        with (
+            mock.patch.dict(SOURCES, fake, clear=True),
+            mock.patch.multiple(
+                run,
+                chrome=lambda *a, **k: Window(),
+                exit_country=lambda ctx: "CN",
+                worker=worker,
+                worker_get=lambda path, timeout=30: status,
+                download=lambda ctx, item, platform: order.append("download " + platform) or "f.mp4",
+                free_bytes=lambda: 50 << 30,
+            ),
+        ):
+            report = run.collect(["douyin", "kuaishou"])
+        scans = [i for i, step in enumerate(order) if step.startswith("scan ")]
+        downloads = [i for i, step in enumerate(order) if step.startswith("download ")]
+        self.assertEqual(len(scans), 2)
+        self.assertEqual(len(downloads), 2)
+        self.assertLess(max(scans), min(downloads))  # nothing is downloaded until both platforms have been read
+        self.assertEqual([report[p]["summary"]["media"]["downloaded"] for p in ("douyin", "kuaishou")], [1, 1])
+
+
 class DownloadBudgetTests(unittest.TestCase):
     def test_free_space_is_checked_again_before_every_download(self):
         pending = [{"id": "id%d" % n, "platform": "douyin", "source_id": "s%d" % n, "topic_hint": None} for n in range(4)]
