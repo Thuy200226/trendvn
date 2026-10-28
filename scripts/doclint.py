@@ -141,7 +141,7 @@ for f in [ROOT / "README.md", ROOT / "CHANGELOG.md", ROOT / "AGENTS.md"] + sorte
 
 # ---- 6. the flows document says what happens, never what it is made of
 TECH_TERMS = re.compile(
-    r"\b(n8n|docker|container|sqlite|playwright|ffmpeg|yt-dlp|http|https|api|endpoint|token|lease|launchd|systemd|venv|compose|stdlib|webhook|cron)\b|/api/",
+    r"\b(n8n|docker|container|sqlite|playwright|ffmpeg|yt-dlp|http|https|api|endpoint|token|lease|launchd|systemd|venv|compose|stdlib|webhook|cron|chrome|gemini)\b|/api/",
     re.I,
 )
 flows = DOCS / "FLOWS.md"

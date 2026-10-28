@@ -38,7 +38,7 @@ Full commands: `docs/OPERATIONS.md`. Status, open items and owner decisions: `do
 
 ## How it works
 1. Read `docs/ROADMAP.md` (status and open items) and run `./trendvn test` to establish a baseline before making changes.
-2. Each phase has a measurable goal, and ends with **3 review rounds**: static (self-readback + tools), dynamic (runs on real data and system, with before/after measurements), independent (read-only agent assigned to break code; sample prompt in skill). Correct all detections, add blocking tests, record them in ROADMAP and then move on to another phase.
+2. Each phase has a measurable goal, and ends with **3 review rounds**: static (self-readback + tools), dynamic (runs on real data and system, with before/after measurements), independent (read-only agent assigned to break code; sample prompt in skill). Correct all detections, add blocking tests, record them (status and open items in `docs/ROADMAP.md`, evidence in `docs/history/PHASES-0-K.md`) and then move on to another phase.
 3. **Measure before optimizing**; change only what the measurements support and record experiments that did not help. Don't repeatedly compare with the site that is limiting you (Kuaishou): the results are noisy, keep the proven behavior.
 4. Separate the "refactoring without changing behavior" commit from the commit that changes the behavior. Refactorings must be tested independently (comparing old to new), because existing tests do not catch all.
 5. For each bug that is fixed, the test will fail if the fix is abandoned. Update `CHANGELOG.md` and documentation at the same time as the code; `scripts/doclint.py` (running in `./trendvn test lint`) catches miscoded documents.
@@ -67,4 +67,4 @@ Full commands: `docs/OPERATIONS.md`. Status, open items and owner decisions: `do
 - Multiple accounts: one Chrome profile per account (`publisher` for `main`, `publisher-<id>` for others); Must check real username before posting; Accounts that are not logged in are ignored and are not counted as video errors.
 
 ## Unverified (updated when changed)
-Gemini reports hard subtitle location (video API is often overloaded), US source (needs US IP), real posting to multiple accounts, real macOS, running for a long time according to a real schedule.
+Gemini reports hard subtitle location (video API is often overloaded), US source (needs US IP), real posting to multiple accounts, real macOS, running for a long time according to a real schedule. The full, current list is "Not verified" in `docs/ROADMAP.md`.

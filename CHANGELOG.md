@@ -4,6 +4,15 @@ Newest first. One `## <version>` section per release (the packaging step refuses
 
 ## Unreleased
 
+### 2026-10-28: documentation checked against the code by four read-only reviewers (no behavior change)
+
+- **False statements corrected.** Golden hours are always Vietnam time (`TRENDVN_TZ` only moves the n8n schedule and the container clock); Post now also ignores the Auto-post switch and the topic and can post a video still waiting for approval; a button is refused while *any* browser job runs, not only one of its own kind; a video that failed to post rests 1 hour; the 3 and 21 day expiries, the 30 and 45 minute recovery clocks, the verification pause and the one-post-in-flight rule are now stated in `docs/FLOWS.md` and `docs/TECH.md`; the state diagram gained the transitions the code has (`processing` to `queued`, `needs_review` to `ready`, rejection from `ready`, Post now from `awaiting_approval`); doctor shows one red line after `install --no-activate`, not only yellow ones; the "Need approval" troubleshooting row named causes the code does not have.
+- **Operating knowledge lost in the merge restored** in `docs/OPERATIONS.md`: the n8n key trap at install, the move from a 1.2 folder, firewall and display fixes, the dry-run and `tiktok` command traps, n8n upgrade, the command flags, what a backup holds, the launcher differences.
+- **`docs/FLOWS.md` no longer names Chrome or Gemini**, and `scripts/doclint.py` now fails when it does.
+- **Messages and files that pointed at retired documents now point at the new ones:** the help footer, three install and n8n messages ("section 11" became section 4), and the invariants note in `docs/diagrams/architecture.drawio`.
+- New skill `skills/docs-generation`: generates, restructures, updates and audits project documentation to this standard, with a generic linter, a Mermaid check, a scaffold and a self-test.
+- Found and not fixed (listed in `docs/ROADMAP.md`): `macos/Install.command` turns the schedule on, the golden-hour time zone is fixed, alerts vanish when no notification channel is set.
+
 ### 2026-10-28: documentation restructured (no behavior change)
 
 - **Thirteen documents became four live ones, with flows and technology apart.** `docs/FLOWS.md` says what happens (life of a video, the schedules, the buttons, failures) and contains no technology; `docs/TECH.md` says what it is made of and why (components, design decisions, data and concurrency, interfaces, AI usage and quality decisions, performance, security, deployment and configuration, quality gates); `docs/OPERATIONS.md` is the how-to (install, run, update and go back, back up and move, troubleshooting, every command); `docs/ROADMAP.md` is now short: status, open items, owner decisions, what is not verified.

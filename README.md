@@ -9,13 +9,13 @@ Three parts, each with one job: the **worker** (Docker) decides and remembers, t
 Needs Docker (Desktop on a Mac), Python 3.10 or newer, Google Chrome and a Gemini API key. Keep the folder outside `Documents`, `Desktop` and `Downloads` on a Mac.
 
 ```bash
-git clone -b develop git@github.com:Thuy200226/trendvn.git ~/trendvn && cd ~/trendvn
+git clone -b develop https://github.com/Thuy200226/trendvn.git ~/trendvn && cd ~/trendvn
 ./trendvn install --no-activate   # build and start everything; the schedule stays off
-./trendvn doctor                  # check; yellow lines are normal before you configure
-./trendvn open                    # dashboard: add the Gemini key, set your TikTok account
+./trendvn doctor                  # check; one red line (schedule off) and yellow ones are normal for now
+./trendvn open                    # dashboard: add the Gemini key, turn on video processing, set your TikTok account
 ./trendvn tiktok login            # sign in once in the Chrome window (you type the password)
-./trendvn tiktok dry-run          # rehearse without posting
-./trendvn n8n activate            # turn the schedule on when you are satisfied
+./trendvn tiktok dry-run          # rehearse without posting (after the first video is ready)
+./trendvn n8n activate            # turn the schedule on (after turning Auto-post on in the dashboard)
 ```
 
 The reasons for each step and what to do when one fails are in [docs/OPERATIONS.md](docs/OPERATIONS.md).
@@ -37,4 +37,4 @@ The reasons for each step and what to do when one fails are in [docs/OPERATIONS.
 - **TikTok sometimes shows a verification page.** The system never solves or passes it: it pauses posting and asks you to pass it once.
 - **US sources need a US exit IP** (`TRENDVN_US_PROXY` in `.env`); without one they are skipped, never mislabeled.
 - **Copyright and platform terms are your responsibility.** The system blocks duplicates and hard-stop content by rule; it does not check rights.
-- **Everything listens on this machine only** (`127.0.0.1`). For remote access use an SSH tunnel or a VPN ([docs/TECH.md](docs/TECH.md) section 9).
+- **Everything listens on this machine only** (`127.0.0.1`; on Linux the agent listens on the private Docker bridge). For remote access use an SSH tunnel or a VPN ([docs/TECH.md](docs/TECH.md) section 9).

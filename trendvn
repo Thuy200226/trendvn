@@ -48,7 +48,7 @@ Ki\0341\0273\0203m th\0341\0273\0255
   fmt                 \0304\0220\0341\0273\0213nh d\0341\0272\0241ng m\0303\0243 Python (black) v\0303\0240 s\0341\0273\0255a l\0341\0273\0227i lint an to\0303\0240n (ruff); c\0341\0272\0247n: pip install -r requirements-dev.txt
   version
 
-Chi ti\0341\0272\0277t: README.md v\0303\0240 docs/COMMANDS.md
+Chi ti\0341\0272\0277t: docs/OPERATIONS.md
 HELP
 )"
 }
