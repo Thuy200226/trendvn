@@ -1,15 +1,15 @@
 """Which voice reads the Vietnamese voice-over, and how: pure choices from what Gemini heard in the original.
 
 The voice follows the speaker (a man's speech is not dubbed by a woman), the delivery follows the tone, and the pace follows how much
-text has to fit in how many seconds. docs/QUALITY.md has the measurements behind the table (gender and age as heard by a second model
+text has to fit in how many seconds. docs/history/QUALITY-1.6.md has the measurements behind the table (gender and age as heard by a second model
 listening to each voice, pace per style).
 """
 
 SLOW, NORMAL, FAST = "slow", "normal", "fast"
 
-# name -> gender as heard in the listening test of 2026-10-02 (docs/QUALITY.md): each voice read the same Vietnamese sentence and a second
+# name -> gender as heard in the listening test of 2026-10-02 (docs/history/QUALITY-1.6.md): each voice read the same Vietnamese sentence and a second
 # model, listening to the audio, said who it heard. Only confirmed voices are in the pools below. Google documents Puck, Charon, Fenrir,
-# Achird, Sadaltager and others as male voices, but the test could not finish: the day's quota of the API key ran out after Orus (docs/QUALITY.md
+# Achird, Sadaltager and others as male voices, but the test could not finish: the day's quota of the API key ran out after Orus (docs/history/QUALITY-1.6.md
 # lists what is still to be heard; add a voice here and to POOLS only after it has been).
 GENDER = {
     "Kore": "female", "Leda": "female", "Aoede": "female", "Zephyr": "female",

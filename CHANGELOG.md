@@ -4,6 +4,13 @@ Newest first. One `## <version>` section per release (the packaging step refuses
 
 ## Unreleased
 
+### 2026-10-28: documentation restructured (no behavior change)
+
+- **Thirteen documents became four live ones, with flows and technology apart.** `docs/FLOWS.md` says what happens (life of a video, the schedules, the buttons, failures) and contains no technology; `docs/TECH.md` says what it is made of and why (components, design decisions, data and concurrency, interfaces, AI usage and quality decisions, performance, security, deployment and configuration, quality gates); `docs/OPERATIONS.md` is the how-to (install, run, update and go back, back up and move, troubleshooting, every command); `docs/ROADMAP.md` is now short: status, open items, owner decisions, what is not verified.
+- **Retired:** ARCHITECTURE, API, COMMANDS, DEPLOY, MAC, N8N, PROMPTS, SECURITY, QUALITY, WORKFLOWS and the `docs/README.md` index (their content moved into the four documents; the old text stays in git). The long phase log and the output-quality measurements moved to `docs/history/PHASES-0-K.md` and `docs/history/QUALITY-1.6.md` as evidence. The root `README.md` is a one-screen start and the document map.
+- **Lint now keeps the two axes apart:** `scripts/doclint.py` fails when `docs/FLOWS.md` names a technology (n8n, Docker, HTTP, a route, a token...), when a live document is not linked from `README.md`, when a history or diagram file is linked from nowhere, or when a document has no single H1. Commands are checked against `docs/OPERATIONS.md`.
+- `AGENTS.md` gained the documentation rules; code comments and script messages that pointed at the retired documents now point at the new ones.
+
 ### 2026-10-28: workflow reliability and visibility (docs/ROADMAP.md, phase K)
 
 - **A failing step of the automatic schedule is reported.** n8n marked every run green however many calls failed, and the dashboard only noticed after 7 hours. Every step of workflows 01, 02 and 03 now continues on its error output: the failure goes to the new worker route `/api/alert` (one phone message per step per 6 hours; the detail is cut and a Bearer token masked) and the next step still runs. Checked by running the workflows in the pinned n8n 2.38.7 against fake services.

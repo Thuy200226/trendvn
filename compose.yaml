@@ -1,5 +1,5 @@
 name: trendvn
-# Two containers (n8n + worker). The browser agent (Chrome) runs on the host, not here: see docs/ARCHITECTURE.md.
+# Two containers (n8n + worker). The browser agent (Chrome) runs on the host, not here: see docs/TECH.md.
 # Every deployment-specific value comes from .env (see .env.example); the defaults keep everything on this machine only.
 # Use ./trendvn (up, down, logs, build...) instead of typing docker compose by hand.
 
