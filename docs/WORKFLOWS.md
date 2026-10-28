@@ -24,9 +24,9 @@ Only workflows 01, 02 and 03 are scheduled; `./trendvn n8n activate` turns them 
 ```mermaid
 flowchart LR
   T(["Every 3 hours<br/>or manual run"]) --> S
-  S["1 session<br/>agent /api/session<br/>timeout 10 min"] --> V
-  V["2 verify<br/>agent /api/verify<br/>timeout 5 min"] --> C
-  C["3 collect<br/>agent /api/collect<br/>timeout 15 min"] --> H
+  S["1 session<br/>agent /api/session<br/>timeout 16 min"] --> V
+  V["2 verify<br/>agent /api/verify<br/>timeout 16 min"] --> C
+  C["3 collect<br/>agent /api/collect<br/>timeout 16 min"] --> H
   H["4 housekeeping<br/>worker /api/housekeeping<br/>timeout 15 min"] --> P
   P["5 process, max 4<br/>worker /api/process<br/>timeout 15 min"] --> E(["end"])
 ```
@@ -39,7 +39,7 @@ flowchart LR
 | 4 housekeeping | worker | Puts videos a crash left in `processing` back in the queue, turns posts claimed more than 45 minutes ago into `publish_unknown`, deletes old files and history, warns when the disk is low. |
 | 5 process | worker | Up to 4 queued videos, 2 at a time: fingerprint, Gemini analysis, ffmpeg render, quality check. Result: `ready`, `awaiting_approval` or `needs_review`. |
 
-Every HTTP node is *tolerant*: if a call fails, the next node still runs and the n8n execution is still green. Failures are visible on the dashboard instead (the status bar turns orange when a department has not reported for 7 hours).
+Every HTTP node of the three schedules continues on its *error output*: if a call fails, the failure goes to the worker (`/api/alert`, one phone message per step per 6 hours) and the next node still runs, so the n8n execution stays green. The status bar of the dashboard also turns orange when a department has not reported for 7 hours. The timeouts come from `services/agent/src/trendvn_agent/limits.py`: the agent's own limit for the job plus one minute.
 
 ### 2.2 Workflow 02: publish (every 30 minutes)
 
@@ -65,7 +65,7 @@ flowchart TD
   CONF -- no --> UNK["publish_unknown:<br/>that account stops posting"]
 ```
 
-The worker's checks, in order (`store/publishing.py::publish_claim`): the Auto switch, no unconfirmed post for the account, golden hour (default 11:00-14:00 and 19:00-23:00), the account's daily limit (default 2), spacing from the previous post (default 3 hours), then the highest-scoring `ready` video whose topic the account takes. The result of every attempt goes back to the worker (`/api/publish/finish`) *before* any bookkeeping, and a result that cannot be sent is retried 3 times.
+The worker's checks, in order (`store/publishing.py::publish_claim`): the Auto switch, no unconfirmed post for the account, golden hour (default 11:00-14:00 and 19:00-23:00), the account's daily limit (default 2), spacing from the previous post (default 3 hours), then the highest-scoring `ready` video whose topic the account takes. The result of every attempt goes back to the worker (`/api/publish/finish`) *before* any bookkeeping, and a result that cannot be sent is retried 3 times. n8n waits 33 minutes for the whole call (the agent's own limit is 32); a post that runs longer is reported.
 
 ### 2.3 Workflow 03: end of day (23:30)
 
@@ -74,7 +74,7 @@ flowchart LR
   T(["23:30 every day<br/>or manual run"]) --> S["1 stats<br/>agent /api/stats<br/>timeout 5 min"] --> N["2 summary<br/>worker /api/notify"] --> E(["end"])
 ```
 
-`agent /api/stats` reads the views of posted videos from each account's profile, then `worker /api/notify` sends the summary. The views feed the source weights once at least 8 posts are older than 24 hours.
+`agent /api/stats` (timeout 11 minutes) reads the views of posted videos from each account's profile, then `worker /api/notify` sends the summary. The views feed the source weights once at least 8 posts are older than 24 hours.
 
 ### 2.4 Support workflows (by hand)
 
@@ -147,22 +147,20 @@ Other forms: settings, Gemini key, accounts (add, save, delete), notification ch
 | Lock | Held by | A second request gets |
 |---|---|---|
 | n8n concurrency limit 1 | the n8n instance | queued: workflows 01, 02 and 03 never run at the same time |
-| agent `browser_lock` | one Chrome job (collect, publish, session, verify, dry run, stats) | HTTP 409 at once; no waiting, no deadline on the job |
+| agent `browser_lock` | one Chrome job (collect, publish, session, verify, dry run, stats) | HTTP 409 at once; no waiting. A job past its limit is reported (`/api/alert`), not killed, and `/health` names it |
 | worker `process_lock` | `/api/process` and the dashboard Process | refused as busy |
 | task guard (worker) | dashboard buttons | a message that names what is running |
 
 ## 5. Evaluation (2026-10-28): is it optimal?
 
-**No.** The core is sound (state machine, leases, locks, safety rails: see the review log in [ROADMAP.md](ROADMAP.md), phase J), but the workflow layer has gaps. Facts below were read in the code; estimates are marked.
+**It was not**, and phase K ([ROADMAP.md](ROADMAP.md)) fixed what the evidence supported. The core is sound (state machine, leases, locks, safety rails: review log in the roadmap, phase J); the workflow layer had gaps. Facts were read in the code; estimates are marked. "Status" is what the code does now.
 
-| # | Finding | Evidence | Severity | Fix |
+| # | Finding | Evidence | Severity | Status |
 |---|---|---|---|---|
-| 1 | Failures are invisible in n8n: every HTTP node continues on error, so each run is green. A stale credential gives 401 on every call and the dashboard only turns orange after 7 hours. | `n8n/build.py` (`tolerant=True`), status bar rule | medium | K1 |
-| 2 | An agent job has no deadline. If the n8n timeout fires first (verify 5 min, session 10 min, publish 25 min) n8n moves on while the agent keeps its lock; the next call gets 409 and is skipped without a trace. Whether verify really exceeds 5 minutes with 3 accounts is an estimate (3 x ~110 s), not measured. | `server.py` (`browser_lock`, 409), `build.py` timeouts | medium | K2 |
-| 3 | Workflow 01 calls `/api/housekeeping` without `process_lock`, while the dashboard calls it inside the lock. It can put a video that is still being processed back in the queue (arithmetic on the timeouts: a slow video can run ~40 minutes; not reproduced). | `web/api.py` (housekeeping vs process), `tasks.py::_process` | low | K3 |
-| 4 | One platform error ends the rest of the collect session; parsers drop a whole response for one odd item; `data/agent/shots` is never cleaned; the `tiktok` commands ignore the browser lock. | agent review, phase J | medium | K4 |
-| 5 | Worst case, workflow 01 holds the n8n queue for 60 minutes (the timeouts add up) and delays a publish slot; typical runs are far shorter (unmeasured here) and golden hours are 3-4 hours wide, so the effect is small. | `build.py` timeouts, `compose.yaml` concurrency limit | low | none |
-| 6 | The manual Update skips the session check and verify, so only the schedule notices an expired TikTok session. | `tasks.py` | low | K5 |
-| 7 | n8n costs about 2 GB of image and ~380 MiB of RAM idle, a second secret store, and calls `api.n8n.io` even with diagnostics off; what it gives here is a timer and a run history (measured by the independent review, not re-measured). | phase J, decisions for the owner | decision | K6, K7 |
-
-The plan that fixes these, with the target flow and the rollout, is "Phase K" in [ROADMAP.md](ROADMAP.md).
+| 1 | Failures were invisible in n8n: every HTTP node continued on error, so each run was green and a stale credential showed only after 7 hours. | `n8n/build.py` | medium | **fixed (K1)**: the error output reports to `/api/alert`; checked in the pinned n8n 2.38.7 against fake services |
+| 2 | An agent job had no deadline and n8n's timeouts were shorter than the agent's worst case: n8n moved on, the agent kept its lock, the next call got 409 and was skipped without a trace. | `server.py`, `build.py` | medium | **mostly fixed (K2)**: n8n now waits as long as the agent's limit table allows, and a job past its limit is reported. It is still not killed, so a truly stuck Chrome holds the browser until the agent restarts |
+| 3 | Workflow 01 called `/api/housekeeping` without `process_lock` and could put a video that was still being processed back in the queue (arithmetic on the timeouts, not reproduced). | `web/api.py` | low | **fixed (K3)** |
+| 4 | One platform error ended the rest of the collect session; parsers dropped a whole response for one odd item; `data/agent/shots` was never cleaned; the `tiktok` commands ignore the browser lock. | agent review, phase J | medium | **fixed except the last (K4 a-c)**; the command-line lock is open |
+| 5 | Worst case, workflow 01 holds the n8n queue for about 78 minutes now (the timeouts add up: 16+16+16+15+15) and delays a publish slot; typical runs are far shorter (unmeasured here) and golden hours are 3-4 hours wide. | `build.py`, `compose.yaml` | low | open, accepted: only when jobs hang, and the owner is told |
+| 6 | The manual Update skips the session check and verify, so only the schedule notices an expired TikTok session. | `tasks.py` | low | open (K5): a product choice, it costs a Chrome launch per account per press |
+| 7 | n8n costs about 2 GB of image and ~380 MiB of RAM idle, a second secret store, and called `api.n8n.io` with diagnostics off. | phase J | decision | partly (K6): the calls are switched off in `compose.yaml`; replacing n8n (K7) is the owner's call |

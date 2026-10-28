@@ -4,6 +4,16 @@ Newest first. One `## <version>` section per release (the packaging step refuses
 
 ## Unreleased
 
+### 2026-10-28: workflow reliability and visibility (docs/ROADMAP.md, phase K)
+
+- **A failing step of the automatic schedule is reported.** n8n marked every run green however many calls failed, and the dashboard only noticed after 7 hours. Every step of workflows 01, 02 and 03 now continues on its error output: the failure goes to the new worker route `/api/alert` (one phone message per step per 6 hours; the detail is cut and a Bearer token masked) and the next step still runs. Checked by running the workflows in the pinned n8n 2.38.7 against fake services.
+- **Agent jobs have limits (`limits.py`).** A job that runs past its limit is reported and `/health` names the job that holds the browser; it is not killed. n8n now waits limit + 1 minute (session, verify, collect 16 minutes, publish 33, stats 11) instead of timeouts that could be shorter than the job, which left the agent busy and the next call skipped with a 409.
+- **Housekeeping no longer requeues a video that is being processed:** it skips that recovery while the processing lock is held.
+- **A collect session survives odd data.** Each item of a response is parsed on its own, an item whose numbers cannot be compared is dropped alone, a platform that raises does not end the session for the next one, and a Douyin id the worker would reject no longer makes it refuse the whole batch.
+- **`data/agent/shots` keeps the latest 20 pictures** (it grew without limit on a disk that is nearly full).
+- **n8n stops calling out:** release notes, the template library and the MCP registry are off in `compose.yaml`; the collector no longer asks two IP services for the exit country of Douyin and Kuaishou.
+- Not done: a lock for the `tiktok` commands (K4 d), the session check in the manual Update (K5), replacing n8n (K7: the owner's decision).
+
 ### 2026-10-28: documentation layout (no behavior change)
 
 - New `docs/README.md`: the index of every document grouped by what the reader wants to do, the layout of `docs/` and the conventions (one topic per file, text is the source of truth, history is not rewritten). `scripts/doclint.py` now fails when a file in `docs/` is missing from it, when a document has no single H1, and also checks links in subfolders.

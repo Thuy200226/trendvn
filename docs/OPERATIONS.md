@@ -113,6 +113,8 @@ Starts with: `./trendvn doctor` (each error line has a fix), then `./trendvn sta
 | Video is stuck "Waiting for processing" and the log says "Gemini is overloaded" | Google reports model temporary overload (503) | Normal: system tried again, changed model and re-queued video; run automatically next time |
 | Error "Gemini HTTP 404 ... no longer available" | Google stops the model you are selecting | Automatically switch to the next model; If the error persists, change the model name in Settings → Gemini (see Google's `GET /v1beta/models`) |
 | Click Post but the post does not appear | TikTok is censoring or there is a network error | The system automatically marks "unconfirmed" and stops; manual confirmation (item 2) |
+| Phone message "Step 01 collect (or another) of the automatic schedule failed" | n8n marks every run green, so a failing step reports itself: the message names the step and the error (one message per step per 6 hours) | `./trendvn doctor`; open that run under Executions in n8n for the full error; the next steps of the run still ran |
+| Phone message "agent /api/... still running after N minutes" | A browser job passed its limit (collect, session and verify 15 minutes, publish 32, stats 10) and still holds the browser; later calls get "Agent busy" | `./trendvn agent logs`; if Chrome is stuck, `./trendvn agent restart` (a post that was in progress is confirmed or marked unconfirmed by the next verify) |
 | Workflow n8n running but "Agent busy" | Agent is doing something else | Normal; Next time run it yourself. One browser at a time |
 | `agent` cannot listen | Docker network is not up | Agent retries every 15 seconds; `./trendvn up` |
 | Disk full | Original and edited videos | Delete old videos: see section 5 |

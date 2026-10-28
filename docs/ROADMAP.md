@@ -17,7 +17,7 @@ Convention for each phase: (1) do, (2) **review round 1 — static**(reread code
 | H | Performance: actually measure and then only change to the one with data (build, collect) | finished |
 | I | Product quality: honest control panel, reason for not posting, errors in Vietnamese, the first installation order of | is mostly completed; For polishing, see section |
 | J | Review of design and implementation ("is it optimal?"): measure, two independent reviews, fix the eight confirmed defects | fixed and tested; the rest is listed in the section's "Not fixed" |
-| K | Workflow reliability and visibility (plan from the phase J evaluation): failed steps are seen, agent jobs have deadlines, housekeeping respects the processing lock | planned; not started |
+| K | Workflow reliability and visibility (from the phase J evaluation): failed steps are reported, agent jobs have limits, housekeeping respects the processing lock | K1, K2 (report only), K3, K4 a-c and K6 done and tested; K4 d, K5 and K7 open |
 
 ## Phase 0 — Move completely to new folder (done)
 
@@ -213,7 +213,7 @@ Question from the owner: is the design and implementation as optimal as it can b
 **Not verified.** Everything touching real Chrome, TikTok, Douyin, Kuaishou or Gemini; that the stricter pre-click caption check accepts every caption TikTok's editor really renders (it uses the key of the post-click check, which has confirmed real posts, but the editor text and the profile text are different surfaces: watch for a `caption` failure screenshot); the effect of the pooled ranking on the real platform mix; `MAX_DEFERRALS = 10` is a judgement (a real outage lasts days; parking after 10 deferrals of one video is far enough away that it should not park the queue, but this was not run against a real outage); ordering by `updated` means a video the owner approves goes behind the queue (it used to go first by age); the macOS backup was tested with a real unreadable file on bsdtar and with fake `tar` scripts, not with a real Chrome profile.
 
 
-## Phase K: workflow reliability and visibility (plan, 2026-10-28)
+## Phase K: workflow reliability and visibility (2026-10-28)
 
 Why: the evaluation in [WORKFLOWS.md](WORKFLOWS.md) section 5 found the workflow layer, not the core, to be the weak part. This phase fixes what the evidence supports and nothing else; the question "is n8n worth keeping" (K7) is the owner's and is decided last.
 
@@ -223,18 +223,18 @@ Why: the evaluation in [WORKFLOWS.md](WORKFLOWS.md) section 5 found the workflow
 | Item | Change | Where | Test that must fail without it | Risk |
 |---|---|---|---|---|
 | K1 | Failed steps are reported. Nodes use `continueErrorOutput` and the error output goes to a new worker route `/api/alert` that calls `store.emit("urgent", ..., key="workflow:<step>")`, so the existing 6-hour throttle applies. `/api/notify` is not used: it sends every message without a throttle. | `n8n/build.py`, `web/api.py` | route test (throttle, secret-free text); `build.py --check` | low; the workflow JSON changes, run `./trendvn n8n import` |
-| K2 | Every agent route gets a deadline; session and verify scale with the number of enabled accounts (one Chrome launch each), because the current 10 and 5 minute n8n timeouts are likely too short with 3 accounts (estimate, 3 x ~110 s for verify). On expiry the browser is closed, the lock is freed and the job is logged. The n8n timeouts come from the same table plus a one-minute margin. Starting points before measuring: the current timeouts minus one minute (collect 14, publish 24 minutes). | `server.py`, `n8n/build.py` | fake job that never ends frees the lock; the n8n timeouts are above the deadlines | medium: a deadline that is too short kills a real post; publish keeps the post-click rule (unknown, never failed) |
+| K2 | Planned (done as a report only, see below): every agent route gets a deadline; session and verify scale with the number of enabled accounts (one Chrome launch each), because the current 10 and 5 minute n8n timeouts are likely too short with 3 accounts (estimate, 3 x ~110 s for verify). On expiry the browser is closed, the lock is freed and the job is logged. The n8n timeouts come from the same table plus a one-minute margin. Starting points before measuring: the current timeouts minus one minute (collect 14, publish 24 minutes). | `server.py`, `n8n/build.py` | fake job that never ends frees the lock; the n8n timeouts are above the deadlines | medium: a deadline that is too short kills a real post; publish keeps the post-click rule (unknown, never failed) |
 | K3 | `/api/housekeeping` skips the recovery of `processing` videos while `process_lock` is held. | `web/api.py`, `store/queue.py` | video claimed and slow; housekeeping leaves it | low |
 | K4 | One platform's exception is recorded and the next platform still runs; each item is parsed on its own and the first parse error is logged; `data/agent/shots` keeps the latest 20; the `tiktok` commands take the browser lock. | `collector/run.py`, `collector/sources/*.py`, `publisher/screenshots.py`, `browser.py` | fuzz of parsers (an odd item no longer drops 19 good ones) | low to medium |
 | K5 | Dashboard Update also runs the TikTok session check (as workflow 01 does), or says plainly that it does not. | `tasks.py` | task steps test | low |
 | K6 | n8n stops calling out: `N8N_DISABLED_MODULES=mcp-registry`, `N8N_VERSION_NOTIFICATIONS_ENABLED=false`, `N8N_TEMPLATES_ENABLED=false`; `docs/SECURITY.md` section 5 lists the remaining calls. | `compose.yaml`, `docs/SECURITY.md` | `./trendvn test lint` (compose valid) | low; confirm the three names against the pinned n8n version first |
 | K7 | Decision, not work: replace n8n by a scheduler thread in the worker (estimated 60-100 lines reusing `tasks.py`). Revisit after K1-K2: K1 removes n8n's worst weakness, the silent failure. | n/a | n/a | owner's call |
 
-Target flow of workflow 01 after K1-K3 (compare with section 2.1 of WORKFLOWS.md):
+Target flow of workflow 01 after K1-K3 (compare with section 2.1 of WORKFLOWS.md; the limits are alert thresholds, a job is not stopped):
 
 ```mermaid
 flowchart LR
-  T(["Every 3 hours"]) --> S["1 session<br/>deadline per account count"] --> V["2 verify<br/>deadline per account count"] --> C["3 collect<br/>deadline 14 min"] --> H["4 housekeeping<br/>skips recovery while processing"] --> P["5 process, max 4"] --> E(["end"])
+  T(["Every 3 hours"]) --> S["1 session<br/>limit 15 min"] --> V["2 verify<br/>limit 15 min"] --> C["3 collect<br/>limit 15 min"] --> H["4 housekeeping<br/>skips recovery while processing"] --> P["5 process, max 4"] --> E(["end"])
   S -- error --> A["worker /api/alert<br/>urgent, throttled 6 h"]
   V -- error --> A
   C -- error --> A
@@ -245,6 +245,17 @@ flowchart LR
 
 **Rollout.** No database migration in K1-K6, so the update is the ordinary one in [DEPLOY.md](DEPLOY.md) section 9 and rolling back means installing the previous package again. Order: K3 and K4 first (worker and agent code, no workflow change), then K2, then K1 and K6 (they change the workflow JSON and `compose.yaml`; run `./trendvn n8n import` and `./trendvn update`). After each, `./trendvn doctor`, `./trendvn tiktok dry-run` and one watched cycle.
 
-**How each item is closed.** Failing test first, fix, mutation check (remove the fix, a test must fail), then the three reviews of the convention above. Measure the deadlines before choosing them: the numbers in the table are the current n8n timeouts minus a margin, not measurements.
+**What was done, and where it differs from the plan above.**
+- **K1 done.** `guard()` in `n8n/build.py` gives every tolerant step an error output wired to a new alert node (`/api/alert`, throttled per step) and to the next step. Checked by *running* the workflows in the pinned n8n 2.38.7 against fake worker and agent services on a throwaway Docker network: with the agent answering 409 (workflow 02) and 500 on collect (workflow 01) exactly one alert per failing step reached the worker with the n8n error text and the Authorization header, the following steps still ran, and a clean run (workflow 03) sent none. The runs still show green in n8n.
+- **K2 done as a report, not a kill.** `limits.py` is the one table of job limits; the agent starts a timer per job and, past the limit, logs and sends `/api/alert`; `/health` says which job holds the browser and for how long; n8n waits limit + 1 minute (session, verify, collect 16 minutes, publish 33, stats 11). A job is not stopped: ending Chrome in the middle of a post cannot be tested here and could leave a post nobody can account for, so a stuck Chrome still needs `./trendvn agent restart`. The limits are the old timeouts or generous estimates, not measurements.
+- **K3 done.** `/api/housekeeping` skips the recovery of `processing` videos while `process_lock` is held.
+- **K4 a-c done.** Each item of a response is parsed on its own (`parse_each`), an item whose numbers cannot be compared is dropped alone, a platform that raises no longer ends the session, Douyin ids the worker would reject are dropped instead of the whole batch, and `data/agent/shots` keeps the latest 20 files. **K4 d is open:** the `tiktok` commands still open the Chrome profile without the browser lock (a file lock would also have to be mapped to `deferred` inside the posting path, which cannot be tested without a real Chrome).
+- **K5 open.** Whether a manual Update should launch Chrome per account to check the TikTok session is a product choice.
+- **K6 done, plus one addition.** `compose.yaml` sets `N8N_VERSION_NOTIFICATIONS_ENABLED`, `N8N_TEMPLATES_ENABLED` and `N8N_DISABLED_MODULES=mcp-registry` (all three names read in the pinned n8n; the first two change a default that is `true`; the pinned n8n boots healthy with them). The collector no longer looks up the exit country for Douyin and Kuaishou, whose content does not depend on it.
+- **K7 open:** replacing n8n is still the owner's decision.
 
-**Not verified.** Everything above is a plan. The agent's real job durations (verify with several accounts, a full collect) have not been measured on a live system, and `continueErrorOutput` and the three n8n variables must be checked against the pinned n8n 2.38.7 before they are relied on.
+**How each item was closed.** Failing test first, fix, then a mutation check on a copy of the repository: 14 mutations of K1 to K4 and K6 (remove the masking, the alert wiring, the next-step edge, the timer, the per-item parsing, the pruning...), every one caught by a test. New tests: `tests/worker/test_workflow_reliability.py`, `tests/tools/test_n8n_workflows.py` (reads the generated JSON), `tests/agent/test_server_deadline.py` (the real handler on a socket), `tests/agent/test_collector_resilience.py`.
+
+**Rollout.** No database migration, so the update is the ordinary one in [DEPLOY.md](DEPLOY.md) section 9 and going back is installing the previous package. Run `./trendvn update` (it regenerates and re-imports the workflows and restarts the agent), then `./trendvn doctor`, `./trendvn tiktok dry-run` and watch one cycle.
+
+**Not verified.** (a) On a live system: no alert has been seen from a real failing schedule, and the agent's real job durations (verify and session with several accounts, a full collect) have not been measured, so the limits may be too tight or too loose. (b) That n8n no longer contacts `api.n8n.io`: only the settings were checked, not a network trace of a running instance. (c) `Executions` in n8n still shows green runs, by design. (d) The three reviews of this repository's own convention were not run for phase K: the tests above were; an independent read-only review of the diff is still to do.
