@@ -120,10 +120,12 @@ class QueueMixin:
                 raise ValueError("Nothing to approve in this state")
             self.event(db, jid, "operator_" + action)
 
-    def housekeeping(self):
-        """Crash recovery and the disk: stuck work is freed, then the retention rules run (see store/retention.py)."""
+    def housekeeping(self, recover=True):
+        """Crash recovery and the disk: stuck work is freed, then the retention rules run (see store/retention.py).
+        `recover=False` leaves `processing` videos alone: a run that is working on them right now holds the processing lock, and a slow video
+        can look stuck for longer than half an hour."""
         now = time.time()
-        processing = self._recover_processing(now - 1800)
+        processing = self._recover_processing(now - 1800) if recover else 0
         unknown = self.expire_stale_publishing(now)
         pruned = self.prune(now)
         free = free_bytes(self.root)

@@ -88,10 +88,26 @@ def heartbeat(app, payload):
 # ------------------------------------------------------------------ processing
 @route("/api/housekeeping")
 def housekeeping(app, payload):
-    result = app.store.housekeeping()
+    # a processing run holds the lock while it works: putting its video back in the queue now would run it twice
+    result = app.store.housekeeping(recover=not app.process_lock.locked())
     if any(result["pruned"].get(key) for key in ("expired", "files_removed", "rows_trimmed", "orphans")):
         app.log("housekeeping: " + ", ".join("%s=%s" % item for item in result["pruned"].items() if item[1]))
     return result
+
+
+@route("/api/alert")
+def alert(app, payload):
+    """A step of an n8n workflow (or an overdue agent job) failed. n8n marks every run green, so this is how the owner hears about it:
+    one phone message per step per 6 hours (the `urgent` throttle of notify.py)."""
+    step = re.sub(r"[^A-Za-z0-9 ._:/-]", "", str(payload.get("step", "")))[:60].strip() or "unknown"
+    detail = re.sub(r"Bearer\s+\S+", "Bearer ***", " ".join(str(payload.get("detail", "")).split()))[:300]
+    app.store.emit(
+        "urgent",
+        '\u26a0\ufe0f B\u01b0\u1edbc "%s" c\u1ee7a l\u1ecbch t\u1ef1 \u0111\u1ed9ng b\u1ecb l\u1ed7i: %s. Xem ./trendvn doctor v\u00e0 m\u1ee5c Executions trong n8n.'
+        % (step, detail or "kh\u00f4ng r\u00f5"),
+        "workflow:" + step,
+    )
+    return OK
 
 
 @route("/api/process")
