@@ -58,15 +58,13 @@ n8n/ build.py generate 6 workflows from code · manage.py load/enable/export · 
 scripts/                install · backup · restore · doctor · package · fmt · service (systemd, launchd)
 macos/ double click file for Mac
 tests/ worker/ agent/ tools/ (more than 500 tests) + e2e/ (real Chrome interface)
-docs/ detailed documents
+docs/ documents (index: docs/README.md), diagrams/ (draw.io), history/ (past review logs)
 data/ (self-generated, not packaged) data: worker/ agent/ backups/
 ```
 
-## Document
+## Documents
 
-[Mac](docs/MAC.md) · [Command](docs/COMMANDS.md) · [Deployment](docs/DEPLOY.md) · [Operation](docs/OPERATIONS.md) ·
-[Architecture](docs/ARCHITECTURE.md) · [n8n](docs/N8N.md) · [Prompt Gemini](docs/PROMPTS.md) · [Security](docs/SECURITY.md) ·
-[API](docs/API.md) · [Agent Rules](AGENTS.md) · [Roadmap 1.4](docs/ROADMAP.md) · [Review 1.3](docs/REVIEW-1.3.md) · [Changes](CHANGELOG.md)
+The full index, grouped by what you want to do, is [docs/README.md](docs/README.md). The ones you will use first: [Install on a Mac](docs/MAC.md) · [Daily operation](docs/OPERATIONS.md) · [Workflows](docs/WORKFLOWS.md) · [Commands](docs/COMMANDS.md) · [Architecture](docs/ARCHITECTURE.md) · [Roadmap and review log](docs/ROADMAP.md) · [Changes](CHANGELOG.md) · [Agent rules](AGENTS.md).
 
 ## Limits to know
 

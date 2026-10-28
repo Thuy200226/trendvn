@@ -1,4 +1,4 @@
-# Roadmap 1.4 to 1.6 (released): phases and review log
+# Roadmap and review log (1.4 onwards)
 
 Working documents: record requirements, design of each phase and results of 3 review rounds of each phase (so as not to lose when doing multiple sessions).
 Convention for each phase: (1) do, (2) **review round 1 — static**(reread code, lint, code matching documents), (3)**round 2 — dynamic** (real run, real measurement),
@@ -17,6 +17,7 @@ Convention for each phase: (1) do, (2) **review round 1 — static**(reread code
 | H | Performance: actually measure and then only change to the one with data (build, collect) | finished |
 | I | Product quality: honest control panel, reason for not posting, errors in Vietnamese, the first installation order of | is mostly completed; For polishing, see section |
 | J | Review of design and implementation ("is it optimal?"): measure, two independent reviews, fix the eight confirmed defects | fixed and tested; the rest is listed in the section's "Not fixed" |
+| K | Workflow reliability and visibility (plan from the phase J evaluation): failed steps are seen, agent jobs have deadlines, housekeeping respects the processing lock | planned; not started |
 
 ## Phase 0 — Move completely to new folder (done)
 
@@ -210,3 +211,40 @@ Question from the owner: is the design and implementation as optimal as it can b
 **Decisions that are the owner's.** (1) *n8n:* measured cost 2 GB of image, ~380 MiB RAM idle, a second secret store, 555 lines of build code and 1,445 lines of workflow JSON, outbound calls, and an execution list that is always green because every node tolerates errors (a stale credential shows as "schedule may be off" only after 7 hours); a scheduler thread in the worker that reuses `tasks.py` (estimated 60-100 lines) would give the same timers and show the real state. Worth it only if the owner never edits flows in n8n. (2) *Score scale across platforms:* pooled ranking compares Douyin (likes x 25 stand in for views) with Kuaishou (views); the reviewer saw best scores of 1.8M vs 17.1M, so Kuaishou may now take most slots. Watch the per-platform `downloaded` numbers in `agent.log` for a few days; a per-platform scale factor is the fix if it is wrong.
 
 **Not verified.** Everything touching real Chrome, TikTok, Douyin, Kuaishou or Gemini; that the stricter pre-click caption check accepts every caption TikTok's editor really renders (it uses the key of the post-click check, which has confirmed real posts, but the editor text and the profile text are different surfaces: watch for a `caption` failure screenshot); the effect of the pooled ranking on the real platform mix; `MAX_DEFERRALS = 10` is a judgement (a real outage lasts days; parking after 10 deferrals of one video is far enough away that it should not park the queue, but this was not run against a real outage); ordering by `updated` means a video the owner approves goes behind the queue (it used to go first by age); the macOS backup was tested with a real unreadable file on bsdtar and with fake `tar` scripts, not with a real Chrome profile.
+
+
+## Phase K: workflow reliability and visibility (plan, 2026-10-28)
+
+Why: the evaluation in [WORKFLOWS.md](WORKFLOWS.md) section 5 found the workflow layer, not the core, to be the weak part. This phase fixes what the evidence supports and nothing else; the question "is n8n worth keeping" (K7) is the owner's and is decided last.
+
+**Measurable goals.**
+(a) A failed workflow step reaches the owner within one cycle (3 hours) instead of staying silent for up to 7 hours; (b) no agent job outlives its deadline, and every n8n timeout is longer than the matching deadline, so an orphaned job can no longer make the next step skip with a 409; (c) housekeeping never puts back a video that is being processed; (d) one platform failing does not stop the others; (e) `data/agent/shots` stays bounded.
+
+| Item | Change | Where | Test that must fail without it | Risk |
+|---|---|---|---|---|
+| K1 | Failed steps are reported. Nodes use `continueErrorOutput` and the error output goes to a new worker route `/api/alert` that calls `store.emit("urgent", ..., key="workflow:<step>")`, so the existing 6-hour throttle applies. `/api/notify` is not used: it sends every message without a throttle. | `n8n/build.py`, `web/api.py` | route test (throttle, secret-free text); `build.py --check` | low; the workflow JSON changes, run `./trendvn n8n import` |
+| K2 | Every agent route gets a deadline; session and verify scale with the number of enabled accounts (one Chrome launch each), because the current 10 and 5 minute n8n timeouts are likely too short with 3 accounts (estimate, 3 x ~110 s for verify). On expiry the browser is closed, the lock is freed and the job is logged. The n8n timeouts come from the same table plus a one-minute margin. Starting points before measuring: the current timeouts minus one minute (collect 14, publish 24 minutes). | `server.py`, `n8n/build.py` | fake job that never ends frees the lock; the n8n timeouts are above the deadlines | medium: a deadline that is too short kills a real post; publish keeps the post-click rule (unknown, never failed) |
+| K3 | `/api/housekeeping` skips the recovery of `processing` videos while `process_lock` is held. | `web/api.py`, `store/queue.py` | video claimed and slow; housekeeping leaves it | low |
+| K4 | One platform's exception is recorded and the next platform still runs; each item is parsed on its own and the first parse error is logged; `data/agent/shots` keeps the latest 20; the `tiktok` commands take the browser lock. | `collector/run.py`, `collector/sources/*.py`, `publisher/screenshots.py`, `browser.py` | fuzz of parsers (an odd item no longer drops 19 good ones) | low to medium |
+| K5 | Dashboard Update also runs the TikTok session check (as workflow 01 does), or says plainly that it does not. | `tasks.py` | task steps test | low |
+| K6 | n8n stops calling out: `N8N_DISABLED_MODULES=mcp-registry`, `N8N_VERSION_NOTIFICATIONS_ENABLED=false`, `N8N_TEMPLATES_ENABLED=false`; `docs/SECURITY.md` section 5 lists the remaining calls. | `compose.yaml`, `docs/SECURITY.md` | `./trendvn test lint` (compose valid) | low; confirm the three names against the pinned n8n version first |
+| K7 | Decision, not work: replace n8n by a scheduler thread in the worker (estimated 60-100 lines reusing `tasks.py`). Revisit after K1-K2: K1 removes n8n's worst weakness, the silent failure. | n/a | n/a | owner's call |
+
+Target flow of workflow 01 after K1-K3 (compare with section 2.1 of WORKFLOWS.md):
+
+```mermaid
+flowchart LR
+  T(["Every 3 hours"]) --> S["1 session<br/>deadline per account count"] --> V["2 verify<br/>deadline per account count"] --> C["3 collect<br/>deadline 14 min"] --> H["4 housekeeping<br/>skips recovery while processing"] --> P["5 process, max 4"] --> E(["end"])
+  S -- error --> A["worker /api/alert<br/>urgent, throttled 6 h"]
+  V -- error --> A
+  C -- error --> A
+  H -- error --> A
+  P -- error --> A
+  A --> N["phone message and dashboard"]
+```
+
+**Rollout.** No database migration in K1-K6, so the update is the ordinary one in [DEPLOY.md](DEPLOY.md) section 9 and rolling back means installing the previous package again. Order: K3 and K4 first (worker and agent code, no workflow change), then K2, then K1 and K6 (they change the workflow JSON and `compose.yaml`; run `./trendvn n8n import` and `./trendvn update`). After each, `./trendvn doctor`, `./trendvn tiktok dry-run` and one watched cycle.
+
+**How each item is closed.** Failing test first, fix, mutation check (remove the fix, a test must fail), then the three reviews of the convention above. Measure the deadlines before choosing them: the numbers in the table are the current n8n timeouts minus a margin, not measurements.
+
+**Not verified.** Everything above is a plan. The agent's real job durations (verify with several accounts, a full collect) have not been measured on a live system, and `continueErrorOutput` and the three n8n variables must be checked against the pinned n8n 2.38.7 before they are relied on.

@@ -1,6 +1,6 @@
 # Architecture and where each rule is located
 
-Diagram: [architecture.drawio](architecture.drawio) has two pages, the three blocks and the life cycle of a video (open it in draw.io; this text is the source of truth).
+Diagram: [architecture.drawio](diagrams/architecture.drawio) has two pages, the three blocks and the life cycle of a video (open it in draw.io; this text is the source of truth). Step-by-step flows of the schedules and the dashboard buttons: [WORKFLOWS.md](WORKFLOWS.md).
 
 ## 1. Three blocks and why they separated like that
 

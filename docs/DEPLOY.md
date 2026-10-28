@@ -180,12 +180,34 @@ Extract the new version **overwriting the running directory** (the packaged vers
 
 ```bash
 cd ~/trendvn                                              # running directory
+./trendvn backup                                           # first, always: the way back if the new version misbehaves
 tar xzf ~/Downloads/trendvn-<phi\u00ean-b\u1ea3n-m\u1edbi>.tar.gz --strip-components=1   # files of the old version that are no longer used in the new version can be deleted if desired
 ./trendvn update                  # rebuild image, generate + reload workflow (schedule remains the same), update agent Python package, reboot, doctor
 ./trendvn tiktok dry-run          # always try again after updating, because TikTok may change its appearance
 ```
 
 If `doctor` reports "Worker is the correct version of the code" error: the container is still running the old image, run `./trendvn update`.
+
+```mermaid
+flowchart TD
+  A["new package"] --> B["./trendvn backup"]
+  B --> C["extract over the running folder<br/>.env and data/ are kept"]
+  C --> D["./trendvn update:<br/>regenerate workflows, rebuild and restart containers,<br/>remove old images, import workflows,<br/>refresh agent venv and service, doctor"]
+  D --> E{"doctor green?"}
+  E -- no --> F["fix what it says, run update again"]
+  F --> D
+  E -- yes --> G["./trendvn tiktok dry-run"]
+  G --> H["watch one cycle: workflow 01 and 02 executions,<br/>dashboard status bar"]
+  H --> I{"a problem?"}
+  I -- no --> J(["done"])
+  I -- yes --> K["./trendvn n8n deactivate"]
+  K --> L["extract the previous package, ./trendvn update"]
+  L --> M{"did the new version<br/>migrate the database?"}
+  M -- no --> N["./trendvn n8n activate"]
+  M -- yes --> O["./trendvn restore the backup from the first step,<br/>then ./trendvn n8n activate"]
+```
+
+**Going back.** Code and workflows go back by installing the previous package again. The database does not: it only migrates forward (`PRAGMA user_version`), so when the new version's entry in [CHANGELOG](../CHANGELOG.md) mentions a migration, restore the backup taken in the first step; a restore leaves the schedule off until you turn it on. Releases without a migration need no restore.
 
 ## 10. Uninstall
 

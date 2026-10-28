@@ -1,13 +1,19 @@
-# Source language maintenance — 2026-10-25
+# Changelog
 
-- Translate documentation, comments and docstrings into English.
-- Preserve Vietnamese runtime text with Unicode/octal escapes and keep generated workflow JSON ASCII-escaped.
-- Rename macOS launchers to English and update their references.
-- Update documentation lint history markers to match the translated migration guide.
+Newest first. One `## <version>` section per release (the packaging step refuses a version without one); work not released yet is under `## Unreleased`. Versions follow SemVer.
 
-# Change history
+## Unreleased
 
-## Unreleased — 2026-10-28 (review of design and implementation: docs/ROADMAP.md, "Design and implementation review")
+### 2026-10-28: documentation layout (no behavior change)
+
+- New `docs/README.md`: the index of every document grouped by what the reader wants to do, the layout of `docs/` and the conventions (one topic per file, text is the source of truth, history is not rewritten). `scripts/doclint.py` now fails when a file in `docs/` is missing from it, when a document has no single H1, and also checks links in subfolders.
+- New `docs/WORKFLOWS.md`: every automatic workflow (01, 02, 03 and the support ones), every dashboard button and command-line flow, the locks, and the evaluation of the workflow layer, with Mermaid diagrams.
+- `docs/ROADMAP.md`: retitled to a roadmap and review log, status table extended, and the plan of phase K (workflow reliability and visibility) added. Nothing in it is implemented yet.
+- `docs/DEPLOY.md` section 9: backup first, the update flow as a diagram, and how to go back (the database only migrates forward).
+- `docs/REVIEW-1.2.md` and `docs/REVIEW-1.3.md` moved to `docs/history/`; `docs/architecture.drawio` moved to `docs/diagrams/`. The root `README.md` points to the index.
+- This file now has one H1; the unreleased work is listed first, newest entry on top.
+
+### 2026-10-28: review of design and implementation (docs/ROADMAP.md, phase J)
 
 Two independent read-only reviews (worker; host agent and n8n) found eight real defects. Each fix has a test that fails when the fix is removed (mutation-checked).
 - **Retention clocks no longer reset by a scan.** A scan that saw a known video again reset `updated`, which drives file removal of finished videos, the 21-day expiry, the 45-minute publishing expiry and the daily post count: files of a rejected or duplicate video that stayed popular were kept for good, and a stuck `publishing` post blocked every account for longer than 45 minutes. `last_seen` already records the sighting.
@@ -19,6 +25,12 @@ Two independent read-only reviews (worker; host agent and n8n) found eight real 
 - **`./trendvn test` on macOS runs green.** `int.bit_count()` needs Python 3.10 and macOS ships 3.9; replaced by `bin(x).count("1")` (same result).
 - **The result of a post is recorded first.** The verification pause was reported before `/api/publish/finish`; if that call failed the result was never sent and the video became a false "unconfirmed post" 45 minutes later. The result is sent first and retried 3 times (a refusal from the worker is final); the pause and login reports follow and can no longer fail the job.
 
+### 2026-10-25: source language maintenance (no release)
+
+- Translate documentation, comments and docstrings into English.
+- Preserve Vietnamese runtime text with Unicode/octal escapes and keep generated workflow JSON ASCII-escaped.
+- Rename macOS launchers to English and update their references.
+- Update documentation lint history markers to match the translated migration guide.
 
 ## 1.6 — 2026-10-02 (output quality: docs/QUALITY.md)
 
