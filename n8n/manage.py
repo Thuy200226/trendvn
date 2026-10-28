@@ -88,7 +88,7 @@ def guard():
     here = {str(ROOT), str(ROOT.resolve())}
     if label and label not in here:
         die(
-            "n8n \u0111ang ch\u1ea1y t\u1eeb th\u01b0 m\u1ee5c kh\u00e1c (%s). Kh\u00f4ng thay \u0111\u1ed5i n\u00f3 t\u1eeb \u0111\u00e2y. Xem docs/DEPLOY.md m\u1ee5c 11, "
+            "n8n \u0111ang ch\u1ea1y t\u1eeb th\u01b0 m\u1ee5c kh\u00e1c (%s). Kh\u00f4ng thay \u0111\u1ed5i n\u00f3 t\u1eeb \u0111\u00e2y. Xem docs/OPERATIONS.md m\u1ee5c 4, "
             "ho\u1eb7c \u0111\u1eb7t COMPOSE_PROJECT_NAME v\u00e0 c\u1ed5ng ri\u00eang trong .env c\u1ee7a th\u01b0 m\u1ee5c n\u00e0y."
             % label
         )

@@ -273,7 +273,7 @@ check(
     "Truy c\u1eadp ch\u1ec9 t\u1eeb m\u00e1y n\u00e0y",
     not exposed,
     "TRENDVN_BIND=" + BIND,
-    "\u01afu ti\u00ean \u0111\u01b0\u1eddng h\u1ea7m SSH thay v\u00ec m\u1edf ra m\u1ea1ng (docs/DEPLOY.md)",
+    "\u01afu ti\u00ean \u0111\u01b0\u1eddng h\u1ea7m SSH thay v\u00ec m\u1edf ra m\u1ea1ng (docs/TECH.md)",
     required=False,
 )
 

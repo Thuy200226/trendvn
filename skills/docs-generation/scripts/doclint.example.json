@@ -1,0 +1,18 @@
+{
+  "_comment": "Copy to .doclint.json at the repository root. Every key is optional; keys starting with _ are ignored.",
+  "docs_dir": "docs",
+  "flows": "docs/FLOWS.md",
+  "history_globs": ["docs/history/*", "CHANGELOG.md"],
+  "extra_tech_terms": ["n8n", "playwright"],
+  "allowed_tech_terms": [],
+  "ignore_paths": ["data/*", ".env", "dist/*"],
+  "ignore_identifiers": [],
+  "budgets": {"docs/TECH.md": 320},
+  "commands": {
+    "prefix": "./tool",
+    "help": "./tool help",
+    "needs_sub": ["service"],
+    "extra": ["help", "version"],
+    "reference_doc": "docs/OPERATIONS.md"
+  }
+}

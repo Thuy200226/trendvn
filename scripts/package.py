@@ -86,7 +86,7 @@ def main():
     digest = hashlib.sha256(out.read_bytes()).hexdigest()
     (dist / (NAME + ".tar.gz.sha256")).write_text("%s  %s\n" % (digest, out.name))
     print("\u0110\u00e3 t\u1ea1o dist/%s (%d file, %.0f KB)\nsha256 %s" % (out.name, count, out.stat().st_size / 1024, digest))
-    print("Ch\u00e9p sang m\u00e1y Mac (AirDrop/USB), gi\u1ea3i n\u00e9n, r\u1ed3i l\u00e0m theo docs/MAC.md")
+    print("Ch\u00e9p sang m\u00e1y Mac (AirDrop/USB), gi\u1ea3i n\u00e9n, r\u1ed3i l\u00e0m theo docs/OPERATIONS.md")
     return 0
 
 

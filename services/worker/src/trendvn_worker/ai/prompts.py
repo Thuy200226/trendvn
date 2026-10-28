@@ -1,7 +1,7 @@
 """Every prompt and output schema sent to Gemini lives here, versioned, so tuning never touches pipeline code.
 
 Change a prompt, bump PROMPT_VERSION; the version is written into each job's manifest.json so results stay traceable.
-docs/PROMPTS.md explains each rule and how to tune it.
+docs/TECH.md explains each rule and how to tune it.
 """
 
 from ..domain.topics import OTHER, TOPIC_IDS, prompt_lines as topic_prompt_lines

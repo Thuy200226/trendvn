@@ -1,5 +1,5 @@
 """Voice-over quality: which voice, which delivery and pace, how it fits its window, how it is mixed, and when the source's own subtitles
-are blurred. Cases come from the measurements in docs/QUALITY.md."""
+are blurred. Cases come from the measurements in docs/history/QUALITY-1.6.md."""
 
 import json
 import shutil

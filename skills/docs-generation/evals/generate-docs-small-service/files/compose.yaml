@@ -1,0 +1,12 @@
+services:
+  api:
+    build: .
+    command: ["python3", "-m", "mailq.cli", "serve"]
+    ports: ["127.0.0.1:8080:8080"]
+    env_file: .env
+    volumes: ["./data:/app/data"]
+  worker:
+    build: .
+    command: ["python3", "-m", "mailq.cli", "worker"]
+    env_file: .env
+    volumes: ["./data:/app/data"]

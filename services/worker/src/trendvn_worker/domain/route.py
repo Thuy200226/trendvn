@@ -1,6 +1,6 @@
 """What to do with a video: keep it as it is, add Vietnamese subtitles, or replace the speech with a Vietnamese voice-over.
 
-The decision is a pure function of what Gemini heard, so it can be read, tested and tuned in one place (docs/PROMPTS.md has the table).
+The decision is a pure function of what Gemini heard, so it can be read, tested and tuned in one place (docs/TECH.md has the table).
 Every route comes with the reason shown to the owner on the dashboard.
 """
 

@@ -20,7 +20,7 @@ Three blocks: **worker**(Docker: queue, rules, Gemini, ffmpeg, console),**agent*
 | Apply new code to running system | `./trendvn update` |
 | Diagnostics | `./trendvn doctor` |
 | Packaging | `./trendvn package` |
-Full command: `docs/COMMANDS.md`. Progress and review log for each phase: `docs/ROADMAP.md` (read before continuing unfinished work).
+Full commands: `docs/OPERATIONS.md`. Status, open items and owner decisions: `docs/ROADMAP.md` (read before continuing unfinished work); the evidence and review log of each phase: `docs/history/PHASES-0-K.md`.
 
 ## Layout (one responsibility per file, written in the docstring line at the beginning of the file)
 - `services/worker/src/trendvn_worker/`: `domain/` (pure rules, no I/O) -> `store/` (SQLite, one concern per mixin) -> `ai/`, `media/` (Gemini, ffmpeg) -> `web/`, `tasks.py`, `pipeline.py` -> `ui/` (one file per tab).
@@ -28,9 +28,18 @@ Full command: `docs/COMMANDS.md`. Progress and review log for each phase: `docs/
 - `tests/{worker,agent,tools,e2e}` mirror code; `tests/support.py` is a common place. `docs/` is document; `data/` and `.env` are stateful and secret (never packaged or committed).
 - If the function is longer than about 60 lines, separate the named step. Add new source, tab, topic = add one file and one subscription line, do not edit across five files.
 
+## Documentation (four live documents, flows and technology kept apart)
+- `docs/FLOWS.md` says **what happens** (life of a video, schedules, buttons, failures) and contains **no technology**: no tool, port, route, file or lock names. `scripts/doclint.py` fails if it does.
+- `docs/TECH.md` says **what it is made of and why** (components, decisions, data, interfaces, AI, performance, security, deployment, extension). It has no step-by-step owner instructions.
+- `docs/OPERATIONS.md` is the how-to (install, run, update, fix, every command); `docs/ROADMAP.md` is status, open items and owner decisions. `docs/history/` holds evidence and old logs and is never rewritten; `docs/diagrams/` holds what is not text.
+- Add to an existing document before adding a file; a new live document needs a link in `README.md`. Flows and states are Mermaid blocks in the document (they must parse); a draw.io file is only a visual twin of a text section.
+- One H1 per document, English, short sentences, tables for facts. A figure says what was measured, on what, and when; an estimate says it is one; what is not verified is said so.
+- Change behavior and documents together, and add the entry to `CHANGELOG.md` (the packaging step needs a section for the version).
+- The portable form of this standard is the skill `skills/docs-generation` (generate, restructure, update or audit documents; its linter, Mermaid check and self-test are in its `scripts/`): `cp -r skills/docs-generation ~/.claude/skills/`. `scripts/doclint.py` stays this repo's own, stricter linter.
+
 ## How it works
-1. Read `docs/ROADMAP.md` and run `./trendvn test` to establish a baseline before making changes.
-2. Each phase has a measurable goal, and ends with **3 review rounds**: static (self-readback + tools), dynamic (runs on real data and system, with before/after measurements), independent (read-only agent assigned to break code; sample prompt in skill). Correct all detections, add blocking tests, record them in ROADMAP and then move on to another phase.
+1. Read `docs/ROADMAP.md` (status and open items) and run `./trendvn test` to establish a baseline before making changes.
+2. Each phase has a measurable goal, and ends with **3 review rounds**: static (self-readback + tools), dynamic (runs on real data and system, with before/after measurements), independent (read-only agent assigned to break code; sample prompt in skill). Correct all detections, add blocking tests, record them (status and open items in `docs/ROADMAP.md`, evidence in `docs/history/PHASES-0-K.md`) and then move on to another phase.
 3. **Measure before optimizing**; change only what the measurements support and record experiments that did not help. Don't repeatedly compare with the site that is limiting you (Kuaishou): the results are noisy, keep the proven behavior.
 4. Separate the "refactoring without changing behavior" commit from the commit that changes the behavior. Refactorings must be tested independently (comparing old to new), because existing tests do not catch all.
 5. For each bug that is fixed, the test will fail if the fix is abandoned. Update `CHANGELOG.md` and documentation at the same time as the code; `scripts/doclint.py` (running in `./trendvn test lint`) catches miscoded documents.
@@ -59,4 +68,4 @@ Full command: `docs/COMMANDS.md`. Progress and review log for each phase: `docs/
 - Multiple accounts: one Chrome profile per account (`publisher` for `main`, `publisher-<id>` for others); Must check real username before posting; Accounts that are not logged in are ignored and are not counted as video errors.
 
 ## Unverified (updated when changed)
-Gemini reports hard subtitle location (video API is often overloaded), US source (needs US IP), real posting to multiple accounts, real macOS, running for a long time according to a real schedule.
+Gemini reports hard subtitle location (video API is often overloaded), US source (needs US IP), real posting to multiple accounts, real macOS, running for a long time according to a real schedule. The full, current list is "Not verified" in `docs/ROADMAP.md`.
