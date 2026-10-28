@@ -62,7 +62,8 @@ If suspected of exposing `TRENDVN_TOKEN`: edit the value in `.env`, run `./trend
 | Source platform | Access the page as a normal browser (via proxy if you set it) | Per scan |
 | TikTok | Video and description when posting; read your public profile to confirm and get views | On posting and on closing date |
 | Telegram/Discord/Slack/ntfy | Notification content (video title, reason, post path) | Only if you configure channel |
-| None other than | No telemetry; n8n disable diagnostics | |
+| ipinfo.io, api.country.is | the country of your exit IP, only to check that TikTok or Instagram would be read from the US | At the start of a scan that includes TikTok or Instagram (not for Douyin and Kuaishou alone) |
+| None other than | No telemetry. n8n has diagnostics, release-note checks, the template library and the MCP registry switched off (`compose.yaml`); the only call n8n was seen making before that was to `api.n8n.io`, other n8n calls were not looked for | |
 
 ## 6. System thing **Are not** can do it
 

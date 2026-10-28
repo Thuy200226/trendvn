@@ -28,6 +28,27 @@ def _env():
 
 
 ENV = _env()
+
+
+def _limits():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "trendvn_agent_limits", ROOT / "services" / "agent" / "src" / "trendvn_agent" / "limits.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+LIMITS = _limits()
+
+
+def agent_timeout(path):
+    """n8n's wait for an agent route, in milliseconds: the agent's own limit for it plus a margin, so n8n never gives up first."""
+    return (LIMITS.JOB_SECONDS[path] + LIMITS.N8N_MARGIN_SECONDS) * 1000
+
+
 AGENT = "http://trendvn-agent:%s" % ENV.get("TRENDVN_AGENT_PORT", "5682")  # host agent, reachable only from this project's containers
 TZ = ENV.get("TRENDVN_TZ", "Asia/Ho_Chi_Minh")
 DASH = "http://localhost:%s" % ENV.get("TRENDVN_WORKER_PORT", "5681")
@@ -56,14 +77,18 @@ def request(name, path, x, method="POST", base=WORKER, body="{}", y=0, tolerant=
     }
     if method == "POST":
         params.update({"sendBody": True, "specifyBody": "json", "jsonBody": body})
-    extra = {"onError": "continueRegularOutput"} if tolerant else {}
+    extra = {"onError": "continueErrorOutput"} if tolerant else {}
     return node(name, "httpRequest", params, x, y, version=4.2, credentials=CRED, **extra)
 
 
 def save(wid, name, nodes, edges):
     con = {}
-    for a, b in edges:
-        con.setdefault(a, {"main": [[]]})["main"][0].append({"node": b, "type": "main", "index": 0})
+    for edge in edges:
+        a, b, output = (tuple(edge) + (0,))[:3]  # output 0 = success, 1 = the error output of a node set to continue on error
+        outputs = con.setdefault(a, {"main": []})["main"]
+        while len(outputs) <= output:
+            outputs.append([])
+        outputs[output].append({"node": b, "type": "main", "index": 0})
     workflow = {
         "id": wid,
         "name": name,
@@ -80,6 +105,25 @@ def save(wid, name, nodes, edges):
         "pinData": {},
     }
     WRITTEN[wid + ".json"] = json.dumps(workflow, ensure_ascii=True, indent=2) + "\n"
+
+
+def guard(steps, labels):
+    """Failure reporting for a chain of tolerant steps. n8n would mark every run green whatever happens inside, so the error output of each
+    step goes to the worker (/api/alert: one phone message per step per 6 hours) and, as before, the next step still runs.
+    Returns (alert nodes, edges)."""
+    alerts, edges = [], []
+    for position, (step, label) in enumerate(zip(steps, labels)):
+        body = (
+            "={{ JSON.stringify({step: %s, detail: String(($json.error && ($json.error.message || $json.error)) || $json.message || 'failed')}) }}"
+            % json.dumps(label)
+        )
+        alert = request("B\u00e1o l\u1ed7i: " + label, "/api/alert", step["position"][0], body=body, y=300, timeout=30000)
+        alert["onError"] = "continueRegularOutput"  # a worker that cannot take the alert must not break the workflow either
+        alerts.append(alert)
+        edges.append((step["name"], alert["name"], 1))
+        if position + 1 < len(steps):
+            edges.append((step["name"], steps[position + 1]["name"], 1))
+    return alerts, edges
 
 
 def chain(nodes):
@@ -143,12 +187,24 @@ schedule = node(
 )
 manual = node("Ch\u1ea1y th\u1eed to\u00e0n chu tr\u00ecnh", "manualTrigger", {}, 0, 0)
 session = request(
-    "Ki\u1ec3m tra phi\u00ean TikTok", "/api/session", 260, base=AGENT, tolerant=True, timeout=600000
+    "Ki\u1ec3m tra phi\u00ean TikTok", "/api/session", 260, base=AGENT, tolerant=True, timeout=agent_timeout("/api/session")
 )  # a Chrome launch per account
 verify = request(
-    "\u0110\u1ed1i chi\u1ebfu b\u00e0i ch\u01b0a x\u00e1c nh\u1eadn", "/api/verify", 520, base=AGENT, tolerant=True, timeout=300000
+    "\u0110\u1ed1i chi\u1ebfu b\u00e0i ch\u01b0a x\u00e1c nh\u1eadn",
+    "/api/verify",
+    520,
+    base=AGENT,
+    tolerant=True,
+    timeout=agent_timeout("/api/verify"),
 )
-collect = request("Thu th\u1eadp xu h\u01b0\u1edbng v\u00e0 t\u1ea3i video m\u1edbi", "/api/collect", 780, base=AGENT, tolerant=True)
+collect = request(
+    "Thu th\u1eadp xu h\u01b0\u1edbng v\u00e0 t\u1ea3i video m\u1edbi",
+    "/api/collect",
+    780,
+    base=AGENT,
+    tolerant=True,
+    timeout=agent_timeout("/api/collect"),
+)
 house = request("Ph\u00e1t hi\u1ec7n t\u00e1c v\u1ee5 gi\u00e1n \u0111o\u1ea1n", "/api/housekeeping", 1040, tolerant=True)
 process = request(
     "Ph\u00e2n lo\u1ea1i nh\u1ea1c, t\u1ea1o Vietsub ho\u1eb7c l\u1ed3ng ti\u1ebfng", "/api/process", 1300, body='{"max":4}', tolerant=True
@@ -165,11 +221,12 @@ note = node(
     -360,
 )
 first = [session, verify, collect, house, process]
+alerts, alert_edges = guard(first, ["01 session", "01 verify", "01 collect", "01 housekeeping", "01 process"])
 save(
     "trendvn01daily",
     "TrendVN | 01 · Thu th\u1eadp v\u00e0 x\u1eed l\u00fd (3 gi\u1edd/l\u1ea7n)",
-    [schedule, manual] + first + [note],
-    [(schedule["name"], session["name"]), (manual["name"], session["name"])] + chain(first),
+    [schedule, manual] + first + alerts + [note],
+    [(schedule["name"], session["name"]), (manual["name"], session["name"])] + chain(first) + alert_edges,
 )
 
 # 02 · publish in golden hours (every 30 minutes; the worker enforces switch, window, daily limit, spacing)
@@ -183,7 +240,7 @@ publish = request(
     300,
     base=AGENT,
     tolerant=True,
-    timeout=1500000,
+    timeout=agent_timeout("/api/publish"),
 )
 note = node(
     "\u0110\u0103ng theo gi\u1edd v\u00e0ng",
@@ -196,11 +253,12 @@ note = node(
     100,
     -300,
 )
+alerts, alert_edges = guard([publish], ["02 publish"])
 save(
     "trendvn02publish",
     "TrendVN | 02 · \u0110\u0103ng theo gi\u1edd v\u00e0ng (30 ph\u00fat/l\u1ea7n)",
-    [sched, manual, publish, note],
-    [(sched["name"], publish["name"]), (manual["name"], publish["name"])],
+    [sched, manual, publish] + alerts + [note],
+    [(sched["name"], publish["name"]), (manual["name"], publish["name"])] + alert_edges,
 )
 
 # 03 · end of day: performance feedback + summary notification
@@ -219,7 +277,7 @@ stats = request(
     300,
     base=AGENT,
     tolerant=True,
-    timeout=300000,
+    timeout=agent_timeout("/api/stats"),
 )
 summary = request("G\u1eedi t\u00f3m t\u1eaft ng\u00e0y", "/api/notify", 560, body='{"kind":"summary"}', tolerant=True)
 note = node(
@@ -233,11 +291,12 @@ note = node(
     100,
     -280,
 )
+alerts, alert_edges = guard([stats, summary], ["03 stats", "03 summary"])
 save(
     "trendvn03daily",
     "TrendVN | 03 · Ch\u1ed1t ng\u00e0y: hi\u1ec7u qu\u1ea3 v\u00e0 t\u00f3m t\u1eaft",
-    [cron, manual, stats, summary, note],
-    [(cron["name"], stats["name"]), (manual["name"], stats["name"]), (stats["name"], summary["name"])],
+    [cron, manual, stats, summary] + alerts + [note],
+    [(cron["name"], stats["name"]), (manual["name"], stats["name"]), (stats["name"], summary["name"])] + alert_edges,
 )
 
 # 10 · authenticated observation intake (unchanged contract)

@@ -48,7 +48,7 @@
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {
-          "timeout": 300000
+          "timeout": 660000
         },
         "sendBody": true,
         "specifyBody": "json",
@@ -60,7 +60,7 @@
           "name": "TrendVN \u00b7 Worker ri\u00eang"
         }
       },
-      "onError": "continueRegularOutput"
+      "onError": "continueErrorOutput"
     },
     {
       "id": "eb1925232e305271b41021189fdbfbc2",
@@ -82,6 +82,64 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "{\"kind\":\"summary\"}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN \u00b7 Worker ri\u00eang"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "dbbca1d2dde256be9196816fc09eaa96",
+      "name": "B\u00e1o l\u1ed7i: 03 stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        300
+      ],
+      "parameters": {
+        "url": "http://worker:8080/api/alert",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({step: \"03 stats\", detail: String(($json.error && ($json.error.message || $json.error)) || $json.message || 'failed')}) }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN \u00b7 Worker ri\u00eang"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ccf368033f7d5829866bc1645261127e",
+      "name": "B\u00e1o l\u1ed7i: 03 summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        300
+      ],
+      "parameters": {
+        "url": "http://worker:8080/api/alert",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({step: \"03 summary\", detail: String(($json.error && ($json.error.message || $json.error)) || $json.message || 'failed')}) }}"
       },
       "credentials": {
         "httpHeaderAuth": {
@@ -135,6 +193,30 @@
         [
           {
             "node": "G\u1eedi t\u00f3m t\u1eaft ng\u00e0y",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "B\u00e1o l\u1ed7i: 03 stats",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "G\u1eedi t\u00f3m t\u1eaft ng\u00e0y",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "G\u1eedi t\u00f3m t\u1eaft ng\u00e0y": {
+      "main": [
+        [],
+        [
+          {
+            "node": "B\u00e1o l\u1ed7i: 03 summary",
             "type": "main",
             "index": 0
           }

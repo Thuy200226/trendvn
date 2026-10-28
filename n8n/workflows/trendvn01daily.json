@@ -48,7 +48,7 @@
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {
-          "timeout": 600000
+          "timeout": 960000
         },
         "sendBody": true,
         "specifyBody": "json",
@@ -60,7 +60,7 @@
           "name": "TrendVN \u00b7 Worker ri\u00eang"
         }
       },
-      "onError": "continueRegularOutput"
+      "onError": "continueErrorOutput"
     },
     {
       "id": "2399195843665a87865203eaebc44b0d",
@@ -77,7 +77,7 @@
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {
-          "timeout": 300000
+          "timeout": 960000
         },
         "sendBody": true,
         "specifyBody": "json",
@@ -89,7 +89,7 @@
           "name": "TrendVN \u00b7 Worker ri\u00eang"
         }
       },
-      "onError": "continueRegularOutput"
+      "onError": "continueErrorOutput"
     },
     {
       "id": "262a6b3298f55ef189f26acf85003287",
@@ -106,7 +106,7 @@
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {
-          "timeout": 900000
+          "timeout": 960000
         },
         "sendBody": true,
         "specifyBody": "json",
@@ -118,7 +118,7 @@
           "name": "TrendVN \u00b7 Worker ri\u00eang"
         }
       },
-      "onError": "continueRegularOutput"
+      "onError": "continueErrorOutput"
     },
     {
       "id": "d50fd1d84bdf51549af7e9d45f8ffebb",
@@ -147,7 +147,7 @@
           "name": "TrendVN \u00b7 Worker ri\u00eang"
         }
       },
-      "onError": "continueRegularOutput"
+      "onError": "continueErrorOutput"
     },
     {
       "id": "3d206623c38c55e787a1990db73294c3",
@@ -169,6 +169,151 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "{\"max\":4}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN \u00b7 Worker ri\u00eang"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "f92630008037578a9c802425883bbfc3",
+      "name": "B\u00e1o l\u1ed7i: 01 session",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        300
+      ],
+      "parameters": {
+        "url": "http://worker:8080/api/alert",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({step: \"01 session\", detail: String(($json.error && ($json.error.message || $json.error)) || $json.message || 'failed')}) }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN \u00b7 Worker ri\u00eang"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "b69adcb1593b5b558222e33ac90ef20c",
+      "name": "B\u00e1o l\u1ed7i: 01 verify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        300
+      ],
+      "parameters": {
+        "url": "http://worker:8080/api/alert",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({step: \"01 verify\", detail: String(($json.error && ($json.error.message || $json.error)) || $json.message || 'failed')}) }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN \u00b7 Worker ri\u00eang"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "383a8e34c6e7535d857cf8ad0882d452",
+      "name": "B\u00e1o l\u1ed7i: 01 collect",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        300
+      ],
+      "parameters": {
+        "url": "http://worker:8080/api/alert",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({step: \"01 collect\", detail: String(($json.error && ($json.error.message || $json.error)) || $json.message || 'failed')}) }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN \u00b7 Worker ri\u00eang"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ef7fc40971175e37a0e61317ee423b70",
+      "name": "B\u00e1o l\u1ed7i: 01 housekeeping",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        300
+      ],
+      "parameters": {
+        "url": "http://worker:8080/api/alert",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({step: \"01 housekeeping\", detail: String(($json.error && ($json.error.message || $json.error)) || $json.message || 'failed')}) }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "trendvnWorkerAuth",
+          "name": "TrendVN \u00b7 Worker ri\u00eang"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "c901e71b2f955ad986c249c5340b1f47",
+      "name": "B\u00e1o l\u1ed7i: 01 process",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        300
+      ],
+      "parameters": {
+        "url": "http://worker:8080/api/alert",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({step: \"01 process\", detail: String(($json.error && ($json.error.message || $json.error)) || $json.message || 'failed')}) }}"
       },
       "credentials": {
         "httpHeaderAuth": {
@@ -225,12 +370,36 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "B\u00e1o l\u1ed7i: 01 session",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "\u0110\u1ed1i chi\u1ebfu b\u00e0i ch\u01b0a x\u00e1c nh\u1eadn",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
     "\u0110\u1ed1i chi\u1ebfu b\u00e0i ch\u01b0a x\u00e1c nh\u1eadn": {
       "main": [
         [
+          {
+            "node": "Thu th\u1eadp xu h\u01b0\u1edbng v\u00e0 t\u1ea3i video m\u1edbi",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "B\u00e1o l\u1ed7i: 01 verify",
+            "type": "main",
+            "index": 0
+          },
           {
             "node": "Thu th\u1eadp xu h\u01b0\u1edbng v\u00e0 t\u1ea3i video m\u1edbi",
             "type": "main",
@@ -247,6 +416,18 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "B\u00e1o l\u1ed7i: 01 collect",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ph\u00e1t hi\u1ec7n t\u00e1c v\u1ee5 gi\u00e1n \u0111o\u1ea1n",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -255,6 +436,30 @@
         [
           {
             "node": "Ph\u00e2n lo\u1ea1i nh\u1ea1c, t\u1ea1o Vietsub ho\u1eb7c l\u1ed3ng ti\u1ebfng",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "B\u00e1o l\u1ed7i: 01 housekeeping",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ph\u00e2n lo\u1ea1i nh\u1ea1c, t\u1ea1o Vietsub ho\u1eb7c l\u1ed3ng ti\u1ebfng",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ph\u00e2n lo\u1ea1i nh\u1ea1c, t\u1ea1o Vietsub ho\u1eb7c l\u1ed3ng ti\u1ebfng": {
+      "main": [
+        [],
+        [
+          {
+            "node": "B\u00e1o l\u1ed7i: 01 process",
             "type": "main",
             "index": 0
           }
